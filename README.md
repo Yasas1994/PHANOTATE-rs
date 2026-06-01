@@ -1,8 +1,8 @@
-# phanotate-rs
+# PHANOTATE-rs
 
 A fast Rust reimplementation of **PHANOTATE** — a gene caller optimized for bacteriophage genomes.
 
-[![Rust](https://img.shields.io/badge/rust-2021 edition-orange.svg)](https://www.rust-lang.org)
+[![Rust](https://shields.io/badge/-Rust-3776AB?style=flat&logo=rust)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 
 > **Note:** This is a Rust port of the original Python implementation. If you use this tool in your research, please cite the original PHANOTATE publication (see [Citation](#citation) below).
