@@ -1,4 +1,4 @@
-/// Weight calculations for ORF edges, gap edges, and overlap edges.
+//! Weight calculations for ORF edges, gap edges, and overlap edges.
 
 /// Score an overlap edge.
 /// `length` can be negative (the formula handles it as in the reference).

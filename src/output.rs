@@ -41,10 +41,10 @@ fn collect_orf_edges<'a>(
 
         let orf = if strand == '+' {
             orfs.iter()
-                .find(|o| o.start == start && o.stop == stop - 2 && o.frame > 0)
+                .find(|o| o.start == left.position && o.stop == right.position && o.frame > 0)
         } else {
             orfs.iter()
-                .find(|o| o.stop == start && o.start == stop - 2 && o.frame < 0)
+                .find(|o| o.stop == left.position && o.start == right.position && o.frame < 0)
         };
 
         if let Some(orf) = orf {
@@ -147,7 +147,7 @@ fn write_gff(id: &str, path: &[(Node, Node, f64)], orfs: &[Orf]) -> String {
 // ---------------------------------------------------------------------------
 // SCO (Simple Coordinate Output)
 // ---------------------------------------------------------------------------
-fn write_sco(id: &str, path: &[(Node, Node, f64)], orfs: &[Orf]) -> String {
+fn write_sco(_id: &str, path: &[(Node, Node, f64)], orfs: &[Orf]) -> String {
     let mut out = String::new();
     for (start, stop, strand, weight, _orf) in collect_orf_edges(path, orfs) {
         out.push_str(&format!(
@@ -213,4 +213,336 @@ pub fn write_nucleotide_fasta(
         }
     }
     out
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: create a minimal Orf for testing output formats.
+    fn make_orf(start: usize, stop: usize, frame: i8, seq: Vec<u8>) -> Orf {
+        Orf {
+            start,
+            stop,
+            frame,
+            seq,
+            rbs_score: 0,
+            pstop: 0.0,
+            weight_rbs: 1.0,
+            hold: 1.0,
+            weight: -1.0,
+        }
+    }
+
+    /// Helper: create a forward-strand ORF edge path.
+    fn fwd_path(start: usize, stop: usize) -> (Node, Node, f64) {
+        (
+            Node::new("CDS", "start", 1, start),
+            Node::new("CDS", "stop", 1, stop),
+            -42.0,
+        )
+    }
+
+    /// Helper: create a reverse-strand ORF edge path.
+    fn rev_path(start: usize, stop: usize) -> (Node, Node, f64) {
+        (
+            Node::new("CDS", "stop", -1, stop),
+            Node::new("CDS", "start", -1, start),
+            -99.0,
+        )
+    }
+
+    // -----------------------------------------------------------------------
+    // is_orf_edge tests
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_is_orf_edge_forward() {
+        let orf = make_orf(10, 30, 1, b"atg".to_vec());
+        let left = Node::new("CDS", "start", 1, 10);
+        let right = Node::new("CDS", "stop", 1, 30);
+        assert!(is_orf_edge(&left, &right, &[orf]));
+    }
+
+    #[test]
+    fn test_is_orf_edge_reverse() {
+        let orf = make_orf(10, 30, -1, b"atg".to_vec());
+        let left = Node::new("CDS", "stop", -1, 30);
+        let right = Node::new("CDS", "start", -1, 10);
+        assert!(is_orf_edge(&left, &right, &[orf]));
+    }
+
+    #[test]
+    fn test_is_orf_edge_non_cds() {
+        let orf = make_orf(10, 30, 1, b"atg".to_vec());
+        let left = Node::new("source", "source", 0, 0);
+        let right = Node::new("CDS", "stop", 1, 30);
+        assert!(!is_orf_edge(&left, &right, &[orf]));
+    }
+
+    #[test]
+    fn test_is_orf_edge_wrong_positions() {
+        let orf = make_orf(10, 30, 1, b"atg".to_vec());
+        let left = Node::new("CDS", "start", 1, 99);
+        let right = Node::new("CDS", "stop", 1, 30);
+        assert!(!is_orf_edge(&left, &right, &[orf]));
+    }
+
+    // -----------------------------------------------------------------------
+    // collect_orf_edges tests
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_collect_orf_edges_empty_path() {
+        let orfs = vec![make_orf(10, 30, 1, b"atg".to_vec())];
+        let path: Vec<(Node, Node, f64)> = vec![];
+        let edges = collect_orf_edges(&path, &orfs);
+        assert!(edges.is_empty());
+    }
+
+    #[test]
+    fn test_collect_orf_edges_single_forward() {
+        let orfs = vec![make_orf(10, 30, 1, b"atg".to_vec())];
+        let path = vec![fwd_path(10, 30)];
+        let edges = collect_orf_edges(&path, &orfs);
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].0, 10);  // start
+        assert_eq!(edges[0].1, 32);  // stop + 2
+        assert_eq!(edges[0].2, '+'); // strand
+        assert_eq!(edges[0].3, -42.0); // weight
+    }
+
+    #[test]
+    fn test_collect_orf_edges_single_reverse() {
+        let orfs = vec![make_orf(10, 30, -1, b"atg".to_vec())];
+        let path = vec![rev_path(10, 30)];
+        let edges = collect_orf_edges(&path, &orfs);
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].0, 12);  // right.position + 2
+        assert_eq!(edges[0].1, 30);  // left.position
+        assert_eq!(edges[0].2, '-'); // strand
+        assert_eq!(edges[0].3, -99.0); // weight
+    }
+
+    #[test]
+    fn test_collect_orf_edges_mixed() {
+        let orfs = vec![
+            make_orf(10, 30, 1, b"atg".to_vec()),
+            make_orf(50, 70, -1, b"atg".to_vec()),
+        ];
+        let path = vec![fwd_path(10, 30), rev_path(50, 70)];
+        let edges = collect_orf_edges(&path, &orfs);
+        assert_eq!(edges.len(), 2);
+        assert_eq!(edges[0].2, '+');
+        assert_eq!(edges[1].2, '-');
+    }
+
+    #[test]
+    fn test_collect_orf_edges_skips_non_orf() {
+        let orfs = vec![make_orf(10, 30, 1, b"atg".to_vec())];
+        let source = Node::new("source", "source", 0, 0);
+        let start = Node::new("CDS", "start", 1, 10);
+        let path = vec![
+            (source, start, 0.0),
+            fwd_path(10, 30),
+        ];
+        let edges = collect_orf_edges(&path, &orfs);
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].2, '+');
+    }
+
+    // -----------------------------------------------------------------------
+    // write_gbk tests
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_write_gbk_basic() {
+        let seq = b"atgcatgcatgc";
+        let orfs = vec![make_orf(1, 12, 1, b"atgcatgcatgc".to_vec())];
+        let path = vec![fwd_path(1, 12)];
+        let out = write_gbk(">test", seq, &path, &orfs, seq.len());
+        assert!(out.contains("LOCUS       test"));
+        assert!(out.contains("DEFINITION  test"));
+        assert!(out.contains("FEATURES"));
+        assert!(out.contains("source          1..12"));
+        assert!(out.contains("CDS             1..14"));
+        assert!(out.contains("/note=\"score="));
+        assert!(out.contains("ORIGIN"));
+        assert!(out.contains("//"));
+    }
+
+    #[test]
+    fn test_write_gbk_reverse_strand() {
+        let seq = b"atgcatgcatgc";
+        let orfs = vec![make_orf(1, 12, -1, b"atgcatgcatgc".to_vec())];
+        let path = vec![rev_path(1, 12)];
+        let out = write_gbk(">test", seq, &path, &orfs, seq.len());
+        // For rev_path(1, 12): left=stop@-1@12, right=start@-1@1
+        // display: start=right.position+2=3, stop=left.position=12
+        assert!(out.contains("complement(3..12)"));
+    }
+
+    #[test]
+    fn test_write_gbk_no_orfs() {
+        let seq = b"atgcatgcatgc";
+        let out = write_gbk(">test", seq, &[], &[], seq.len());
+        assert!(out.contains("LOCUS       test"));
+        assert!(!out.contains("CDS"));
+    }
+
+    #[test]
+    fn test_write_gbk_sequence_formatting() {
+        let seq = b"atgc";
+        let out = write_gbk(">test", seq, &[], &[], seq.len());
+        // Should have position number and sequence
+        assert!(out.contains("        1 atgc"));
+    }
+
+    // -----------------------------------------------------------------------
+    // write_gff tests
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_write_gff_basic() {
+        let orfs = vec![make_orf(10, 30, 1, b"atg".to_vec())];
+        let path = vec![fwd_path(10, 30)];
+        let out = write_gff(">test", &path, &orfs);
+        assert!(out.starts_with("##gff-version 3\n"));
+        assert!(out.contains("test\tphanotate\tCDS\t10\t32\t"));
+        assert!(out.contains("\t+\t0\tID=CDS_10_32"));
+    }
+
+    #[test]
+    fn test_write_gff_reverse() {
+        let orfs = vec![make_orf(10, 30, -1, b"atg".to_vec())];
+        let path = vec![rev_path(10, 30)];
+        let out = write_gff(">test", &path, &orfs);
+        assert!(out.contains("\t-\t0\t"));
+    }
+
+    #[test]
+    fn test_write_gff_empty() {
+        let out = write_gff(">test", &[], &[]);
+        assert_eq!(out, "##gff-version 3\n");
+    }
+
+    // -----------------------------------------------------------------------
+    // write_sco tests
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_write_sco_basic() {
+        let orfs = vec![make_orf(10, 30, 1, b"atg".to_vec())];
+        let path = vec![fwd_path(10, 30)];
+        let out = write_sco(">test", &path, &orfs);
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines.len(), 1);
+        let cols: Vec<&str> = lines[0].split('\t').collect();
+        assert_eq!(cols.len(), 4);
+        assert_eq!(cols[0], "10");
+        assert_eq!(cols[1], "32");
+        assert_eq!(cols[2], "+");
+    }
+
+    #[test]
+    fn test_write_sco_empty() {
+        let out = write_sco(">test", &[], &[]);
+        assert!(out.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // write_protein_fasta tests
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_write_protein_fasta_basic() {
+        // atg tgg taa -> M W *
+        let orfs = vec![make_orf(1, 9, 1, b"atgtggtaa".to_vec())];
+        let path = vec![fwd_path(1, 9)];
+        let out = write_protein_fasta(">test", &path, &orfs, 11);
+        assert!(out.starts_with(">test_1_11 +\n"));
+        assert!(out.contains("MW*\n"));
+    }
+
+    #[test]
+    fn test_write_protein_fasta_long_lines() {
+        // 90 bases = 30 amino acids, should wrap at 60 chars
+        let seq = b"atg".repeat(30);
+        let orfs = vec![make_orf(1, 90, 1, seq.to_vec())];
+        let path = vec![fwd_path(1, 90)];
+        let out = write_protein_fasta(">test", &path, &orfs, 11);
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines[0], ">test_1_92 +");
+        // Should have 2 sequence lines (30 aa = 60 chars would be one line...)
+        // Actually 30 aa is exactly 30 chars, so one line
+        assert_eq!(lines[1].len(), 30);
+    }
+
+    #[test]
+    fn test_write_protein_fasta_unsupported_table() {
+        let orfs = vec![make_orf(1, 9, 1, b"atgtggtaa".to_vec())];
+        let path = vec![fwd_path(1, 9)];
+        let out = write_protein_fasta(">test", &path, &orfs, 99);
+        // Should skip ORFs with unsupported table
+        assert!(out.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // write_nucleotide_fasta tests
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_write_nucleotide_fasta_basic() {
+        let orfs = vec![make_orf(1, 12, 1, b"atgcatgcatgc".to_vec())];
+        let path = vec![fwd_path(1, 12)];
+        let out = write_nucleotide_fasta(">test", &path, &orfs);
+        assert!(out.starts_with(">test_1_14 +\n"));
+        assert!(out.contains("atgcatgcatgc\n"));
+    }
+
+    #[test]
+    fn test_write_nucleotide_fasta_wrap() {
+        let seq = b"atgc".repeat(20); // 80 chars
+        let orfs = vec![make_orf(1, 80, 1, seq.to_vec())];
+        let path = vec![fwd_path(1, 80)];
+        let out = write_nucleotide_fasta(">test", &path, &orfs);
+        let lines: Vec<&str> = out.lines().collect();
+        assert_eq!(lines[0], ">test_1_82 +");
+        assert_eq!(lines[1].len(), 60);
+        assert_eq!(lines[2].len(), 20);
+    }
+
+    // -----------------------------------------------------------------------
+    // write_primary dispatcher tests
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_write_primary_gbk() {
+        let seq = b"atgc";
+        let out = write_primary(">test", seq, &[], &[], 4, Format::Gbk);
+        assert!(out.contains("LOCUS"));
+    }
+
+    #[test]
+    fn test_write_primary_gff() {
+        let out = write_primary(">test", b"atgc", &[], &[], 4, Format::Gff);
+        assert!(out.starts_with("##gff-version 3"));
+    }
+
+    #[test]
+    fn test_write_primary_sco() {
+        let out = write_primary(">test", b"atgc", &[], &[], 4, Format::Sco);
+        assert!(out.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Format enum tests
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_format_eq() {
+        assert_eq!(Format::Gbk, Format::Gbk);
+        assert_ne!(Format::Gbk, Format::Gff);
+    }
+
+    #[test]
+    fn test_format_copy() {
+        let f = Format::Gff;
+        let f2 = f;
+        assert_eq!(f, f2); // Copy trait allows this
+    }
 }

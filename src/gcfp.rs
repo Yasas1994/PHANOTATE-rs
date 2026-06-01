@@ -1,9 +1,9 @@
-/// GC Frame Plot computation.
-///
-/// Algorithm from the reference:
-/// 1. Slide a 120 bp window (40 codons) one base at a time over all three forward-strand frames.
-///    Record the % GC content of the codon starting at each base in each frame.
-/// 2. The `get()` method interleaves the three frames to produce per-base-position arrays.
+//! GC Frame Plot computation.
+//!
+//! Algorithm from the reference:
+//! 1. Slide a 120 bp window (40 codons) one base at a time over all three forward-strand frames.
+//!    Record the % GC content of the codon starting at each base in each frame.
+//! 2. The `get()` method interleaves the three frames to produce per-base-position arrays.
 
 use std::collections::VecDeque;
 
@@ -18,12 +18,18 @@ pub struct GCframe {
     total: [VecDeque<usize>; 3],
 }
 
+impl Default for GCframe {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GCframe {
     pub fn new() -> Self {
         let dash = b'-'; // placeholder
         let mut frequency = [[0usize; 5]; 3];
-        for frame in 0..3 {
-            frequency[frame][4] = WINDOW_CODONS; // '-' count
+        for freq_row in frequency.iter_mut() {
+            freq_row[4] = WINDOW_CODONS; // '-' count
         }
         GCframe {
             window: WINDOW_CODONS,
@@ -128,18 +134,24 @@ fn base_to_idx(base: u8) -> usize {
 }
 
 pub fn max_idx(a: usize, b: usize, c: usize) -> usize {
-    if a > b {
-        if a > c { 1 } else { 3 }
+    if a > b && a > c {
+        1
+    } else if b > c {
+        2
     } else {
-        if b > c { 2 } else { 3 }
+        3
     }
 }
 
 pub fn min_idx(a: usize, b: usize, c: usize) -> usize {
-    if a > b {
-        if b > c { 3 } else { 2 }
+    if a > b && b > c {
+        3
+    } else if a > b {
+        2
+    } else if a > c {
+        3
     } else {
-        if a > c { 3 } else { 1 }
+        1
     }
 }
 

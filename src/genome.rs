@@ -4,12 +4,14 @@ use std::path::Path;
 #[derive(Debug, Clone)]
 pub struct Genome {
     pub id: String,
-    pub seq: Vec<u8>, // lowercase ASCII nucleotides
+    pub seq: Vec<u8>,    // lowercase ASCII nucleotides
+    pub rc_seq: Vec<u8>, // reverse complement, pre-computed
 }
 
 /// Read a FASTA file, returning one or more Genome records.
 /// Ambiguous bases are handled as in the reference:
 ///   s, b, v -> g; everything else -> a
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn read_fasta<P: AsRef<Path>>(path: P) -> anyhow::Result<Vec<Genome>> {
     let data = fs::read_to_string(path)?;
     read_fasta_data(&data)
@@ -28,9 +30,12 @@ pub fn read_fasta_data(data: &str) -> anyhow::Result<Vec<Genome>> {
         }
         if line.starts_with('>') {
             if !current_id.is_empty() {
+                let seq = normalize_seq(&current_seq);
+                let rc_seq = rev_comp(&seq);
                 genomes.push(Genome {
                     id: current_id.clone(),
-                    seq: normalize_seq(&current_seq),
+                    seq,
+                    rc_seq,
                 });
             }
             current_id = line.split_whitespace().next().unwrap_or("").to_string();
@@ -41,9 +46,12 @@ pub fn read_fasta_data(data: &str) -> anyhow::Result<Vec<Genome>> {
     }
 
     if !current_id.is_empty() {
+        let seq = normalize_seq(&current_seq);
+        let rc_seq = rev_comp(&seq);
         genomes.push(Genome {
             id: current_id,
-            seq: normalize_seq(&current_seq),
+            seq,
+            rc_seq,
         });
     }
 
@@ -64,9 +72,12 @@ pub fn read_genbank(data: &str) -> anyhow::Result<Vec<Genome>> {
         }
         if trimmed.starts_with("LOCUS") {
             if !current_id.is_empty() {
+                let seq = normalize_seq(&current_seq);
+                let rc_seq = rev_comp(&seq);
                 genomes.push(Genome {
                     id: current_id.clone(),
-                    seq: normalize_seq(&current_seq),
+                    seq,
+                    rc_seq,
                 });
             }
             current_id = trimmed.split_whitespace().nth(1).unwrap_or("").to_string();
@@ -87,9 +98,12 @@ pub fn read_genbank(data: &str) -> anyhow::Result<Vec<Genome>> {
     }
 
     if !current_id.is_empty() {
+        let seq = normalize_seq(&current_seq);
+        let rc_seq = rev_comp(&seq);
         genomes.push(Genome {
             id: current_id,
-            seq: normalize_seq(&current_seq),
+            seq,
+            rc_seq,
         });
     }
 
@@ -97,17 +111,29 @@ pub fn read_genbank(data: &str) -> anyhow::Result<Vec<Genome>> {
 }
 
 /// Convert to lowercase, then map ambiguous bases.
+/// Preserves 'n'/'N' so that `-m` (mask runs of N) can detect them.
 pub fn normalize_seq(seq: &str) -> Vec<u8> {
-    seq.bytes()
-        .map(|b| {
-            let b = b.to_ascii_lowercase();
-            match b {
-                b's' | b'b' | b'v' => b'g',
-                b'a' | b'c' | b't' | b'g' => b,
+    // 256-byte lookup table: map every possible byte to its normalized form.
+    // Lowercase letters are mapped directly; uppercase letters are mapped
+    // via their lowercase counterparts. Everything else maps to 'a'.
+    const LUT: [u8; 256] = {
+        let mut lut = [b'a'; 256];
+        let mut i = 0u16;
+        while i < 256 {
+            lut[i as usize] = match i as u8 {
+                b'A' | b'a' => b'a',
+                b'C' | b'c' => b'c',
+                b'T' | b't' | b'U' | b'u' => b't',
+                b'G' | b'g' => b'g',
+                b'N' | b'n' => b'n',
+                b'S' | b's' | b'B' | b'b' | b'V' | b'v' => b'g',
                 _ => b'a',
-            }
-        })
-        .collect()
+            };
+            i += 1;
+        }
+        lut
+    };
+    seq.bytes().map(|b| LUT[b as usize]).collect()
 }
 
 /// Reverse complement a DNA sequence.

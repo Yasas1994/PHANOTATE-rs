@@ -51,6 +51,12 @@ pub struct Graph {
     pub node_to_idx: std::collections::BTreeMap<Node, usize>, // BTreeMap for deterministic ordering
 }
 
+impl Default for Graph {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Graph {
     pub fn new() -> Self {
         Graph {
@@ -77,6 +83,8 @@ impl Graph {
         self.edges[src_idx].push((tgt_idx, edge.weight));
     }
 
+
+
     /// Build the graph from ORFs.
     pub fn from_orfs(
         orfs: &[Orf],
@@ -98,9 +106,9 @@ impl Graph {
         for orf in orfs {
             // Update other_end for stop -> "best" start
             if let Some(existing_start) = other_end.get(&orf.stop) {
-                if orf.frame > 0 && orf.start < *existing_start {
-                    other_end.insert(orf.stop, orf.start);
-                } else if orf.frame < 0 && orf.start > *existing_start {
+                if (orf.frame > 0 && orf.start < *existing_start)
+                    || (orf.frame < 0 && orf.start > *existing_start)
+                {
                     other_end.insert(orf.stop, orf.start);
                 }
             } else {
@@ -146,9 +154,8 @@ impl Graph {
         }
 
         let mut last = 0usize;
-        for base in &bases {
-            if let Some(b) = base {
-                if *b > last && *b - last > 500 {
+        for b in bases.iter().flatten() {
+            if *b > last && *b - last > 500 {
                     let node_list: Vec<Node> = graph.nodes.clone();
                     for right_node in &node_list {
                         let r = right_node.position;
@@ -158,64 +165,39 @@ impl Graph {
                                 && b - 1 <= r && r < b + 500
                             {
                                 if left_node.frame * right_node.frame > 0 {
-                                    if left_node.node_type == "stop"
+                                    if (left_node.node_type == "stop"
                                         && right_node.node_type == "start"
-                                        && left_node.frame > 0
+                                        && left_node.frame > 0)
+                                        || (left_node.node_type == "start"
+                                            && right_node.node_type == "stop"
+                                            && left_node.frame < 0)
                                     {
                                         let score = score_gap((r as isize) - (l as isize) - 3, "same", pgap);
-                                        if (l == 20853 && r == 21029) || (l == 20853 && r == 20815) || (l == 20962 && r == 21029) {
-                                        }
-                                        if (l == 20853 && r == 21029) || (l == 20853 && r == 20815) || (l == 20962 && r == 21029) {
-                                        }
-                                        graph.add_edge(Edge {
-                                            source: *left_node,
-                                            target: *right_node,
-                                            weight: f64_to_bigint_weight(score * 1000.0),
-                                        });
-                                    } else if left_node.node_type == "start"
-                                        && right_node.node_type == "stop"
-                                        && left_node.frame < 0
-                                    {
-                                        let score = score_gap((r as isize) - (l as isize) - 3, "same", pgap);
-                                        if (l == 20853 && r == 21029) || (l == 20853 && r == 20815) || (l == 20962 && r == 21029) {
-                                        }
-                                        if (l == 20853 && r == 21029) || (l == 20853 && r == 20815) || (l == 20962 && r == 21029) {
-                                        }
                                         graph.add_edge(Edge {
                                             source: *left_node,
                                             target: *right_node,
                                             weight: f64_to_bigint_weight(score * 1000.0),
                                         });
                                     }
-                                } else {
-                                    if left_node.node_type == "stop"
-                                        && right_node.node_type == "stop"
-                                        && left_node.frame > 0
-                                    {
-                                        let score = score_gap((r as isize) - (l as isize) - 3, "diff", pgap);
-                                        graph.add_edge(Edge {
-                                            source: *left_node,
-                                            target: *right_node,
-                                            weight: f64_to_bigint_weight(score * 1000.0),
-                                        });
-                                    } else if left_node.node_type == "start"
+                                } else if (left_node.node_type == "stop"
+                                    && right_node.node_type == "stop"
+                                    && left_node.frame > 0)
+                                    || (left_node.node_type == "start"
                                         && right_node.node_type == "start"
-                                        && left_node.frame < 0
-                                    {
-                                        let score = score_gap((r as isize) - (l as isize) - 3, "diff", pgap);
-                                        graph.add_edge(Edge {
-                                            source: *left_node,
-                                            target: *right_node,
-                                            weight: f64_to_bigint_weight(score * 1000.0),
-                                        });
-                                    }
+                                        && left_node.frame < 0)
+                                {
+                                    let score = score_gap((r as isize) - (l as isize) - 3, "diff", pgap);
+                                    graph.add_edge(Edge {
+                                        source: *left_node,
+                                        target: *right_node,
+                                        weight: f64_to_bigint_weight(score * 1000.0),
+                                    });
                                 }
                             }
                         }
                     }
                 }
                 last = *b;
-            }
         }
 
         // Connect the open reading frames to each other
@@ -275,10 +257,6 @@ impl Graph {
                     if left_node.node_type == "stop" && right_node.node_type == "start" {
                         if left_node.frame > 0 {
                             let score = score_gap((r as isize) - (l as isize) - 3, "same", pgap);
-                                        if (l == 20853 && r == 21029) || (l == 20853 && r == 20815) || (l == 20962 && r == 21029) {
-                                        }
-                                        if (l == 20853 && r == 21029) || (l == 20853 && r == 20815) || (l == 20962 && r == 21029) {
-                                        }
                             graph.add_edge(Edge {
                                 source: *left_node,
                                 target: *right_node,
@@ -315,10 +293,6 @@ impl Graph {
                             }
                         } else {
                             let score = score_gap((r as isize) - (l as isize) - 3, "same", pgap);
-                                        if (l == 20853 && r == 21029) || (l == 20853 && r == 20815) || (l == 20962 && r == 21029) {
-                                        }
-                                        if (l == 20853 && r == 21029) || (l == 20853 && r == 20815) || (l == 20962 && r == 21029) {
-                                        }
                             graph.add_edge(Edge {
                                 source: *left_node,
                                 target: *right_node,
@@ -383,29 +357,28 @@ impl Graph {
         let target_idx = graph.node_to_idx[&target];
 
         for node in &node_list {
-            if node.position <= 2000 {
-                if (node.node_type == "start" && node.frame > 0)
-                    || (node.node_type == "stop" && node.frame < 0)
-                {
-                    let score = score_gap(node.position as isize, "same", pgap);
-                    graph.add_edge(Edge {
-                        source,
-                        target: *node,
-                        weight: f64_to_bigint_weight(score * 1000.0),
-                    });
-                }
+            if node.position <= 2000
+                && ((node.node_type == "start" && node.frame > 0)
+                    || (node.node_type == "stop" && node.frame < 0))
+            {
+                let score = score_gap(node.position as isize, "same", pgap);
+                graph.add_edge(Edge {
+                    source,
+                    target: *node,
+                    weight: f64_to_bigint_weight(score * 1000.0),
+                });
             }
-            if contig_length >= node.position && contig_length - node.position <= 2000 {
-                if (node.node_type == "start" && node.frame < 0)
-                    || (node.node_type == "stop" && node.frame > 0)
-                {
-                    let score = score_gap((contig_length - node.position) as isize, "same", pgap);
-                    graph.add_edge(Edge {
-                        source: *node,
-                        target,
-                        weight: f64_to_bigint_weight(score * 1000.0),
-                    });
-                }
+            if contig_length >= node.position
+                && contig_length - node.position <= 2000
+                && ((node.node_type == "start" && node.frame < 0)
+                    || (node.node_type == "stop" && node.frame > 0))
+            {
+                let score = score_gap((contig_length - node.position) as isize, "same", pgap);
+                graph.add_edge(Edge {
+                    source: *node,
+                    target,
+                    weight: f64_to_bigint_weight(score * 1000.0),
+                });
             }
         }
 

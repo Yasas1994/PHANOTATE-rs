@@ -1,4 +1,3 @@
-use crate::genome::rev_comp;
 
 #[derive(Debug, Clone)]
 pub struct Orf {
@@ -56,8 +55,26 @@ impl Orf {
 /// - `closed_ends`: if true, do not allow ORFs to run off sequence edges.
 ///   Fragment ORFs (those without a matching start/stop at the boundary) are discarded.
 /// - `mask_n`: if true, do not build any ORF that spans a run of N nucleotides.
+///
+/// Convenience wrapper that computes RC internally.
+/// Use `find_orfs_with_rc` if RC is already available.
+#[allow(dead_code)]
 pub fn find_orfs(
     dna: &[u8],
+    start_codons: &[Vec<u8>],
+    stop_codons: &[Vec<u8>],
+    min_orf_len: usize,
+    closed_ends: bool,
+    mask_n: bool,
+) -> Vec<Orf> {
+    let rc_dna = crate::genome::rev_comp(dna);
+    find_orfs_with_rc(dna, &rc_dna, start_codons, stop_codons, min_orf_len, closed_ends, mask_n)
+}
+
+/// Enumerate all ORFs in all six reading frames using a pre-computed reverse complement.
+pub fn find_orfs_with_rc(
+    dna: &[u8],
+    rc_dna: &[u8],
     start_codons: &[Vec<u8>],
     stop_codons: &[Vec<u8>],
     min_orf_len: usize,
@@ -88,20 +105,14 @@ pub fn find_orfs(
 
     // Initial fragment starts if first codon is NOT a start
     if !closed_ends {
-        if dna.len() >= 3 {
-            if !start_codons.iter().any(|c| c == &dna[0..3]) {
-                starts.get_mut(&1).unwrap().push(1);
-            }
+        if dna.len() >= 3 && !start_codons.iter().any(|c| c == &dna[0..3]) {
+            starts.get_mut(&1).unwrap().push(1);
         }
-        if dna.len() >= 4 {
-            if !start_codons.iter().any(|c| c == &dna[1..4]) {
-                starts.get_mut(&2).unwrap().push(2);
-            }
+        if dna.len() >= 4 && !start_codons.iter().any(|c| c == &dna[1..4]) {
+            starts.get_mut(&2).unwrap().push(2);
         }
-        if dna.len() >= 5 {
-            if !start_codons.iter().any(|c| c == &dna[2..5]) {
-                starts.get_mut(&3).unwrap().push(3);
-            }
+        if dna.len() >= 5 && !start_codons.iter().any(|c| c == &dna[2..5]) {
+            starts.get_mut(&3).unwrap().push(3);
         }
     }
 
@@ -141,20 +152,29 @@ pub fn find_orfs(
             starts.get_mut(&frame_i8).unwrap().clear();
             stops.insert(frame_i8, stop);
         } else {
-            let rc_codon = rev_comp(codon);
-            if start_codons.iter().any(|c| c == &rc_codon) {
+            // Read reverse-codon directly from pre-computed RC genome
+            let rc_start = dna.len().saturating_sub(i + 2);
+            let rc_codon = &rc_dna[rc_start..dna.len() - i + 1];
+            if start_codons.iter().any(|c| c == rc_codon) {
                 starts.get_mut(&(-(frame as i8))).unwrap().push(i + 2);
-            } else if stop_codons.iter().any(|c| c == &rc_codon) {
+            } else if stop_codons.iter().any(|c| c == rc_codon) {
                 let stop = stops[&(-(frame as i8))];
                 for &start in starts.get(&(-(frame as i8))).unwrap().iter() {
                     let length = start - stop + 1;
                     if length >= min_orf_len {
-                        let seq = rev_comp(&dna[stop.saturating_sub(1)..start]);
+                        // ORF seq: reverse complement of forward sequence
+                        let fwd_start = stop.saturating_sub(1);
+                        let fwd_end = start;
+                        let seq = rc_dna[dna.len() - fwd_end..dna.len() - fwd_start].to_vec();
                         if mask_n && spans_masked(stop, start, &masked_regions) {
                             continue;
                         }
-                        let rbs = rev_comp(&dna[start..(start + 21).min(dna.len())]);
-                        let rbs_score = score_rbs(&rbs);
+                        // RBS: 21nt upstream of start on reverse strand
+                        // In forward coords: dna[start..start+21], RC is rc_dna[len-start-21..len-start]
+                        let rbs_start = dna.len().saturating_sub(start + 21);
+                        let rbs_end = dna.len() - start;
+                        let rbs = &rc_dna[rbs_start..rbs_end];
+                        let rbs_score = score_rbs(rbs);
                         let pstop = Orf::compute_pstop(&seq);
                         orfs.push(Orf {
                             start: start - 2,
@@ -208,8 +228,10 @@ pub fn find_orfs(
             let neg_frame = -frame;
             let start_pos = contig_length - ((contig_length - (frame_usize - 1)) % 3);
             if start_pos >= 3 {
-                let last_codon = rev_comp(&dna[start_pos - 3..start_pos]);
-                if !start_codons.iter().any(|c| c == &last_codon) {
+                let rc_last_start = dna.len().saturating_sub(start_pos);
+                let rc_last_end = dna.len() - start_pos + 3;
+                let last_codon = &rc_dna[rc_last_start..rc_last_end];
+                if !start_codons.iter().any(|c| c == last_codon) {
                     starts.get_mut(&neg_frame).unwrap().push(start_pos);
                 }
             }
@@ -217,12 +239,16 @@ pub fn find_orfs(
             for &start in starts.get(&neg_frame).unwrap().iter() {
                 let length = start - stop + 1;
                 if length >= min_orf_len {
-                    let seq = rev_comp(&dna[stop.saturating_sub(1)..start]);
+                    let fwd_start = stop.saturating_sub(1);
+                    let fwd_end = start;
+                    let seq = rc_dna[dna.len() - fwd_end..dna.len() - fwd_start].to_vec();
                     if mask_n && spans_masked(stop, start, &masked_regions) {
                         continue;
                     }
-                    let rbs = rev_comp(&dna[start..(start + 21).min(dna.len())]);
-                    let rbs_score = score_rbs(&rbs);
+                    let rbs_start = dna.len().saturating_sub(start + 21);
+                    let rbs_end = dna.len() - start;
+                    let rbs = &rc_dna[rbs_start..rbs_end];
+                    let rbs_score = score_rbs(rbs);
                     let pstop = Orf::compute_pstop(&seq);
                     orfs.push(Orf {
                         start: start - 2,
@@ -288,51 +314,210 @@ fn get_rbs(dna: &[u8], start: usize, _forward: bool) -> Vec<u8> {
 }
 
 /// Shine-Dalgarno likelihood score.
-/// Replicates the reference implementation exactly.
+/// Replicates the Python reference implementation exactly.
+/// Byte-based implementation: no allocations, no UTF-8 conversion.
 pub fn score_rbs(seq: &[u8]) -> usize {
     // The reference takes the 21 nt upstream, then reverses it
     let s: Vec<u8> = seq.iter().rev().copied().collect();
-    let s = std::str::from_utf8(&s).unwrap_or("");
 
-    // Helper: check if pattern appears in any of the given (start, end) ranges
-    let in_range = |pat: &str, start: usize, end: usize| -> bool {
-        if end > s.len() {
+    // Helper: check if pattern (as bytes) appears in s[start..end]
+    let in_range = |pat: &[u8], start: usize, end: usize| -> bool {
+        if end > s.len() || start >= s.len() {
             return false;
         }
-        s[start..end].contains(pat)
+        let window = &s[start..end];
+        if pat.len() > window.len() {
+            return false;
+        }
+        window.windows(pat.len()).any(|w| w == pat)
     };
 
-    // Conditions in Python's exact order: 27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0
-    // Key fix: score 7 (ggtgg in 11-16) must come AFTER score 13 (agg/gag/gga in 5-13)
-    // and AFTER score 14 (ggtgg in 5-15)
-
-    if in_range("aggagg", 0, 6) { return 27; }
-    if in_range("ggagg", 0, 6) { return 26; }
-    if in_range("aaggag", 0, 7) { return 25; }
-    if in_range("aggtgg", 0, 7) { return 24; }
-    if in_range("agg", 0, 7) || in_range("gag", 0, 7) || in_range("gga", 0, 7) { return 23; }
-    if in_range("ggtggt", 0, 7) { return 22; }
-    if in_range("aagg", 0, 7) { return 21; }
-    if in_range("ggcg", 0, 7) || in_range("gccg", 0, 7) || in_range("gcgg", 0, 7) { return 20; }
-    if in_range("ggtgg", 0, 7) { return 19; }
-    if in_range("agga", 0, 7) { return 18; }
-    if in_range("gggg", 0, 7) { return 17; }
-    if in_range("ggtgga", 0, 7) || in_range("ggggga", 0, 7) || in_range("ggcgga", 0, 7) { return 16; }
-    if in_range("gaggt", 0, 7) || in_range("gaggc", 0, 7) || in_range("gagga", 0, 7) { return 15; }
-    if in_range("ggtgg", 0, 16) { return 14; }
-    if in_range("agg", 5, 14) || in_range("gag", 5, 14) || in_range("gga", 5, 14) { return 13; }
-    if in_range("gg", 5, 14) { return 12; }
-    if in_range("g", 5, 14) { return 11; }
-    if in_range("a", 5, 14) { return 10; }
-    if in_range("t", 5, 14) { return 9; }
-    if in_range("c", 5, 14) { return 8; }
-    if in_range("ggtgg", 11, 17) { return 7; }
-    if in_range("agg", 11, 17) || in_range("gag", 11, 17) || in_range("gga", 11, 17) { return 6; }
-    if in_range("gg", 11, 17) { return 5; }
-    if in_range("g", 11, 17) { return 4; }
-    if in_range("a", 11, 17) { return 3; }
-    if in_range("t", 11, 17) { return 2; }
-    if in_range("c", 11, 17) { return 1; }
+    // Ported from Python's score_rbs in functions.py — using byte patterns
+    if in_range(b"ggagga", 5, 11) || in_range(b"ggagga", 6, 12) || in_range(b"ggagga", 7, 13)
+        || in_range(b"ggagga", 8, 14) || in_range(b"ggagga", 9, 15) || in_range(b"ggagga", 10, 16) {
+        return 27;
+    }
+    if in_range(b"ggagga", 3, 9) || in_range(b"ggagga", 4, 10) {
+        return 26;
+    }
+    if in_range(b"ggagga", 11, 17) || in_range(b"ggagga", 12, 18) {
+        return 25;
+    }
+    if in_range(b"ggagg", 5, 10) || in_range(b"ggagg", 6, 11) || in_range(b"ggagg", 7, 12)
+        || in_range(b"ggagg", 8, 13) || in_range(b"ggagg", 9, 14) || in_range(b"ggagg", 10, 15) {
+        return 24;
+    }
+    if in_range(b"ggagg", 3, 8) || in_range(b"ggagg", 4, 9) {
+        return 23;
+    }
+    if in_range(b"gagga", 5, 10) || in_range(b"gagga", 6, 11) || in_range(b"gagga", 7, 12)
+        || in_range(b"gagga", 8, 13) || in_range(b"gagga", 9, 14) || in_range(b"gagga", 10, 15) {
+        return 22;
+    }
+    if in_range(b"gagga", 3, 8) || in_range(b"gagga", 4, 9) {
+        return 21;
+    }
+    if in_range(b"gagga", 11, 16) || in_range(b"gagga", 12, 17)
+        || in_range(b"ggagg", 11, 16) || in_range(b"ggagg", 12, 17) {
+        return 20;
+    }
+    if in_range(b"ggacga", 5, 11) || in_range(b"ggacga", 6, 12) || in_range(b"ggacga", 7, 13)
+        || in_range(b"ggacga", 8, 14) || in_range(b"ggacga", 9, 15) || in_range(b"ggacga", 10, 16) {
+        return 19;
+    }
+    if in_range(b"ggatga", 5, 11) || in_range(b"ggatga", 6, 12) || in_range(b"ggatga", 7, 13)
+        || in_range(b"ggatga", 8, 14) || in_range(b"ggatga", 9, 15) || in_range(b"ggatga", 10, 16) {
+        return 19;
+    }
+    if in_range(b"ggaaga", 5, 11) || in_range(b"ggaaga", 6, 12) || in_range(b"ggaaga", 7, 13)
+        || in_range(b"ggaaga", 8, 14) || in_range(b"ggaaga", 9, 15) || in_range(b"ggaaga", 10, 16) {
+        return 19;
+    }
+    if in_range(b"ggcgga", 5, 11) || in_range(b"ggcgga", 6, 12) || in_range(b"ggcgga", 7, 13)
+        || in_range(b"ggcgga", 8, 14) || in_range(b"ggcgga", 9, 15) || in_range(b"ggcgga", 10, 16) {
+        return 19;
+    }
+    if in_range(b"ggggga", 5, 11) || in_range(b"ggggga", 6, 12) || in_range(b"ggggga", 7, 13)
+        || in_range(b"ggggga", 8, 14) || in_range(b"ggggga", 9, 15) || in_range(b"ggggga", 10, 16) {
+        return 19;
+    }
+    if in_range(b"ggtgga", 5, 11) || in_range(b"ggtgga", 6, 12) || in_range(b"ggtgga", 7, 13)
+        || in_range(b"ggtgga", 8, 14) || in_range(b"ggtgga", 9, 15) || in_range(b"ggtgga", 10, 16) {
+        return 19;
+    }
+    if in_range(b"ggaaga", 3, 9) || in_range(b"ggaaga", 4, 10)
+        || in_range(b"ggatga", 3, 9) || in_range(b"ggatga", 4, 10)
+        || in_range(b"ggacga", 3, 9) || in_range(b"ggacga", 4, 10) {
+        return 18;
+    }
+    if in_range(b"ggtgga", 3, 9) || in_range(b"ggtgga", 4, 10)
+        || in_range(b"ggggga", 3, 9) || in_range(b"ggggga", 4, 10)
+        || in_range(b"ggcgga", 3, 9) || in_range(b"ggcgga", 4, 10) {
+        return 18;
+    }
+    if in_range(b"ggaaga", 11, 17) || in_range(b"ggaaga", 12, 18)
+        || in_range(b"ggatga", 11, 17) || in_range(b"ggatga", 12, 18)
+        || in_range(b"ggacga", 11, 17) || in_range(b"ggacga", 12, 18) {
+        return 17;
+    }
+    if in_range(b"ggtgga", 11, 17) || in_range(b"ggtgga", 12, 18)
+        || in_range(b"ggggga", 11, 17) || in_range(b"ggggga", 12, 18)
+        || in_range(b"ggcgga", 11, 17) || in_range(b"ggcgga", 12, 18) {
+        return 17;
+    }
+    if in_range(b"ggag", 5, 9) || in_range(b"ggag", 6, 10) || in_range(b"ggag", 7, 11)
+        || in_range(b"ggag", 8, 12) || in_range(b"ggag", 9, 13) || in_range(b"ggag", 10, 14) {
+        return 16;
+    }
+    if in_range(b"gagg", 5, 9) || in_range(b"gagg", 6, 10) || in_range(b"gagg", 7, 11)
+        || in_range(b"gagg", 8, 12) || in_range(b"gagg", 9, 13) || in_range(b"gagg", 10, 14) {
+        return 16;
+    }
+    if in_range(b"agga", 5, 9) || in_range(b"agga", 6, 10) || in_range(b"agga", 7, 11)
+        || in_range(b"agga", 8, 12) || in_range(b"agga", 9, 13) || in_range(b"agga", 10, 14) {
+        return 15;
+    }
+    if in_range(b"ggtgg", 5, 10) || in_range(b"ggtgg", 6, 11) || in_range(b"ggtgg", 7, 12)
+        || in_range(b"ggtgg", 8, 13) || in_range(b"ggtgg", 9, 14) || in_range(b"ggtgg", 10, 15) {
+        return 14;
+    }
+    if in_range(b"ggggg", 5, 10) || in_range(b"ggggg", 6, 11) || in_range(b"ggggg", 7, 12)
+        || in_range(b"ggggg", 8, 13) || in_range(b"ggggg", 9, 14) || in_range(b"ggggg", 10, 15) {
+        return 14;
+    }
+    if in_range(b"ggcgg", 5, 10) || in_range(b"ggcgg", 6, 11) || in_range(b"ggcgg", 7, 12)
+        || in_range(b"ggcgg", 8, 13) || in_range(b"ggcgg", 9, 14) || in_range(b"ggcgg", 10, 15) {
+        return 14;
+    }
+    if in_range(b"agg", 5, 8) || in_range(b"agg", 6, 9) || in_range(b"agg", 7, 10)
+        || in_range(b"agg", 8, 11) || in_range(b"agg", 9, 12) || in_range(b"agg", 10, 13) {
+        return 13;
+    }
+    if in_range(b"gag", 5, 8) || in_range(b"gag", 6, 9) || in_range(b"gag", 7, 10)
+        || in_range(b"gag", 8, 11) || in_range(b"gag", 9, 12) || in_range(b"gag", 10, 13) {
+        return 13;
+    }
+    if in_range(b"gga", 5, 8) || in_range(b"gga", 6, 9) || in_range(b"gga", 7, 10)
+        || in_range(b"gga", 8, 11) || in_range(b"gga", 9, 12) || in_range(b"gga", 10, 13) {
+        return 13;
+    }
+    if in_range(b"agga", 11, 15) || in_range(b"agga", 12, 16)
+        || in_range(b"gagg", 11, 15) || in_range(b"gagg", 12, 16)
+        || in_range(b"ggag", 11, 15) || in_range(b"ggag", 12, 16) {
+        return 12;
+    }
+    if in_range(b"agga", 3, 7) || in_range(b"agga", 4, 8)
+        || in_range(b"gagg", 3, 7) || in_range(b"gagg", 4, 8)
+        || in_range(b"ggag", 3, 7) || in_range(b"ggag", 4, 8) {
+        return 11;
+    }
+    if in_range(b"gagga", 13, 18) || in_range(b"gagga", 14, 19) || in_range(b"gagga", 15, 20)
+        || in_range(b"ggagg", 13, 18) || in_range(b"ggagg", 14, 19) || in_range(b"ggagg", 15, 20)
+        || in_range(b"ggagga", 13, 19) || in_range(b"ggagga", 14, 20) || in_range(b"ggagga", 15, 21) {
+        return 10;
+    }
+    if in_range(b"gaaga", 5, 10) || in_range(b"gaaga", 6, 11) || in_range(b"gaaga", 7, 12)
+        || in_range(b"gaaga", 8, 13) || in_range(b"gaaga", 9, 14) || in_range(b"gaaga", 10, 15) {
+        return 9;
+    }
+    if in_range(b"gatga", 5, 10) || in_range(b"gatga", 6, 11) || in_range(b"gatga", 7, 12)
+        || in_range(b"gatga", 8, 13) || in_range(b"gatga", 9, 14) || in_range(b"gatga", 10, 15) {
+        return 9;
+    }
+    if in_range(b"gacga", 5, 10) || in_range(b"gacga", 6, 11) || in_range(b"gacga", 7, 12)
+        || in_range(b"gacga", 8, 13) || in_range(b"gacga", 9, 14) || in_range(b"gacga", 10, 15) {
+        return 9;
+    }
+    if in_range(b"ggtgg", 3, 8) || in_range(b"ggtgg", 4, 9)
+        || in_range(b"ggggg", 3, 8) || in_range(b"ggggg", 4, 9)
+        || in_range(b"ggcgg", 3, 8) || in_range(b"ggcgg", 4, 9) {
+        return 8;
+    }
+    if in_range(b"ggtgg", 11, 16) || in_range(b"ggtgg", 12, 17)
+        || in_range(b"ggggg", 11, 16) || in_range(b"ggggg", 12, 17)
+        || in_range(b"ggcgg", 11, 16) || in_range(b"ggcgg", 12, 17) {
+        return 7;
+    }
+    if in_range(b"agg", 11, 14) || in_range(b"agg", 12, 15)
+        || in_range(b"gag", 11, 14) || in_range(b"gag", 12, 15)
+        || in_range(b"gga", 11, 14) || in_range(b"gga", 12, 15) {
+        return 6;
+    }
+    if in_range(b"gaaga", 3, 8) || in_range(b"gaaga", 4, 9)
+        || in_range(b"gatga", 3, 8) || in_range(b"gatga", 4, 9)
+        || in_range(b"gacga", 3, 8) || in_range(b"gacga", 4, 9) {
+        return 5;
+    }
+    if in_range(b"gaaga", 11, 16) || in_range(b"gaaga", 12, 17)
+        || in_range(b"gatga", 11, 16) || in_range(b"gatga", 12, 17)
+        || in_range(b"gacga", 11, 16) || in_range(b"gacga", 12, 17) {
+        return 4;
+    }
+    if in_range(b"agga", 13, 17) || in_range(b"agga", 14, 18) || in_range(b"agga", 15, 19)
+        || in_range(b"gagg", 13, 17) || in_range(b"gagg", 14, 18) || in_range(b"gagg", 15, 19)
+        || in_range(b"ggag", 13, 17) || in_range(b"ggag", 14, 18) || in_range(b"ggag", 15, 19) {
+        return 3;
+    }
+    if in_range(b"agg", 13, 16) || in_range(b"agg", 14, 17) || in_range(b"agg", 15, 18)
+        || in_range(b"gag", 13, 16) || in_range(b"gag", 14, 17) || in_range(b"gag", 15, 18)
+        || in_range(b"gga", 13, 16) || in_range(b"gga", 14, 17) || in_range(b"gga", 15, 18) {
+        return 2;
+    }
+    if in_range(b"ggaaga", 13, 19) || in_range(b"ggaaga", 14, 20) || in_range(b"ggaaga", 15, 21)
+        || in_range(b"ggatga", 13, 19) || in_range(b"ggatga", 14, 20) || in_range(b"ggatga", 15, 21)
+        || in_range(b"ggacga", 13, 19) || in_range(b"ggacga", 14, 20) || in_range(b"ggacga", 15, 21) {
+        return 2;
+    }
+    if in_range(b"ggtgg", 13, 18) || in_range(b"ggtgg", 14, 19) || in_range(b"ggtgg", 15, 20)
+        || in_range(b"ggggg", 13, 18) || in_range(b"ggggg", 14, 19) || in_range(b"ggggg", 15, 20)
+        || in_range(b"ggcgg", 13, 18) || in_range(b"ggcgg", 14, 19) || in_range(b"ggcgg", 15, 20) {
+        return 2;
+    }
+    if in_range(b"agg", 3, 6) || in_range(b"agg", 4, 7)
+        || in_range(b"gag", 3, 6) || in_range(b"gag", 4, 7)
+        || in_range(b"gga", 3, 6) || in_range(b"gga", 4, 7) {
+        return 1;
+    }
     0
 }
 
@@ -342,23 +527,25 @@ mod tests {
 
     #[test]
     fn test_score_rbs_direct() {
-        // "aaggag" reversed is "gaggaa"
+        // "aaggag" reversed is "gaggaa" — but Python's score_rbs is designed
+        // for 21-nt windows; short inputs give truncated slices.
+        // For 6-char "gaggaa", Python gives 1 (agg in s[3:6]).
         let seq = b"gaggaa";
-        assert_eq!(score_rbs(seq), 25);
+        assert_eq!(score_rbs(seq), 1);
     }
 
     #[test]
     fn test_score_rbs_specific() {
-        // Test with a known sequence that should give score 27
+        // For 6-char "aggagg", Python gives 1 (agg in s[3:6]).
         let seq = b"aggagg";
-        assert_eq!(score_rbs(seq), 27);
+        assert_eq!(score_rbs(seq), 1);
     }
 
     #[test]
     fn test_score_rbs_specific2() {
-        // Test with a known sequence that should give score 13
+        // For 8-char "aaaaaagg", Python gives 0 (no match in truncated slices).
         let seq = b"aaaaaagg";
-        assert_eq!(score_rbs(seq), 12);
+        assert_eq!(score_rbs(seq), 0);
     }
 
     #[test]
@@ -382,7 +569,7 @@ mod tests {
             };
             let score = score_rbs(window);
             background_rbs[score] += 1.0;
-            let rc_window = rev_comp(window);
+            let rc_window = crate::genome::rev_comp(window);
             let rc_score = score_rbs(&rc_window);
             background_rbs[rc_score] += 1.0;
         }
@@ -392,40 +579,56 @@ mod tests {
 
     #[test]
     fn test_find_extra_7() {
-        // Test for the extra score 7 condition
-        // ggtgg in positions 11-16 (0-indexed: 10-15)
-        let seq = b"aaaaaaaaaaggtgg"; // 15 chars, ggtgg at positions 10-14
-        assert_eq!(score_rbs(seq), 7);
+        // 15-char sequence: ggtgg at positions 10-14 (0-indexed).
+        // Reversed: "ggtggaaaaaaaaaa" — ggtgg is at positions 0-4.
+        // Python checks s[11:16] etc. for score 7, but string is only 15 chars,
+        // so s[11:16] = "aaa" — no match. Score = 1 (agg in s[3:6] = "tgg"? no)
+        // Actually: s = "ggtggaaaaaaaaaa", s[3:6] = "gga" — no match for agg/gag/gga
+        // Let me check: s = 'ggtggaaaaaaaaaa', len=15
+        // s[3:6] = 'gga' → matches 'gga' → score 1
+        let seq = b"aaaaaaaaaaggtgg";
+        assert_eq!(score_rbs(seq), 1);
     }
 
     #[test]
     fn test_find_diff_7() {
-        // Test that score 7 (ggtgg in 11-16) is checked AFTER score 13
-        // A sequence that matches both should get score 13, not 7
-        // agg in positions 5-13 (0-indexed: 4-12) AND ggtgg in 11-16
-        let seq = b"aaaaaggaaaaaggtgg"; // 17 chars
-        // agg at positions 4-6, ggtgg at positions 11-15
-        // score 13 checks agg in 5-14 (1-based), which is 4-13 (0-based)
-        // Our seq has agg at 4-6, which is in range 4-13
-        assert_eq!(score_rbs(seq), 13);
+        // 17-char sequence
+        // Reversed: "ggtggaaaaaaggaaaa"
+        // Python: s[5:10]='ggaaa', s[6:11]='gaaaa' — no ggtgg/ggggg/ggcgg for score 14
+        // s[5:9]='ggaa', s[6:10]='gaaa' — no ggag/gagg/agga for score 16
+        // s[5:8]='gga' → matches 'gga' → score 13
+        // Wait, let me check Python: score_rbs('aaaaaggaaaaaggtgg') = 15
+        // s = 'ggtggaaaaaaggaaaa'
+        // s[5:9] = 'ggaa' — no match for agga/gagg/ggag
+        // Actually: s[5:9]='ggaa', but score 15 checks agga in s[5:9],s[6:10]...
+        // s = 'ggtggaaaaaaggaaaa', len=17
+        // s[5:9] = 'aaaa' — no
+        // s[6:10] = 'aaaa' — no
+        // s[7:11] = 'aaaa' — no
+        // s[8:12] = 'aaag' — no
+        // s[9:13] = 'aagg' — no
+        // s[10:14] = 'agga' → MATCH! score 15
+        let seq = b"aaaaaggaaaaaggtgg";
+        assert_eq!(score_rbs(seq), 15);
     }
 
     #[test]
     fn test_specific_windows() {
-        // Test a few specific window sequences
+        // Test a few specific window sequences against Python's actual behavior.
+        // These short sequences produce truncated slices in Python's score_rbs.
         let cases: Vec<(&[u8], usize)> = vec![
-            (b"aggagg", 27),
-            (b"ggagg", 26),
-            (b"aaggag", 25),
-            (b"aggtgg", 24),
-            (b"ggtggt", 22),
-            (b"ggtgg", 19),
-            (b"agga", 18),
-            (b"gggg", 17),
-            (b"ggtgga", 16),
-            (b"gaggt", 15),
-            (b"gaggc", 15),
-            (b"gagga", 15),
+            (b"aggagg", 1),    // 6-char: agg in s[3:6]
+            (b"ggagg", 0),     // 5-char: no match
+            (b"aaggag", 0),    // 6-char: no match
+            (b"aggtgg", 1),    // 6-char: agg in s[3:6]
+            (b"ggtggt", 0),    // 6-char: no match
+            (b"ggtgg", 0),     // 5-char: no match
+            (b"agga", 0),      // 4-char: no match
+            (b"gggg", 0),      // 4-char: no match
+            (b"ggtgga", 0),    // 6-char: no match
+            (b"gaggt", 0),     // 5-char: no match
+            (b"gaggc", 0),     // 5-char: no match
+            (b"gagga", 0),     // 5-char: no match
         ];
         for (seq, expected) in cases {
             assert_eq!(score_rbs(seq), expected, "Failed for sequence: {:?}", std::str::from_utf8(seq));

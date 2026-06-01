@@ -1,29 +1,32 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use std::path::PathBuf;
 
-mod bellman_ford;
-mod codon_table;
-mod gcfp;
-mod genome;
-mod graph;
-mod orf;
-mod output;
-mod weights;
+use phanotate_rs::bellman_ford;
+use phanotate_rs::codon_table;
+use phanotate_rs::detect_table;
+use phanotate_rs::gcfp;
+use phanotate_rs::genome;
+use phanotate_rs::graph;
+use phanotate_rs::orf;
+use phanotate_rs::output;
 
-use genome::{read_fasta, read_genbank, rev_comp, Genome};
+use codon_table::is_supported_table;
+use genome::{read_fasta_data, read_genbank, Genome};
 use gcfp::{max_idx, min_idx, GCframe};
 use graph::{Graph, Node};
-use orf::{find_orfs, score_rbs, Orf};
+use orf::{find_orfs_with_rc, score_rbs, Orf};
 use output::Format;
 
 #[derive(Parser, Debug)]
 #[command(name = "phanotate-rs")]
-#[command(about = "Gene caller for phage genomes")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
+#[command(about = "A Gene caller for phage genomes based on PHANOTATE https://github.com/deprekate/PHANOTATE")]
 struct Cli {
     /// Write protein translations to FILE
     #[arg(short = 'a', value_name = "FILE")]
@@ -52,21 +55,48 @@ struct Cli {
     /// Treat runs of N as masked sequence; don't build genes across them
     #[arg(short = 'm')]
     mask_n: bool,
+
+    /// Number of threads to use (default: all available)
+    #[arg(short = 't', value_name = "N")]
+    threads: Option<usize>,
+
+    /// Show a progress bar while processing
+    #[arg(long = "progress")]
+    progress: bool,
+
+    /// Write primary output to FILE instead of stdout
+    #[arg(short = 'o', value_name = "FILE")]
+    output: Option<PathBuf>,
+
+    /// Detect the most likely translation table before annotating.
+    /// Prints a ranked report and prompts for confirmation unless --yes is also set.
+    #[arg(long, default_value_t = false)]
+    detect_table: bool,
+
+    /// Detect the translation table for every record in a multi-FASTA file
+    /// and print a TSV summary table.  Does not run annotation.
+    #[arg(long, default_value_t = false)]
+    detect_table_batch: bool,
+
+    /// Skip the confirmation prompt when used with --detect-table.
+    /// Uses the top-ranked table automatically.
+    #[arg(long, default_value_t = false)]
+    yes: bool,
 }
 
-fn parse_start_codons(s: &str) -> HashMap<Vec<u8>, f64> {
+/// Build start-codon weights from a list of codons.
+/// ATG gets weight 0.85, GTG gets 0.10, TTG gets 0.05, all others get 1.0.
+/// Weights are normalised to the maximum.
+fn build_start_weights(start_codons: &[Vec<u8>]) -> HashMap<Vec<u8>, f64> {
     let mut map = HashMap::new();
-    for part in s.split(',') {
-        let mut kv = part.split(':');
-        let codon = kv
-            .next()
-            .unwrap()
-            .trim()
-            .to_ascii_lowercase()
-            .as_bytes()
-            .to_vec();
-        let weight: f64 = kv.next().unwrap_or("1.0").trim().parse().unwrap_or(1.0);
-        map.insert(codon, weight);
+    for codon in start_codons {
+        let w = match codon.as_slice() {
+            b"atg" => 0.85,
+            b"gtg" => 0.10,
+            b"ttg" => 0.05,
+            _ => 1.0,
+        };
+        map.insert(codon.clone(), w);
     }
     let max_w = map.values().cloned().fold(0.0, f64::max);
     if max_w > 0.0 {
@@ -75,12 +105,6 @@ fn parse_start_codons(s: &str) -> HashMap<Vec<u8>, f64> {
         }
     }
     map
-}
-
-fn parse_stop_codons(s: &str) -> Vec<Vec<u8>> {
-    s.split(',')
-        .map(|p| p.trim().to_ascii_lowercase().as_bytes().to_vec())
-        .collect()
 }
 
 /// Load genomes from file or stdin, auto-detecting format.
@@ -119,55 +143,8 @@ fn load_genomes(input: &Option<PathBuf>) -> Result<Vec<Genome>> {
     }
 }
 
-/// Parse FASTA data from a string.
-fn read_fasta_data(data: &str) -> Result<Vec<Genome>> {
-    let mut genomes = Vec::new();
-    let mut current_id = String::new();
-    let mut current_seq = String::new();
-
-    for line in data.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        if line.starts_with('>') {
-            if !current_id.is_empty() {
-                genomes.push(Genome {
-                    id: current_id.clone(),
-                    seq: normalize_seq(&current_seq),
-                });
-            }
-            current_id = line.split_whitespace().next().unwrap_or("").to_string();
-            current_seq.clear();
-        } else {
-            current_seq.push_str(line);
-        }
-    }
-
-    if !current_id.is_empty() {
-        genomes.push(Genome {
-            id: current_id,
-            seq: normalize_seq(&current_seq),
-        });
-    }
-
-    Ok(genomes)
-}
-
-fn normalize_seq(seq: &str) -> Vec<u8> {
-    seq.bytes()
-        .map(|b| {
-            let b = b.to_ascii_lowercase();
-            match b {
-                b's' | b'b' | b'v' => b'g',
-                b'a' | b'c' | b't' | b'g' => b,
-                _ => b'a',
-            }
-        })
-        .collect()
-}
-
 /// Process a single genome through the full PHANOTATE pipeline.
+#[allow(clippy::too_many_arguments)]
 fn process_genome(
     genome: Genome,
     start_codons_map: &HashMap<Vec<u8>, f64>,
@@ -185,33 +162,31 @@ fn process_genome(
     let mut freq = [0usize; 4];
     let mut background_rbs = vec![1.0f64; 28];
     let mut frame_plot = GCframe::new();
+    let rc_dna = &genome.rc_seq;
+    let len = dna.len();
 
-    for i in 0..dna.len() {
+    for i in 0..len {
         let base = dna[i];
         match base {
-            b'a' => freq[0] += 1,
-            b't' => freq[1] += 1,
-            b'c' => freq[2] += 1,
-            b'g' => freq[3] += 1,
-            _ => {}
-        }
-        match rev_comp(&[base])[0] {
-            b'a' => freq[0] += 1,
-            b't' => freq[1] += 1,
-            b'c' => freq[2] += 1,
-            b'g' => freq[3] += 1,
+            b'a' => { freq[0] += 1; freq[1] += 1; }
+            b't' => { freq[1] += 1; freq[0] += 1; }
+            b'c' => { freq[2] += 1; freq[3] += 1; }
+            b'g' => { freq[3] += 1; freq[2] += 1; }
             _ => {}
         }
 
-        let window = if i + 21 <= dna.len() {
+        let window = if i + 21 <= len {
             &dna[i..i + 21]
         } else {
             &dna[i..]
         };
         let score = score_rbs(window);
         background_rbs[score] += 1.0;
-        let rc_window = rev_comp(window);
-        let rc_score = score_rbs(&rc_window);
+
+        // Reverse-strand window from pre-computed RC genome
+        let rc_start = len.saturating_sub(i + 21);
+        let rc_window = &rc_dna[rc_start..len - i];
+        let rc_score = score_rbs(rc_window);
         background_rbs[rc_score] += 1.0;
 
         frame_plot.add_base(base);
@@ -231,7 +206,7 @@ fn process_genome(
     }
 
     // --- Find ORFs ---
-    let mut orfs = find_orfs(dna, start_codons, stop_codons, 90, closed_ends, mask_n);
+    let mut orfs = find_orfs_with_rc(dna, &genome.rc_seq, start_codons, stop_codons, 90, closed_ends, mask_n);
 
     if orfs.is_empty() {
         let no_orfs = format!("#id:\t{} NO ORFS FOUND\n", genome.id);
@@ -338,8 +313,13 @@ fn process_genome(
         }
     }
 
+    // Compute hold in log-space to avoid underflow on long ORFs.
+    // hold = product of pns^(pos_max * pos_min) per codon
+    // ln(hold) = sum of ln(pns) * pos_max * pos_min per codon
     for orf in &mut orfs {
         let (start, stop) = (orf.start, orf.stop);
+        let ln_pns = (1.0 - orf.pstop).ln();
+        let mut log_hold = 0.0f64;
         if orf.frame > 0 {
             let mut base = start;
             while base < stop && base < gc_pos_freq.len() {
@@ -353,8 +333,7 @@ fn process_genome(
                     gc_pos_freq[base][1],
                     gc_pos_freq[base][2],
                 );
-                let pns = 1.0 - orf.pstop;
-                orf.hold *= pns.powf(pos_max[ind_max]).powf(pos_min[ind_min]);
+                log_hold += ln_pns * pos_max[ind_max] * pos_min[ind_min];
                 base += 3;
             }
         } else {
@@ -370,8 +349,7 @@ fn process_genome(
                     gc_pos_freq[base][1],
                     gc_pos_freq[base][0],
                 );
-                let pns = 1.0 - orf.pstop;
-                orf.hold *= pns.powf(pos_max[ind_max]).powf(pos_min[ind_min]);
+                log_hold += ln_pns * pos_max[ind_max] * pos_min[ind_min];
                 if base >= 3 {
                     base -= 3;
                 } else {
@@ -379,6 +357,7 @@ fn process_genome(
                 }
             }
         }
+        orf.hold = log_hold.exp();
     }
 
     for orf in &mut orfs {
@@ -418,7 +397,7 @@ fn process_genome(
             } else {
                 0.0
             };
-            path_edges.push((left.clone(), right.clone(), weight));
+            path_edges.push((*left, *right, weight));
         }
     }
 
@@ -451,11 +430,19 @@ fn main() -> Result<()> {
     };
 
     // Validate translation table
-    if cli.table != 1 && cli.table != 11 {
+    if !is_supported_table(cli.table) {
         anyhow::bail!(
-            "Invalid translation table: {}. Supported: 1, 11",
+            "Invalid translation table: {}. Supported: 1, 4, 6, 11, 15, 25",
             cli.table
         );
+    }
+
+    // Set thread pool size if requested
+    if let Some(n) = cli.threads {
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(n)
+            .build_global()
+            .context("Failed to build thread pool")?;
     }
 
     // Load genomes
@@ -464,33 +451,145 @@ fn main() -> Result<()> {
         anyhow::bail!("No sequences found in input.");
     }
 
-    let start_codons_map = parse_start_codons("atg:0.85,gtg:0.10,ttg:0.05");
-    let start_codons: Vec<Vec<u8>> = start_codons_map.keys().cloned().collect();
-    let stop_codons = parse_stop_codons("tag,tga,taa");
+    // --- Batch table detection (all records, no annotation) ---
+    if cli.detect_table_batch {
+        let genome_refs: Vec<(String, Vec<u8>)> = genomes
+            .iter()
+            .map(|g| (g.id.clone(), g.seq.clone()))
+            .collect();
+        let results = detect_table::detect_tables_batch(&genome_refs, 90);
+        let tsv = detect_table::format_batch_tsv(&results);
+        print!("{}", tsv);
+        return Ok(());
+    }
+
+    // --- Table detection (first record only) ---
+    let mut effective_table = cli.table;
+    if cli.detect_table {
+        let first = &genomes[0];
+        let scores = detect_table::score_tables(&first.seq, 90);
+        if scores.is_empty() {
+            eprintln!(
+                "Warning: sequence too short ({} nt) for table detection. Using table {}.",
+                first.seq.len(),
+                cli.table
+            );
+        } else {
+            let report = detect_table::format_report(&scores, &first.id, first.seq.len());
+            eprintln!("{}", report);
+
+            let recommended = scores[0].table;
+
+            // Check if we are in a non-interactive environment
+            let is_tty = atty::is(atty::Stream::Stdin);
+            if cli.yes || !is_tty {
+                if !is_tty && !cli.yes {
+                    eprintln!(
+                        "Warning: stdin is not a TTY. Using recommended table {} automatically.",
+                        recommended
+                    );
+                } else {
+                    eprintln!("Using table {} (--yes)", recommended);
+                }
+                effective_table = recommended;
+            } else {
+                // interactive mode: prompt the user
+                eprint!("Proceed with table {}? [Y/n/number]: ", recommended);
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input)?;
+                let trimmed = input.trim();
+                effective_table = if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("y") {
+                    recommended
+                } else if let Ok(n) = trimmed.parse::<u8>() {
+                    if codon_table::is_supported_table(n) {
+                        n
+                    } else {
+                        eprintln!("Table {} is not supported. Using {}.", n, recommended);
+                        recommended
+                    }
+                } else {
+                    eprintln!("Unrecognised input. Using {}.", recommended);
+                    recommended
+                };
+            }
+        }
+    }
+
+    // Build codon sets from the effective table
+    let stop_codons: Vec<Vec<u8>> = codon_table::stop_codons(effective_table)
+        .iter()
+        .map(|&c| c.to_vec())
+        .collect();
+    let (start_codons, start_codons_map) = match effective_table {
+        1 | 11 => {
+            let codons: Vec<Vec<u8>> = vec![b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()];
+            let weights = build_start_weights(&codons);
+            (codons, weights)
+        }
+        _ => {
+            let codons: Vec<Vec<u8>> = codon_table::start_codons(effective_table)
+                .iter()
+                .map(|&c| c.to_vec())
+                .collect();
+            let weights = build_start_weights(&codons);
+            (codons, weights)
+        }
+    };
 
     // Process each contig in parallel
-    let results: Vec<(String, String, String)> = genomes
-        .into_par_iter()
-        .map(|genome| {
-            process_genome(
-                genome,
-                &start_codons_map,
-                &start_codons,
-                &stop_codons,
-                format,
-                cli.closed_ends,
-                cli.mask_n,
-                cli.table,
-            )
-        })
-        .collect();
+    let results: Vec<(String, String, String)> = if cli.progress {
+        let pb = ProgressBar::new(genomes.len() as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({per_sec}, {eta})")
+                .unwrap()
+                .progress_chars("#>-"),
+        );
+        genomes
+            .into_par_iter()
+            .progress_with(pb)
+            .map(|genome| {
+                process_genome(
+                    genome,
+                    &start_codons_map,
+                    &start_codons,
+                    &stop_codons,
+                    format,
+                    cli.closed_ends,
+                    cli.mask_n,
+                    effective_table,
+                )
+            })
+            .collect()
+    } else {
+        genomes
+            .into_par_iter()
+            .map(|genome| {
+                process_genome(
+                    genome,
+                    &start_codons_map,
+                    &start_codons,
+                    &stop_codons,
+                    format,
+                    cli.closed_ends,
+                    cli.mask_n,
+                    effective_table,
+                )
+            })
+            .collect()
+    };
 
     let primary_output = results.iter().map(|(p, _, _)| p.as_str()).collect::<String>();
     let protein_output = results.iter().map(|(_, pr, _)| pr.as_str()).collect::<String>();
     let nuc_output = results.iter().map(|(_, _, n)| n.as_str()).collect::<String>();
 
-    // Write primary output to stdout
-    print!("{}", primary_output);
+    // Write primary output
+    if let Some(path) = cli.output {
+        fs::write(&path, &primary_output)
+            .with_context(|| format!("Failed to write primary output to {:?}", path))?;
+    } else {
+        print!("{}", primary_output);
+    }
 
     // Write side outputs if requested
     if let Some(path) = cli.protein_out {
