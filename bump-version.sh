@@ -50,9 +50,18 @@ fi
 # ---------------------------------------------------------------------------
 perl -i -pe "s/{% set version = \"[^\"]+\" %}/{% set version = \"$NEW_VERSION\" %}/" packaging/conda/meta.yaml
 if grep -q "{% set version = \"$NEW_VERSION\" %}" packaging/conda/meta.yaml; then
-    echo "  ✓ packaging/conda/meta.yaml"
+    echo "  ✓ packaging/conda/meta.yaml (version)"
 else
-    echo "  ✗ Failed to update packaging/conda/meta.yaml"
+    echo "  ✗ Failed to update packaging/conda/meta.yaml version"
+    exit 1
+fi
+
+# Reset SHA256 to placeholder (will be computed by CI on release)
+perl -i -pe "s/sha256: .*/sha256: PLACEHOLDER_SHA256/" packaging/conda/meta.yaml
+if grep -q "sha256: PLACEHOLDER_SHA256" packaging/conda/meta.yaml; then
+    echo "  ✓ packaging/conda/meta.yaml (sha256 reset to placeholder)"
+else
+    echo "  ✗ Failed to reset SHA256 placeholder"
     exit 1
 fi
 
@@ -61,9 +70,18 @@ fi
 # ---------------------------------------------------------------------------
 perl -i -pe "s|refs/tags/v[^/]+\.tar\.gz|refs/tags/v$NEW_VERSION.tar.gz|" packaging/homebrew/phanotate-rs.rb
 if grep -q "refs/tags/v$NEW_VERSION.tar.gz" packaging/homebrew/phanotate-rs.rb; then
-    echo "  ✓ packaging/homebrew/phanotate-rs.rb"
+    echo "  ✓ packaging/homebrew/phanotate-rs.rb (url)"
 else
-    echo "  ✗ Failed to update packaging/homebrew/phanotate-rs.rb"
+    echo "  ✗ Failed to update packaging/homebrew/phanotate-rs.rb url"
+    exit 1
+fi
+
+# Reset SHA256 to placeholder
+perl -i -pe 's/sha256 "[^"]*"/sha256 "PLACEHOLDER_SHA256"/' packaging/homebrew/phanotate-rs.rb
+if grep -q 'sha256 "PLACEHOLDER_SHA256"' packaging/homebrew/phanotate-rs.rb; then
+    echo "  ✓ packaging/homebrew/phanotate-rs.rb (sha256 reset to placeholder)"
+else
+    echo "  ✗ Failed to reset Homebrew SHA256 placeholder"
     exit 1
 fi
 
@@ -90,5 +108,9 @@ echo "  3. Tag: git tag v$NEW_VERSION"
 echo "  4. Push: git push origin main && git push origin v$NEW_VERSION"
 echo ""
 echo "The GitHub Actions release workflow will trigger automatically on the tag push."
-echo "Remember to update the SHA256 placeholders in packaging files after the"
-echo "release tarball is generated (or use the release workflow's computed values)."
+echo "It will:"
+echo "  - Build binaries for all platforms"
+echo "  - Create a GitHub Release"
+echo "  - Compute the SHA256 of the release tarball"
+echo "  - Update packaging files with the correct SHA256"
+echo "  - Open a PR to bioconda-recipes (if BIOCONDA_PR_TOKEN is configured)"
