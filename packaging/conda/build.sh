@@ -7,8 +7,10 @@ set -ex
 RUST_BACKTRACE=full
 
 if [ "$(uname)" == "Darwin" ]; then
-    # Ensure HOME is set for cargo on macOS
-    export HOME=`pwd`
+  # Ensure HOME is set for cargo on macOS
+  export HOME=$(pwd)
 fi
+
+cargo-bundle-licenses --format yaml --output THIRDPARTY.yml
 
 cargo install -v --locked --root "$PREFIX" --path .
