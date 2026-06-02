@@ -22,7 +22,7 @@ A fast Rust reimplementation of **PHANOTATE** — a gene caller optimized for ba
 
 ## Installation
 
-### One-liner (Linux / macOS)
+### One-liner (Linux / macOS) ✅
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Yasas1994/PHANOTATE-rs/main/install.sh | bash
@@ -31,14 +31,14 @@ curl -fsSL https://raw.githubusercontent.com/Yasas1994/PHANOTATE-rs/main/install
 The script auto-detects your platform, downloads the latest release, and installs
 to `~/.local/bin` (or `/usr/local/bin` if writable).
 
-### Homebrew (macOS / Linux)
+### Homebrew (macOS / Linux) ❌
 
 ```bash
-brew tap deprekate/bioinformatics
+brew tap yasas1994/bioinformatics
 brew install phanotate-rs
 ```
 
-### Bioconda
+### Bioconda [✅]
 
 ```bash
 conda install -c bioconda phanotate-rs
@@ -48,13 +48,13 @@ mamba install -c bioconda phanotate-rs
 pixi add phanotate-rs
 ```
 
-### Cargo (Rust toolchain required)
+### Cargo (Rust toolchain required) ✅
 
 ```bash
 cargo install phanotate-rs
 ```
 
-### From source
+### From source ✅
 
 Requires [Rust](https://www.rust-lang.org/tools/install) (1.70+):
 
@@ -66,7 +66,7 @@ cargo build --release
 
 The binary will be at `./target/release/phanotate-rs`.
 
-### Pre-built binaries
+### Pre-built binaries ✅
 
 Pre-built binaries for Linux (x86_64, aarch64, musl), macOS (Intel, Apple Silicon),
 and Windows (x86_64) are available from the
