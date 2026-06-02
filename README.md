@@ -13,7 +13,7 @@ A fast Rust reimplementation of **PHANOTATE** — a gene caller optimized for ba
 
 - **Gene calling for phage genomes** — Optimised for the compact, overlapping gene organisation typical of bacteriophages
 - **Multiple output formats** — GenBank (`gbk`), GFF3 (`gff`), and simple coordinate (`sco`) output
-- **Six NCBI translation tables** — Supports tables 1, 4, 6, 11, 15, and 25 for phage-relevant genetic codes
+- **Five NCBI translation tables** — Supports tables 1, 4, 11, 15, and 25 for phage-relevant genetic codes
 - **Automatic translation table detection** (`--detect-table`) — Detects the most likely genetic code from the sequence itself before annotation
 - **Multi-threaded** — Process multiple contigs in parallel via Rayon
 - **Fast** — Significantly faster than the Python reference implementation (see [Benchmarks](#benchmarks))
@@ -171,7 +171,7 @@ When `--detect-table` is enabled, the tool analyses the first sequence record an
 
 2. **Reassigned-codon signal** — Codons that are stops in table 11 but sense codons in an alternative table (e.g. TGA → Trp in table 4) are the key discriminators.  Their frequency inside candidate-table ORFs tells us whether the alternative code is actually in use:
    - **Tables 4 / 25** (TGA readthrough) — Compares TGA frequency inside long table-4 ORFs against TGG (its sibling Trp/Gly codon) or background.  A ratio near 1.0 means TGA is being read as an amino acid.
-   - **Tables 15 / 6** (TAG/TAA → Gln) — Uses sliding windows (3–9 kb) with per-window background to handle mosaic genomes like crAssphage, where different lineages use different genetic codes.  Strong local TAG enrichment in a subset of windows is the tell-tale signal.
+   - **Table 15** (TAG/TAA → Gln) — Uses sliding windows (3–9 kb) with per-window background to handle mosaic genomes like crAssphage, where different lineages use different genetic codes.  Strong local TAG enrichment in a subset of windows is the tell-tale signal.
 
 3. **Composite scoring** — `composite = mol_ratio × signal × boost`, where the boost rewards strong signals combined with dramatically longer max ORFs.
 
@@ -196,9 +196,6 @@ Rank  Table  Name                                       ORF ratio  Reass. signal
               └─ tga: bg=3.3%  orf=1.8%  ratio=0.55
    5     15  Blepharisma Nuclear                             1.08          0.182       0.08
               └─ tag: bg=2.0%  orf=1.4%  ratio=0.68
-   6      6  Ciliate, Dasycladacean and Hexamita ..          1.86          0.000       0.00
-              └─ taa: bg=4.8%  orf=1.6%  ratio=0.33
-              └─ tag: bg=2.0%  orf=1.7%  ratio=0.81
 
 Recommended table: 4  (Mold/Protozoan/Coelenterate Mitochondrial + Mycoplasma/Spiroplasma)  [confidence: high]
 ──────────────────────────────────────────────────────────────────────────────
