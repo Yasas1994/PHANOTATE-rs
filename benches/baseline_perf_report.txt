@@ -1,0 +1,393 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 34  of event 'cpu_atom/cycles/Pu'
+# Event count (approx.): 20473347
+#
+# Children      Self  Command       Shared Object         Symbol                                                   
+# ........  ........  ............  ....................  .........................................................
+#
+    48.73%    48.73%  phanotate-rs  phanotate-rs          [.] phanotate_rs::orf::score_rbs::{{closure}}
+            |          
+            |--37.47%--phanotate_rs::orf::score_rbs::{{closure}}
+            |          
+            |--6.72%--__memcmp_avx2_movbe
+            |          
+             --4.54%--phanotate_rs::orf::score_rbs
+
+    25.96%     8.54%  phanotate-rs  phanotate-rs          [.] phanotate_rs::orf::score_rbs
+            |
+            ---phanotate_rs::orf::score_rbs
+               |          
+               |--8.29%--core::str::converts::from_utf8
+               |          
+                --4.59%--cfree@GLIBC_2.2.5
+
+    23.56%    16.84%  phanotate-rs  libc.so.6             [.] __memcmp_avx2_movbe
+            |
+            ---__memcmp_avx2_movbe
+
+     8.29%     8.29%  phanotate-rs  phanotate-rs          [.] core::str::converts::from_utf8
+            |
+            ---phanotate_rs::orf::score_rbs
+               core::str::converts::from_utf8
+
+     4.59%     4.59%  phanotate-rs  libc.so.6             [.] cfree@GLIBC_2.2.5
+            |
+            ---phanotate_rs::orf::score_rbs
+               cfree@GLIBC_2.2.5
+
+     4.40%     4.40%  phanotate-rs  phanotate-rs          [.] phanotate_rs::gcfp::GCframe::add_base
+            |
+            ---phanotate_rs::gcfp::GCframe::add_base
+
+     2.72%     0.00%  phanotate-rs  ld-linux-x86-64.so.2  [.] _dl_start_user
+            |
+            ---_dl_start_user
+               _dl_start
+               _dl_sysdep_start
+               |          
+               |--2.12%--dl_main
+               |          |          
+               |          |--1.51%--_dl_relocate_object
+               |          |          
+               |           --0.61%--_dl_map_object_deps
+               |                     strchr
+               |          
+                --0.61%--_dl_add_to_slotinfo
+
+     2.72%     0.00%  phanotate-rs  ld-linux-x86-64.so.2  [.] _dl_start
+            |
+            ---_dl_start
+               _dl_sysdep_start
+               |          
+               |--2.12%--dl_main
+               |          |          
+               |          |--1.51%--_dl_relocate_object
+               |          |          
+               |           --0.61%--_dl_map_object_deps
+               |                     strchr
+               |          
+                --0.61%--_dl_add_to_slotinfo
+
+     2.72%     0.00%  phanotate-rs  ld-linux-x86-64.so.2  [.] _dl_sysdep_start
+            |
+            ---_dl_sysdep_start
+               |          
+               |--2.12%--dl_main
+               |          |          
+               |          |--1.51%--_dl_relocate_object
+               |          |          
+               |           --0.61%--_dl_map_object_deps
+               |                     strchr
+               |          
+                --0.61%--_dl_add_to_slotinfo
+
+     2.12%     0.00%  phanotate-rs  ld-linux-x86-64.so.2  [.] dl_main
+            |
+            ---dl_main
+               |          
+               |--1.51%--_dl_relocate_object
+               |          
+                --0.61%--_dl_map_object_deps
+                          strchr
+
+     1.51%     1.51%  phanotate-rs  ld-linux-x86-64.so.2  [.] _dl_relocate_object
+            |
+            ---_dl_start_user
+               _dl_start
+               _dl_sysdep_start
+               dl_main
+               _dl_relocate_object
+
+     1.33%     1.33%  phanotate-rs  phanotate-rs          [.] phanotate_rs::process_genome
+            |
+            ---0
+               phanotate_rs::process_genome
+
+     1.33%     0.00%  phanotate-rs  [unknown]             [.] 0000000000000000
+            |
+            ---0
+               phanotate_rs::process_genome
+
+     1.26%     1.26%  phanotate-rs  phanotate-rs          [.] std::path::Components::as_path
+            |
+            ---rayon_core::registry::global_registry
+               std::sync::poison::once::Once::call_once::{{closure}}
+               rayon_core::ThreadPoolBuilder<S>::get_num_threads
+               std::thread::available_parallelism
+               std::path::PathBuf::pop
+               std::path::Components::as_path
+
+     1.26%     0.00%  phanotate-rs  phanotate-rs          [.] rayon_core::registry::global_registry
+            |
+            ---rayon_core::registry::global_registry
+               std::sync::poison::once::Once::call_once::{{closure}}
+               rayon_core::ThreadPoolBuilder<S>::get_num_threads
+               std::thread::available_parallelism
+               std::path::PathBuf::pop
+               std::path::Components::as_path
+
+     1.26%     0.00%  phanotate-rs  phanotate-rs          [.] std::sync::poison::once::Once::call_once::{{closure}}
+            |
+            ---std::sync::poison::once::Once::call_once::{{closure}}
+               rayon_core::ThreadPoolBuilder<S>::get_num_threads
+               std::thread::available_parallelism
+               std::path::PathBuf::pop
+               std::path::Components::as_path
+
+     1.26%     0.00%  phanotate-rs  phanotate-rs          [.] rayon_core::ThreadPoolBuilder<S>::get_num_threads
+            |
+            ---rayon_core::ThreadPoolBuilder<S>::get_num_threads
+               std::thread::available_parallelism
+               std::path::PathBuf::pop
+               std::path::Components::as_path
+
+     1.26%     0.00%  phanotate-rs  phanotate-rs          [.] std::thread::available_parallelism
+            |
+            ---std::thread::available_parallelism
+               std::path::PathBuf::pop
+               std::path::Components::as_path
+
+     1.26%     0.00%  phanotate-rs  phanotate-rs          [.] std::path::PathBuf::pop
+            |
+            ---std::path::PathBuf::pop
+               std::path::Components::as_path
+
+     1.14%     1.14%  phanotate-rs  phanotate-rs          [.] phanotate_rs::genome::read_fasta_data
+            |
+            ---phanotate_rs::genome::read_fasta_data
+
+     1.10%     1.10%  phanotate-rs  phanotate-rs          [.] core::slice::memchr::memchr_aligned
+            |
+            ---core::str::iter::SplitInternal<P>::next_inclusive
+               core::slice::memchr::memchr_aligned
+
+     1.10%     0.00%  phanotate-rs  phanotate-rs          [.] core::str::iter::SplitInternal<P>::next_inclusive
+            |
+            ---core::str::iter::SplitInternal<P>::next_inclusive
+               core::slice::memchr::memchr_aligned
+
+     1.07%     1.07%  phanotate-rs  phanotate-rs          [.] clap_builder::parser::parser::Parser::react
+            |
+            ---clap_builder::parser::parser::Parser::react
+
+     0.61%     0.61%  phanotate-rs  ld-linux-x86-64.so.2  [.] strchr
+            |
+            ---_dl_start_user
+               _dl_start
+               _dl_sysdep_start
+               dl_main
+               _dl_map_object_deps
+               strchr
+
+     0.61%     0.00%  phanotate-rs  ld-linux-x86-64.so.2  [.] _dl_map_object_deps
+            |
+            ---_dl_map_object_deps
+               strchr
+
+     0.61%     0.61%  phanotate-rs  ld-linux-x86-64.so.2  [.] _dl_add_to_slotinfo
+            |
+            ---_dl_start_user
+               _dl_start
+               _dl_sysdep_start
+               _dl_add_to_slotinfo
+
+
+
+# Samples: 1K of event 'cpu_core/cycles/Pu'
+# Event count (approx.): 1816973860
+#
+# Children      Self  Command       Shared Object     Symbol                                                                                                                                                                     
+# ........  ........  ............  ................  ...........................................................................................................................................................................
+#
+    50.40%    41.88%  phanotate-rs  phanotate-rs      [.] phanotate_rs::orf::score_rbs::{{closure}}
+            |          
+            |--42.49%--phanotate_rs::orf::score_rbs::{{closure}}
+            |          
+            |--3.70%--__memcmp_avx2_movbe
+            |          
+             --3.63%--phanotate_rs::orf::score_rbs
+
+    29.24%    25.41%  phanotate-rs  libc.so.6         [.] __memcmp_avx2_movbe
+            |          
+            |--26.86%--__memcmp_avx2_movbe
+            |          
+             --2.05%--phanotate_rs::orf::score_rbs::{{closure}}
+
+    14.99%    10.90%  phanotate-rs  phanotate-rs      [.] phanotate_rs::orf::score_rbs
+            |          
+            |--8.39%--phanotate_rs::orf::score_rbs
+            |          
+             --6.47%--phanotate_rs::orf::score_rbs::{{closure}}
+
+     4.52%     2.19%  phanotate-rs  phanotate-rs      [.] phanotate_rs::bellman_ford::shortest_path
+            |          
+             --3.88%--phanotate_rs::bellman_ford::shortest_path
+                       |          
+                       |--1.45%--cfree@GLIBC_2.2.5
+                       |          |          
+                       |           --1.01%--_int_free
+                       |          
+                        --0.51%--malloc
+
+     4.29%     1.54%  phanotate-rs  phanotate-rs      [.] phanotate_rs::process_genome
+            |          
+             --3.75%--phanotate_rs::process_genome
+                       |          
+                        --2.41%--__ieee754_pow_fma
+
+     4.01%     3.95%  phanotate-rs  phanotate-rs      [.] phanotate_rs::graph::Graph::from_orfs
+            |
+            ---phanotate_rs::graph::Graph::from_orfs
+
+     3.17%     0.00%  phanotate-rs  [unknown]         [.] 0x8348c37e0f486653
+            |
+            ---0x8348c37e0f486653
+               |          
+                --2.89%--phanotate_rs::process_genome
+                          |          
+                           --2.41%--__ieee754_pow_fma
+
+     2.47%     2.47%  phanotate-rs  libm.so.6         [.] __ieee754_pow_fma
+            |          
+             --2.41%--0x8348c37e0f486653
+                       phanotate_rs::process_genome
+                       __ieee754_pow_fma
+
+     2.36%     0.89%  phanotate-rs  libc.so.6         [.] cfree@GLIBC_2.2.5
+            |          
+            |--1.47%--cfree@GLIBC_2.2.5
+            |          |          
+            |           --1.20%--_int_free
+            |          
+             --0.62%--phanotate_rs::bellman_ford::shortest_path
+
+     1.83%     1.70%  phanotate-rs  phanotate-rs      [.] phanotate_rs::orf::find_orfs
+     1.33%     1.01%  phanotate-rs  libc.so.6         [.] _int_free
+            |          
+             --1.01%--phanotate_rs::bellman_ford::shortest_path
+                       cfree@GLIBC_2.2.5
+                       _int_free
+
+     1.27%     1.15%  phanotate-rs  phanotate-rs      [.] num_bigint::biguint::subtraction::<impl core::ops::arith::Sub<&num_bigint::biguint::BigUint> for num_bigint::biguint::BigUint>::sub
+            |          
+             --1.22%--num_bigint::biguint::subtraction::<impl core::ops::arith::Sub<&num_bigint::biguint::BigUint> for num_bigint::biguint::BigUint>::sub
+
+     1.12%     0.99%  phanotate-rs  phanotate-rs      [.] alloc::collections::btree::search::<impl alloc::collections::btree::node::NodeRef<BorrowType,K,V,alloc::collections::btree::node::marker::LeafOrInternal>>::search_tree
+            |          
+             --0.99%--alloc::collections::btree::search::<impl alloc::collections::btree::node::NodeRef<BorrowType,K,V,alloc::collections::btree::node::marker::LeafOrInternal>>::search_tree
+
+     0.97%     0.71%  phanotate-rs  libc.so.6         [.] malloc
+     0.63%     0.38%  phanotate-rs  phanotate-rs      [.] __rdl_alloc
+     0.62%     0.34%  phanotate-rs  libm.so.6         [.] pow@@GLIBC_2.29
+     0.59%     0.53%  phanotate-rs  phanotate-rs      [.] <alloc::vec::Vec<T> as alloc::vec::spec_from_iter::SpecFromIter<T,I>>::from_iter
+            |
+            ---<alloc::vec::Vec<T> as alloc::vec::spec_from_iter::SpecFromIter<T,I>>::from_iter
+
+     0.54%     0.54%  phanotate-rs  phanotate-rs      [.] phanotate_rs::gcfp::GCframe::add_base
+            |
+            ---phanotate_rs::gcfp::GCframe::add_base
+
+     0.52%     0.39%  phanotate-rs  libc.so.6         [.] __memmove_avx_unaligned_erms
+     0.51%     0.00%  phanotate-rs  [unknown]         [.] 0x0000000001c4f18d
+            |
+            ---0x1c4f18d
+
+     0.46%     0.33%  phanotate-rs  phanotate-rs      [.] __rdl_dealloc
+     0.45%     0.32%  phanotate-rs  phanotate-rs      [.] num_bigint::biguint::addition::<impl core::ops::arith::Add<&num_bigint::biguint::BigUint> for num_bigint::biguint::BigUint>::add
+     0.39%     0.13%  phanotate-rs  phanotate-rs      [.] __rust_dealloc
+     0.32%     0.25%  phanotate-rs  phanotate-rs      [.] core::str::converts::from_utf8
+     0.31%     0.25%  phanotate-rs  phanotate-rs      [.] __rust_alloc
+     0.26%     0.00%  phanotate-rs  [unknown]         [.] 0x00005e0a76c85920
+     0.19%     0.19%  phanotate-rs  phanotate-rs      [.] phanotate_rs::graph::f64_to_bigint_weight
+     0.19%     0.13%  phanotate-rs  libc.so.6         [.] _int_malloc
+     0.19%     0.00%  phanotate-rs  phanotate-rs      [.] core::ptr::drop_in_place<phanotate_rs::graph::Graph>
+     0.19%     0.00%  phanotate-rs  phanotate-rs      [.] alloc::fmt::format::format_inner
+     0.19%     0.00%  phanotate-rs  phanotate-rs      [.] core::fmt::write
+     0.19%     0.19%  phanotate-rs  phanotate-rs      [.] phanotate_rs::output::collect_orf_edges
+     0.19%     0.00%  phanotate-rs  [unknown]         [.] 0x000002fd2bcc2b29
+     0.14%     0.14%  phanotate-rs  phanotate-rs      [.] alloc::collections::btree::map::BTreeMap<K,V,A>::insert
+     0.14%     0.00%  phanotate-rs  libm.so.6         [.] __pow_finite@GLIBC_2.15@plt
+     0.13%     0.13%  phanotate-rs  phanotate-rs      [.] core::hash::BuildHasher::hash_one
+     0.13%     0.13%  phanotate-rs  phanotate-rs      [.] __powidf2
+     0.13%     0.00%  phanotate-rs  [unknown]         [.] 0x000002fd2bcc2ca9
+     0.13%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000000008f
+     0.13%     0.00%  phanotate-rs  phanotate-rs      [.] alloc::raw_vec::finish_grow
+     0.13%     0.06%  phanotate-rs  phanotate-rs      [.] alloc::raw_vec::RawVecInner<A>::reserve::do_reserve_and_handle
+     0.13%     0.00%  phanotate-rs  phanotate-rs      [.] <alloc::string::String as core::fmt::Write>::write_str
+     0.13%     0.00%  phanotate-rs  [unknown]         [.] 0x000002fd2bcc2b2a
+     0.13%     0.13%  phanotate-rs  libc.so.6         [.] malloc_consolidate
+     0.13%     0.00%  phanotate-rs  libc.so.6         [.] _int_free_maybe_consolidate
+     0.13%     0.13%  phanotate-rs  phanotate-rs      [.] phanotate_rs::gcfp::GCframe::get
+     0.13%     0.00%  phanotate-rs  [unknown]         [.] 0xffffffff88800b90
+     0.07%     0.00%  phanotate-rs  phanotate-rs      [.] alloc::raw_vec::finish_grow
+     0.07%     0.00%  phanotate-rs  libc.so.6         [.] realloc
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x0000000000025178
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000002875d
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x0000000000022803
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x0000000000022dd2
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x0000000000026447
+     0.07%     0.07%  phanotate-rs  libc.so.6         [.] _int_free_merge_chunk
+     0.07%     0.00%  phanotate-rs  phanotate-rs      [.] <alloc::collections::btree::map::BTreeMap<K,V,A> as core::ops::drop::Drop>::drop
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x00000000000240e5
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x00000000000214dc
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x0000000000027f12
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x0000000000020949
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000001efb0
+     0.07%     0.07%  phanotate-rs  phanotate-rs      [.] <core::iter::adapters::rev::Rev<I> as core::iter::traits::iterator::Iterator>::fold
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000001fc8b
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000001b812
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000001a399
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000001989b
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000001a9db
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000001cc62
+     0.07%     0.00%  phanotate-rs  phanotate-rs      [.] hashbrown::map::HashMap<K,V,S,A>::insert
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000001e569
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x00000000000183ec
+     0.07%     0.07%  phanotate-rs  phanotate-rs      [.] phanotate_rs::graph::Graph::add_edge
+     0.07%     0.00%  phanotate-rs  phanotate-rs      [.] alloc::raw_vec::RawVec<T,A>::grow_one
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x0000000000000181
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x00007d5651c03b20
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000001767c
+     0.07%     0.00%  phanotate-rs  [unknown]         [.] 0x0000000000010486
+     0.07%     0.00%  phanotate-rs  phanotate-rs      [.] alloc::raw_vec::finish_grow
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000000fb2b
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x0000000000015ea3
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x0000000000012f24
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000000dbe9
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000000d623
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x0000000000015100
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000001238e
+     0.06%     0.06%  phanotate-rs  phanotate-rs      [.] __rust_realloc
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x00005e0a76ccdd60
+     0.06%     0.00%  phanotate-rs  phanotate-rs      [.] phanotate_rs::output::write_nucleotide_fasta
+     0.06%     0.00%  phanotate-rs  phanotate-rs      [.] __rdl_realloc
+     0.06%     0.06%  phanotate-rs  libm.so.6         [.] __trunc_sse41
+     0.06%     0.06%  phanotate-rs  libc.so.6         [.] unlink_chunk.isra.0
+     0.06%     0.06%  phanotate-rs  phanotate-rs      [.] <core::iter::adapters::map::Map<I,F> as core::iter::traits::iterator::Iterator>::fold
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000000cb1b
+     0.06%     0.00%  phanotate-rs  phanotate-rs      [.] phanotate_rs::output::write_primary
+     0.06%     0.00%  phanotate-rs  phanotate-rs      [.] core::fmt::float::float_to_exponential_common_exact
+     0.06%     0.00%  phanotate-rs  phanotate-rs      [.] core::fmt::Formatter::write_formatted_parts
+     0.06%     0.06%  phanotate-rs  phanotate-rs      [.] core::fmt::num::imp::<impl u64>::_fmt
+     0.06%     0.00%  phanotate-rs  phanotate-rs      [.] phanotate_rs::output::write_protein_fasta
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000000a4ec
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000000bee9
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x0000000000009807
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x0000000000007eb3
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000000b1f3
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x000002fd2bcc2b24
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x0000000000007684
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x000002fd2bcc2b2c
+     0.06%     0.00%  phanotate-rs  [unknown]         [.] 0x0000000000004fb8
+     0.05%     0.00%  phanotate-rs  [unknown]         [.] 0x000000000000025a
+     0.05%     0.00%  phanotate-rs  [unknown]         [.] 0x0000000000000bba
+     0.05%     0.00%  phanotate-rs  [unknown]         [.] 0x00000000000015db
+
+
+#
+# (Cannot load tips.txt file, please install perf!)
+#

@@ -1,0 +1,12 @@
+=== Baseline Benchmark Results ===
+Date: 2026-05-31
+Commit: pre-optimization
+
+phiX174:
+  time: [14.831 ms 15.037 ms 15.254 ms]
+
+NC_001416.1:
+  time: [126.42 ms 127.28 ms 128.16 ms]
+
+NC_000866.1:
+  time: [371.42 ms 373.19 ms 374.99 ms]
