@@ -11,15 +11,14 @@ source:
 
 build:
   number: 0
-  script:
-    - cargo install --locked --root "$PREFIX" --path .  # [not win]
-    - cargo install --locked --root %PREFIX% --path .   # [win]
+  run_exports:
+    - {{ pin_subpackage(name, max_pin="x.x") }}
 
 requirements:
   build:
     - {{ compiler('rust') }}
     - {{ compiler('c') }}
-    - cargo
+    - {{ stdlib('c') }}
 
 test:
   commands:

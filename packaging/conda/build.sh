@@ -1,4 +1,14 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
+set -ex
 
-cargo install --locked --root "$PREFIX" --path .
+# Based on bioconda recipes for Rust packages:
+# https://github.com/bioconda/bioconda-recipes/tree/master/recipes/nanoq
+
+RUST_BACKTRACE=full
+
+if [ "$(uname)" == "Darwin" ]; then
+    # Ensure HOME is set for cargo on macOS
+    export HOME=`pwd`
+fi
+
+cargo install -v --locked --root "$PREFIX" --path .
