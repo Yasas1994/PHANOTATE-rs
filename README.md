@@ -38,7 +38,7 @@ brew tap yasas1994/bioinformatics
 brew install phanotate-rs
 ```
 
-### Bioconda [✅]
+### Bioconda ✅
 
 ```bash
 conda install -c bioconda phanotate-rs
