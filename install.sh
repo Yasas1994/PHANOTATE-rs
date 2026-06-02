@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # PHANOTATE-rs install script
-# Usage: curl -fsSL https://raw.githubusercontent.com/deprekate/phanotate-rs/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/Yasas1994/PHANOTATE-rs/main/install.sh | bash
 
 set -euo pipefail
 
@@ -42,27 +42,34 @@ get_latest_version() {
 
 # Download and install
 download_and_install() {
-    local target version url tmpdir install_dir
-    target="$1"
-    version="$2"
+    local target="$1"
+    local version="$2"
+    local artifact_target="$target"
 
     # Map musl target to actual release artifact (fallback to gnu if musl not available)
-    local artifact_target="$target"
     if [ "$target" = "x86_64-unknown-linux-musl" ]; then
-        # Check if musl build exists, otherwise fall back to gnu
-        if ! curl -fsSL -o /dev/null -w "%{http_code}" "https://github.com/${REPO}/releases/download/${version}/phanotate-rs-${target}.tar.gz" | grep -q "200"; then
+        local musl_url="https://github.com/${REPO}/releases/download/${version}/phanotate-rs-x86_64-unknown-linux-musl.tar.gz"
+        local http_code
+        http_code=$(curl -fsSL -o /dev/null -w "%{http_code}" "$musl_url" || true)
+        if [ "$http_code" != "200" ]; then
             artifact_target="x86_64-unknown-linux-gnu"
         fi
     fi
 
+    local url
     if [[ "$target" == *"windows"* ]]; then
         url="https://github.com/${REPO}/releases/download/${version}/phanotate-rs-${artifact_target}.zip"
     else
         url="https://github.com/${REPO}/releases/download/${version}/phanotate-rs-${artifact_target}.tar.gz"
     fi
 
+    local tmpdir
     tmpdir=$(mktemp -d)
-    trap 'rm -rf "$tmpdir"' EXIT
+
+    cleanup() {
+        rm -rf "$tmpdir"
+    }
+    trap cleanup EXIT
 
     echo "Downloading ${BINARY} ${version} for ${target}..."
     if ! curl -fsSL "$url" -o "${tmpdir}/archive"; then
@@ -78,6 +85,7 @@ download_and_install() {
     fi
 
     # Determine install directory
+    local install_dir
     if [ -n "${INSTALL_DIR:-}" ]; then
         install_dir="$INSTALL_DIR"
     elif [ -w /usr/local/bin ]; then
@@ -111,7 +119,8 @@ download_and_install() {
 }
 
 main() {
-    local version target
+    local version
+    local target
 
     if [ -n "${VERSION:-}" ]; then
         version="$VERSION"
