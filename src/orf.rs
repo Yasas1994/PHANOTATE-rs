@@ -122,9 +122,13 @@ pub fn find_orfs_with_rc(
         let frame = ((i - 1) % 3) + 1; // 1, 2, 3 as usize
         let frame_i8 = frame as i8;
 
+        // Forward start
         if start_codons.iter().any(|c| c == codon) {
             starts.get_mut(&frame_i8).unwrap().push(i);
-        } else if stop_codons.iter().any(|c| c == codon) {
+        }
+
+        // Forward stop
+        if stop_codons.iter().any(|c| c == codon) {
             let stop = i + 2;
             for &start in starts.get(&frame_i8).unwrap().iter().rev() {
                 let length = stop - start + 1;
@@ -151,47 +155,52 @@ pub fn find_orfs_with_rc(
             }
             starts.get_mut(&frame_i8).unwrap().clear();
             stops.insert(frame_i8, stop);
-        } else {
-            // Read reverse-codon directly from pre-computed RC genome
-            let rc_start = dna.len().saturating_sub(i + 2);
-            let rc_codon = &rc_dna[rc_start..dna.len() - i + 1];
-            if start_codons.iter().any(|c| c == rc_codon) {
-                starts.get_mut(&(-(frame as i8))).unwrap().push(i + 2);
-            } else if stop_codons.iter().any(|c| c == rc_codon) {
-                let stop = stops[&(-(frame as i8))];
-                for &start in starts.get(&(-(frame as i8))).unwrap().iter() {
-                    let length = start - stop + 1;
-                    if length >= min_orf_len {
-                        // ORF seq: reverse complement of forward sequence
-                        let fwd_start = stop.saturating_sub(1);
-                        let fwd_end = start;
-                        let seq = rc_dna[dna.len() - fwd_end..dna.len() - fwd_start].to_vec();
-                        if mask_n && spans_masked(stop, start, &masked_regions) {
-                            continue;
-                        }
-                        // RBS: 21nt upstream of start on reverse strand
-                        // In forward coords: dna[start..start+21], RC is rc_dna[len-start-21..len-start]
-                        let rbs_start = dna.len().saturating_sub(start + 21);
-                        let rbs_end = dna.len() - start;
-                        let rbs = &rc_dna[rbs_start..rbs_end];
-                        let rbs_score = score_rbs(rbs);
-                        let pstop = Orf::compute_pstop(&seq);
-                        orfs.push(Orf {
-                            start: start - 2,
-                            stop,
-                            frame: -(frame as i8),
-                            seq,
-                            rbs_score,
-                            pstop,
-                            weight_rbs: 1.0,
-                            hold: 1.0,
-                            weight: 1.0,
-                        });
+        }
+
+        // Read reverse-codon directly from pre-computed RC genome
+        let rc_start = dna.len().saturating_sub(i + 2);
+        let rc_codon = &rc_dna[rc_start..dna.len() - i + 1];
+
+        // Reverse start
+        if start_codons.iter().any(|c| c == rc_codon) {
+            starts.get_mut(&(-(frame as i8))).unwrap().push(i + 2);
+        }
+
+        // Reverse stop
+        if stop_codons.iter().any(|c| c == rc_codon) {
+            let stop = stops[&(-(frame as i8))];
+            for &start in starts.get(&(-(frame as i8))).unwrap().iter() {
+                let length = start - stop + 1;
+                if length >= min_orf_len {
+                    // ORF seq: reverse complement of forward sequence
+                    let fwd_start = stop.saturating_sub(1);
+                    let fwd_end = start;
+                    let seq = rc_dna[dna.len() - fwd_end..dna.len() - fwd_start].to_vec();
+                    if mask_n && spans_masked(stop, start, &masked_regions) {
+                        continue;
                     }
+                    // RBS: 21nt upstream of start on reverse strand
+                    // In forward coords: dna[start..start+21], RC is rc_dna[len-start-21..len-start]
+                    let rbs_start = dna.len().saturating_sub(start + 21);
+                    let rbs_end = dna.len() - start;
+                    let rbs = &rc_dna[rbs_start..rbs_end];
+                    let rbs_score = score_rbs(rbs);
+                    let pstop = Orf::compute_pstop(&seq);
+                    orfs.push(Orf {
+                        start: start - 2,
+                        stop,
+                        frame: -(frame as i8),
+                        seq,
+                        rbs_score,
+                        pstop,
+                        weight_rbs: 1.0,
+                        hold: 1.0,
+                        weight: 1.0,
+                    });
                 }
-                starts.get_mut(&(-frame_i8)).unwrap().clear();
-                stops.insert(-frame_i8, i);
             }
+            starts.get_mut(&(-frame_i8)).unwrap().clear();
+            stops.insert(-frame_i8, i);
         }
     }
 
@@ -876,7 +885,7 @@ mod debug_tests {
         let genomes = read_fasta("../PHANOTATE/tests/phiX174.fasta").unwrap();
         for genome in genomes {
             let orfs = find_orfs(&genome.seq, &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()], &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()], 90, false, false);
-            let mut longest = orfs.iter().max_by_key(|o| o.seq.len()).unwrap();
+            let longest = orfs.iter().max_by_key(|o| o.seq.len()).unwrap();
             println!("Longest ORF: {}-{} ({} nt)", longest.start, longest.stop, longest.seq.len());
         }
     }

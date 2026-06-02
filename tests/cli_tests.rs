@@ -309,3 +309,32 @@ fn test_phix174_sco_matches_golden() {
         assert_eq!(out_cols[2], gold_cols[2], "strand mismatch");
     }
 }
+
+// ---------------------------------------------------------------------------
+// Regression test for internal stop codons with non-standard genetic codes
+// ---------------------------------------------------------------------------
+#[test]
+fn test_no_internal_stops_table4() {
+    let fasta = include_str!("../../test_genomes/MT135298.fasta");
+    let (stdout, _stderr, code) = run(
+        &["-g", "4", "-a", "/tmp/test_table4_proteins.faa"],
+        Some(fasta),
+    );
+    assert_eq!(code, 0, "non-zero exit: {}", stdout);
+
+    let proteins = std::fs::read_to_string("/tmp/test_table4_proteins.faa").unwrap();
+    for line in proteins.lines() {
+        if line.starts_with('>') {
+            continue;
+        }
+        // Count stop codons in the protein sequence
+        let stops: Vec<_> = line.match_indices('*').collect();
+        // Each protein should have at most one stop codon (at the end)
+        assert!(
+            stops.len() <= 1,
+            "Protein has internal stop codons: {} stops in '{}'",
+            stops.len(),
+            line
+        );
+    }
+}
