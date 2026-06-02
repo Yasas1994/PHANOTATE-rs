@@ -46,7 +46,7 @@ fn topological_relaxation(
         };
         for (v, weight) in &graph.edges[u] {
             let new_dist = &du + weight;
-            if dist[*v].as_ref().is_none_or(|dv| &new_dist < dv) {
+            if dist[*v].as_ref().map_or(true, |dv| &new_dist < dv) {
                 dist[*v] = Some(new_dist);
                 prev[*v] = Some(u);
             }
@@ -81,7 +81,7 @@ fn bellman_ford(graph: &Graph, source_idx: usize, target_idx: usize) -> Option<V
             };
             for (v, weight) in &graph.edges[u] {
                 let new_dist = &du + weight;
-                if dist[*v].as_ref().is_none_or(|dv| &new_dist < dv) {
+                if dist[*v].as_ref().map_or(true, |dv| &new_dist < dv) {
                     dist[*v] = Some(new_dist);
                     prev[*v] = Some(u);
                     updated = true;

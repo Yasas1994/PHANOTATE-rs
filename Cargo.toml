@@ -2,6 +2,15 @@
 name = "phanotate-rs"
 version = "0.1.0"
 edition = "2021"
+authors = ["Yasas Wijesekara <yasas.wijesekara@uni-greifswald.de>", "Lars Kaderali <lars.kaderali@uni-greifswald.de>"]
+description = "A fast Rust implementation of PHANOTATE with automatic genetic-code detection for phage genomes"
+license = "GPL-3.0"
+repository = "https://github.com/Yasas1994/PHANOTATE-rs"
+homepage = "https://github.com/Yasas1994/PHANOTATE-rs"
+readme = "README.md"
+keywords = ["bioinformatics", "genomics", "phage", "gene-calling", "annotation"]
+categories = ["science", "command-line-utilities"]
+rust-version = "1.70"
 
 [dependencies]
 anyhow = "1.0"
