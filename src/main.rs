@@ -15,6 +15,7 @@ use phanotate_rs::genome;
 use phanotate_rs::graph;
 use phanotate_rs::orf;
 use phanotate_rs::output;
+use phanotate_rs::overlap;
 
 use codon_table::is_supported_table;
 use genome::{read_fasta_data, read_genbank, Genome};
@@ -82,6 +83,16 @@ struct Cli {
     /// Uses the top-ranked table automatically.
     #[arg(long, default_value_t = false)]
     yes: bool,
+
+    /// Find overlapping genes that were excluded from the primary path.
+    /// Overlapping genes are annotated as secondary CDS features.
+    #[arg(long, default_value_t = false)]
+    find_overlaps: bool,
+
+    /// Minimum overlap plausibility score [0.0-1.0] for reporting
+    /// overlapping genes. Higher = more stringent. Only used with --find-overlaps.
+    #[arg(long, value_name = "SCORE", default_value_t = 0.5)]
+    overlap_threshold: f64,
 }
 
 /// Build start-codon weights from a list of codons.
@@ -154,6 +165,8 @@ fn process_genome(
     closed_ends: bool,
     mask_n: bool,
     table: u8,
+    find_overlaps: bool,
+    overlap_threshold: f64,
 ) -> (String, String, String) {
     let contig_length = genome.seq.len();
     let dna = &genome.seq;
@@ -401,14 +414,21 @@ fn process_genome(
         }
     }
 
+    // --- Overlap detection ---
+    let overlaps = if find_overlaps {
+        overlap::find_overlapping_genes(&path_edges, &orfs, overlap_threshold)
+    } else {
+        Vec::new()
+    };
+
     // --- Primary output ---
-    let primary = output::write_primary(&genome.id, dna, &path_edges, &orfs, contig_length, format);
+    let primary = output::write_primary(&genome.id, dna, &path_edges, &orfs, contig_length, format, &overlaps);
 
     // --- Protein output ---
-    let protein = output::write_protein_fasta(&genome.id, &path_edges, &orfs, table);
+    let protein = output::write_protein_fasta(&genome.id, &path_edges, &orfs, table, &overlaps);
 
     // --- Nucleotide output ---
-    let nucleotide = output::write_nucleotide_fasta(&genome.id, &path_edges, &orfs);
+    let nucleotide = output::write_nucleotide_fasta(&genome.id, &path_edges, &orfs, &overlaps);
 
     (primary, protein, nucleotide)
 }
@@ -558,6 +578,8 @@ fn main() -> Result<()> {
                     cli.closed_ends,
                     cli.mask_n,
                     effective_table,
+                    cli.find_overlaps,
+                    cli.overlap_threshold,
                 )
             })
             .collect()
@@ -574,6 +596,8 @@ fn main() -> Result<()> {
                     cli.closed_ends,
                     cli.mask_n,
                     effective_table,
+                    cli.find_overlaps,
+                    cli.overlap_threshold,
                 )
             })
             .collect()

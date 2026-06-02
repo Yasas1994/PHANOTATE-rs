@@ -1,5 +1,6 @@
 use crate::graph::Node;
 use crate::orf::Orf;
+use crate::overlap::OverlapInfo;
 
 /// Primary output format enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,11 +63,12 @@ pub fn write_primary(
     orfs: &[Orf],
     last_position: usize,
     format: Format,
+    overlaps: &[OverlapInfo],
 ) -> String {
     match format {
-        Format::Gbk => write_gbk(id, seq, path, orfs, last_position),
-        Format::Gff => write_gff(id, path, orfs),
-        Format::Sco => write_sco(id, path, orfs),
+        Format::Gbk => write_gbk(id, seq, path, orfs, last_position, overlaps),
+        Format::Gff => write_gff(id, path, orfs, overlaps),
+        Format::Sco => write_sco(id, path, orfs, overlaps),
     }
 }
 
@@ -79,6 +81,7 @@ fn write_gbk(
     path: &[(Node, Node, f64)],
     orfs: &[Orf],
     last_position: usize,
+    overlaps: &[OverlapInfo],
 ) -> String {
     let mut out = String::new();
     out.push_str(&format!(
@@ -103,6 +106,21 @@ fn write_gbk(
         ));
     }
 
+    // Append overlapping genes
+    for ov in overlaps {
+        let (start, stop, strand) = overlap_coords(ov);
+        out.push_str("     CDS             ");
+        if strand == '+' {
+            out.push_str(&format!("{}..{}\n", start, stop));
+        } else {
+            out.push_str(&format!("complement({}..{})\n", start, stop));
+        }
+        out.push_str(&format!(
+            "                     /note=\"overlapping_gene;score={:.2E}\"\n",
+            ov.score
+        ));
+    }
+
     out.push_str("ORIGIN\n");
     for (i, chunk) in seq.chunks(10).enumerate() {
         let pos = i * 10 + 1;
@@ -123,7 +141,7 @@ fn write_gbk(
 // ---------------------------------------------------------------------------
 // GFF (GFF3)
 // ---------------------------------------------------------------------------
-fn write_gff(id: &str, path: &[(Node, Node, f64)], orfs: &[Orf]) -> String {
+fn write_gff(id: &str, path: &[(Node, Node, f64)], orfs: &[Orf], overlaps: &[OverlapInfo]) -> String {
     let mut out = String::new();
     out.push_str("##gff-version 3\n");
 
@@ -141,13 +159,28 @@ fn write_gff(id: &str, path: &[(Node, Node, f64)], orfs: &[Orf]) -> String {
         ));
     }
 
+    for ov in overlaps {
+        let (start, stop, strand) = overlap_coords(ov);
+        out.push_str(&format!(
+            "{}\tphanotate\tCDS\t{}\t{}\t{:.2E}\t{}\t0\tID=CDS_{}_{}_ovl;overlap_score={:.2E}\n",
+            id.trim_start_matches('>'),
+            start,
+            stop,
+            ov.score,
+            strand,
+            start,
+            stop,
+            ov.score
+        ));
+    }
+
     out
 }
 
 // ---------------------------------------------------------------------------
 // SCO (Simple Coordinate Output)
 // ---------------------------------------------------------------------------
-fn write_sco(_id: &str, path: &[(Node, Node, f64)], orfs: &[Orf]) -> String {
+fn write_sco(_id: &str, path: &[(Node, Node, f64)], orfs: &[Orf], _overlaps: &[OverlapInfo]) -> String {
     let mut out = String::new();
     for (start, stop, strand, weight, _orf) in collect_orf_edges(path, orfs) {
         out.push_str(&format!(
@@ -166,6 +199,7 @@ pub fn write_protein_fasta(
     path: &[(Node, Node, f64)],
     orfs: &[Orf],
     table: u8,
+    overlaps: &[OverlapInfo],
 ) -> String {
     use crate::codon_table::translate;
 
@@ -187,6 +221,27 @@ pub fn write_protein_fasta(
             out.push('\n');
         }
     }
+
+    // Append overlapping gene proteins
+    for ov in overlaps {
+        let (start, stop, strand) = overlap_coords(ov);
+        let protein = match translate(&ov.orf.seq, table) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        out.push_str(&format!(
+            ">{}_{}_{}_ovl {}\n",
+            id.trim_start_matches('>'),
+            start,
+            stop,
+            strand
+        ));
+        for chunk in protein.as_bytes().chunks(60) {
+            out.push_str(&String::from_utf8_lossy(chunk));
+            out.push('\n');
+        }
+    }
+
     out
 }
 
@@ -197,6 +252,7 @@ pub fn write_nucleotide_fasta(
     id: &str,
     path: &[(Node, Node, f64)],
     orfs: &[Orf],
+    overlaps: &[OverlapInfo],
 ) -> String {
     let mut out = String::new();
     for (start, stop, strand, _weight, orf) in collect_orf_edges(path, orfs) {
@@ -212,7 +268,33 @@ pub fn write_nucleotide_fasta(
             out.push('\n');
         }
     }
+
+    for ov in overlaps {
+        let (start, stop, strand) = overlap_coords(ov);
+        out.push_str(&format!(
+            ">{}_{}_{}_ovl {}\n",
+            id.trim_start_matches('>'),
+            start,
+            stop,
+            strand
+        ));
+        for chunk in ov.orf.seq.chunks(60) {
+            out.push_str(&String::from_utf8_lossy(chunk));
+            out.push('\n');
+        }
+    }
+
     out
+}
+
+/// Compute output coordinates for an overlapping gene.
+/// Returns (start, stop, strand) in the same format as collect_orf_edges.
+fn overlap_coords(ov: &OverlapInfo) -> (usize, usize, char) {
+    if ov.orf.frame > 0 {
+        (ov.orf.start, ov.orf.stop + 2, '+')
+    } else {
+        (ov.orf.start + 2, ov.orf.stop, '-')
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -360,7 +442,7 @@ mod tests {
         let seq = b"atgcatgcatgc";
         let orfs = vec![make_orf(1, 12, 1, b"atgcatgcatgc".to_vec())];
         let path = vec![fwd_path(1, 12)];
-        let out = write_gbk(">test", seq, &path, &orfs, seq.len());
+        let out = write_gbk(">test", seq, &path, &orfs, seq.len(), &[]);
         assert!(out.contains("LOCUS       test"));
         assert!(out.contains("DEFINITION  test"));
         assert!(out.contains("FEATURES"));
@@ -376,7 +458,7 @@ mod tests {
         let seq = b"atgcatgcatgc";
         let orfs = vec![make_orf(1, 12, -1, b"atgcatgcatgc".to_vec())];
         let path = vec![rev_path(1, 12)];
-        let out = write_gbk(">test", seq, &path, &orfs, seq.len());
+        let out = write_gbk(">test", seq, &path, &orfs, seq.len(), &[]);
         // For rev_path(1, 12): left=stop@-1@12, right=start@-1@1
         // display: start=right.position+2=3, stop=left.position=12
         assert!(out.contains("complement(3..12)"));
@@ -385,7 +467,7 @@ mod tests {
     #[test]
     fn test_write_gbk_no_orfs() {
         let seq = b"atgcatgcatgc";
-        let out = write_gbk(">test", seq, &[], &[], seq.len());
+        let out = write_gbk(">test", seq, &[], &[], seq.len(), &[]);
         assert!(out.contains("LOCUS       test"));
         assert!(!out.contains("CDS"));
     }
@@ -393,7 +475,7 @@ mod tests {
     #[test]
     fn test_write_gbk_sequence_formatting() {
         let seq = b"atgc";
-        let out = write_gbk(">test", seq, &[], &[], seq.len());
+        let out = write_gbk(">test", seq, &[], &[], seq.len(), &[]);
         // Should have position number and sequence
         assert!(out.contains("        1 atgc"));
     }
@@ -405,7 +487,7 @@ mod tests {
     fn test_write_gff_basic() {
         let orfs = vec![make_orf(10, 30, 1, b"atg".to_vec())];
         let path = vec![fwd_path(10, 30)];
-        let out = write_gff(">test", &path, &orfs);
+        let out = write_gff(">test", &path, &orfs, &[]);
         assert!(out.starts_with("##gff-version 3\n"));
         assert!(out.contains("test\tphanotate\tCDS\t10\t32\t"));
         assert!(out.contains("\t+\t0\tID=CDS_10_32"));
@@ -415,13 +497,13 @@ mod tests {
     fn test_write_gff_reverse() {
         let orfs = vec![make_orf(10, 30, -1, b"atg".to_vec())];
         let path = vec![rev_path(10, 30)];
-        let out = write_gff(">test", &path, &orfs);
+        let out = write_gff(">test", &path, &orfs, &[]);
         assert!(out.contains("\t-\t0\t"));
     }
 
     #[test]
     fn test_write_gff_empty() {
-        let out = write_gff(">test", &[], &[]);
+        let out = write_gff(">test", &[], &[], &[]);
         assert_eq!(out, "##gff-version 3\n");
     }
 
@@ -432,7 +514,7 @@ mod tests {
     fn test_write_sco_basic() {
         let orfs = vec![make_orf(10, 30, 1, b"atg".to_vec())];
         let path = vec![fwd_path(10, 30)];
-        let out = write_sco(">test", &path, &orfs);
+        let out = write_sco(">test", &path, &orfs, &[]);
         let lines: Vec<&str> = out.lines().collect();
         assert_eq!(lines.len(), 1);
         let cols: Vec<&str> = lines[0].split('\t').collect();
@@ -444,7 +526,7 @@ mod tests {
 
     #[test]
     fn test_write_sco_empty() {
-        let out = write_sco(">test", &[], &[]);
+        let out = write_sco(">test", &[], &[], &[]);
         assert!(out.is_empty());
     }
 
@@ -456,7 +538,7 @@ mod tests {
         // atg tgg taa -> M W *
         let orfs = vec![make_orf(1, 9, 1, b"atgtggtaa".to_vec())];
         let path = vec![fwd_path(1, 9)];
-        let out = write_protein_fasta(">test", &path, &orfs, 11);
+        let out = write_protein_fasta(">test", &path, &orfs, 11, &[]);
         assert!(out.starts_with(">test_1_11 +\n"));
         assert!(out.contains("MW*\n"));
     }
@@ -467,7 +549,7 @@ mod tests {
         let seq = b"atg".repeat(30);
         let orfs = vec![make_orf(1, 90, 1, seq.to_vec())];
         let path = vec![fwd_path(1, 90)];
-        let out = write_protein_fasta(">test", &path, &orfs, 11);
+        let out = write_protein_fasta(">test", &path, &orfs, 11, &[]);
         let lines: Vec<&str> = out.lines().collect();
         assert_eq!(lines[0], ">test_1_92 +");
         // Should have 2 sequence lines (30 aa = 60 chars would be one line...)
@@ -479,7 +561,7 @@ mod tests {
     fn test_write_protein_fasta_unsupported_table() {
         let orfs = vec![make_orf(1, 9, 1, b"atgtggtaa".to_vec())];
         let path = vec![fwd_path(1, 9)];
-        let out = write_protein_fasta(">test", &path, &orfs, 99);
+        let out = write_protein_fasta(">test", &path, &orfs, 99, &[]);
         // Should skip ORFs with unsupported table
         assert!(out.is_empty());
     }
@@ -491,7 +573,7 @@ mod tests {
     fn test_write_nucleotide_fasta_basic() {
         let orfs = vec![make_orf(1, 12, 1, b"atgcatgcatgc".to_vec())];
         let path = vec![fwd_path(1, 12)];
-        let out = write_nucleotide_fasta(">test", &path, &orfs);
+        let out = write_nucleotide_fasta(">test", &path, &orfs, &[]);
         assert!(out.starts_with(">test_1_14 +\n"));
         assert!(out.contains("atgcatgcatgc\n"));
     }
@@ -501,7 +583,7 @@ mod tests {
         let seq = b"atgc".repeat(20); // 80 chars
         let orfs = vec![make_orf(1, 80, 1, seq.to_vec())];
         let path = vec![fwd_path(1, 80)];
-        let out = write_nucleotide_fasta(">test", &path, &orfs);
+        let out = write_nucleotide_fasta(">test", &path, &orfs, &[]);
         let lines: Vec<&str> = out.lines().collect();
         assert_eq!(lines[0], ">test_1_82 +");
         assert_eq!(lines[1].len(), 60);
@@ -514,19 +596,19 @@ mod tests {
     #[test]
     fn test_write_primary_gbk() {
         let seq = b"atgc";
-        let out = write_primary(">test", seq, &[], &[], 4, Format::Gbk);
+        let out = write_primary(">test", seq, &[], &[], 4, Format::Gbk, &[]);
         assert!(out.contains("LOCUS"));
     }
 
     #[test]
     fn test_write_primary_gff() {
-        let out = write_primary(">test", b"atgc", &[], &[], 4, Format::Gff);
+        let out = write_primary(">test", b"atgc", &[], &[], 4, Format::Gff, &[]);
         assert!(out.starts_with("##gff-version 3"));
     }
 
     #[test]
     fn test_write_primary_sco() {
-        let out = write_primary(">test", b"atgc", &[], &[], 4, Format::Sco);
+        let out = write_primary(">test", b"atgc", &[], &[], 4, Format::Sco, &[]);
         assert!(out.is_empty());
     }
 

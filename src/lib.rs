@@ -11,4 +11,5 @@ pub mod genome;
 pub mod graph;
 pub mod orf;
 pub mod output;
+pub mod overlap;
 pub mod weights;
