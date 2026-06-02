@@ -22,12 +22,44 @@ A fast Rust reimplementation of **PHANOTATE** — a gene caller optimized for ba
 
 ## Installation
 
+### One-liner (Linux / macOS)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Yasas1994/PHANOTATE-rs/main/install.sh | bash
+```
+
+The script auto-detects your platform, downloads the latest release, and installs
+to `~/.local/bin` (or `/usr/local/bin` if writable).
+
+### Homebrew (macOS / Linux)
+
+```bash
+brew tap deprekate/bioinformatics
+brew install phanotate-rs
+```
+
+### Bioconda
+
+```bash
+conda install -c bioconda phanotate-rs
+# or
+mamba install -c bioconda phanotate-rs
+# or
+pixi add phanotate-rs
+```
+
+### Cargo (Rust toolchain required)
+
+```bash
+cargo install phanotate-rs
+```
+
 ### From source
 
 Requires [Rust](https://www.rust-lang.org/tools/install) (1.70+):
 
 ```bash
-git clone https://github.com/yourusername/phanotate-rs.git
+git clone https://github.com/Yasas1994/PHANOTATE-rs.git
 cd phanotate-rs
 cargo build --release
 ```
@@ -36,7 +68,9 @@ The binary will be at `./target/release/phanotate-rs`.
 
 ### Pre-built binaries
 
-Pre-built binaries for Linux, macOS, and Windows are available from the [Releases](https://github.com/yourusername/phanotate-rs/releases) page.
+Pre-built binaries for Linux (x86_64, aarch64, musl), macOS (Intel, Apple Silicon),
+and Windows (x86_64) are available from the
+[Releases](https://github.com/Yasas1994/PHANOTATE-rs/releases) page.
 
 ---
 
@@ -98,7 +132,6 @@ Options:
 |-------|------|----------|
 | 1 | Standard | Baseline; some eukaryotic phages |
 | 4 | Mold/Mycoplasma/Spiroplasma | Mycoplasma & Spiroplasma phages (TGA → Trp) |
-| 6 | Ciliate nuclear | Phages infecting Tetrahymena/Paramecium (TAA/TAG → Gln) |
 | 11 | Bacterial/Archaeal | **Default** for all bacteriophages |
 | 15 | Blepharisma nuclear | Some Crassvirales (TAG → Gln) |
 | 25 | SR1/Gracilibacteria | Gracilibacteria phages (TGA → Gly) |
