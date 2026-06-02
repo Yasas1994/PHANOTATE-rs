@@ -2,8 +2,14 @@
 
 A fast Rust reimplementation of **PHANOTATE** — a gene caller optimized for bacteriophage genomes.
 
-[![Rust](https://shields.io/badge/-Rust-3776AB?style=flat&logo=rust)](https://www.rust-lang.org)
+[![Crates.io](https://img.shields.io/crates/v/phanotate-rs)](https://crates.io/crates/phanotate-rs)
+[![GitHub Release](https://img.shields.io/github/v/release/Yasas1994/PHANOTATE-rs)](https://github.com/Yasas1994/PHANOTATE-rs/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
+[![Tests](https://img.shields.io/badge/tests-128%20passing-brightgreen.svg)](#testing)
+[![Bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](http://bioconda.github.io/recipes/phanotate-rs/README.html)
+[![Homebrew](https://img.shields.io/badge/install%20with-Homebrew-orange.svg?style=flat)](https://github.com/Yasas1994/PHANOTATE-rs#installation)
+[![Docs](https://img.shields.io/badge/docs-API-blue.svg)](https://docs.rs/phanotate-rs)
 
 > **Note:** This is a Rust port of the original Python implementation. If you use this tool in your research, please cite the original PHANOTATE publication (see [Citation](#citation) below).
 
