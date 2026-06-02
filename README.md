@@ -148,7 +148,7 @@ Performance on common phage genomes (single thread, release build):
 | Lambda (NC_001416) | 48.5 kb | ~46 ms | ~12× |
 | T4 (NC_000866) | 169 kb | ~100 ms | ~15× |
 
-Benchmarks were run on an AMD Ryzen 9 5900X. Your results may vary.
+Benchmarks were run on an Intel 14700HX. Your results may vary.
 
 ---
 
