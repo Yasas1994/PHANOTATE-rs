@@ -146,6 +146,8 @@ Options:
 
 ## Benchmarks
 
+### Single-genome performance
+
 Performance on common phage genomes (single thread, release build):
 
 | Genome | Size | Time | Speedup vs Python |
@@ -153,6 +155,21 @@ Performance on common phage genomes (single thread, release build):
 | phiX174 | 5.4 kb | ~6 ms | ~10× |
 | Lambda (NC_001416) | 48.5 kb | ~46 ms | ~12× |
 | T4 (NC_000866) | 169 kb | ~100 ms | ~15× |
+
+### Large-scale validation (100 phage genomes)
+
+A batch run on 100 diverse phage genomes (total ~5.8 MB) was used to validate prediction accuracy:
+
+| Metric | Python PHANOTATE | PHANOTATE-rs |
+|--------|-----------------|--------------|
+| **Runtime** | ~9 min 39 s | ~1 s |
+| **Speedup** | — | **~580×** |
+| **Total ORFs predicted** | 10,350 | 10,352 |
+| **Perfectly matching genomes** | — | 97 / 100 (97%) |
+| **Near-matching genomes (≤2 diff)** | — | 99 / 100 (99%) |
+| **ORF-level Jaccard similarity** | — | **0.9990** |
+
+The 3 genomes with minor differences (NC_028929, OQ291053, PP496440) show small coordinate shifts at gene boundaries — these are edge cases where start-codon selection differs by a few bases, producing biologically equivalent predictions. No internal stop codons were found in any genome.
 
 Benchmarks were run on an Intel 14700HX. Your results may vary.
 
