@@ -162,10 +162,10 @@ A batch run on 100 diverse phage genomes (total ~5.8 MB) was used to validate pr
 
 #### PHANOTATE-rs vs Python PHANOTATE
 
-| Metric | Python PHANOTATE | PHANOTATE-rs |
-|--------|-----------------|--------------|
-| **Runtime** | ~9 min 39 s | ~1 s |
-| **Speedup** | — | **~580×** |
+| Metric | Python PHANOTATE | PHANOTATE-rs (single-thread) | PHANOTATE-rs (multi-thread) |
+|--------|-----------------|------------------------------|-----------------------------|
+| **Runtime** | ~9 min 39 s | ~7.6 s | ~1.5 s |
+| **Speedup** | — | **~76×** | **~386×** |
 | **Total ORFs predicted** | 10,350 | 10,352 |
 | **Intersection (both predict)** | — | 10,346 |
 | **Unique to Python** | 4 | — |
