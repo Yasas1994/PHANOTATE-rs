@@ -165,6 +165,9 @@ A batch run on 100 diverse phage genomes (total ~5.8 MB) was used to validate pr
 | **Runtime** | ~9 min 39 s | ~1 s |
 | **Speedup** | — | **~580×** |
 | **Total ORFs predicted** | 10,350 | 10,352 |
+| **Intersection (both predict)** | — | 10,346 |
+| **Unique to Python** | 4 | — |
+| **Unique to Rust** | — | 6 |
 | **Perfectly matching genomes** | — | 97 / 100 (97%) |
 | **Near-matching genomes (≤2 diff)** | — | 99 / 100 (99%) |
 | **ORF-level Jaccard similarity** | — | **0.9990** |
