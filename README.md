@@ -160,6 +160,8 @@ Performance on common phage genomes (single thread, release build):
 
 A batch run on 100 diverse phage genomes (total ~5.8 MB) was used to validate prediction accuracy:
 
+#### PHANOTATE-rs vs Python PHANOTATE
+
 | Metric | Python PHANOTATE | PHANOTATE-rs |
 |--------|-----------------|--------------|
 | **Runtime** | ~9 min 39 s | ~1 s |
@@ -173,6 +175,20 @@ A batch run on 100 diverse phage genomes (total ~5.8 MB) was used to validate pr
 | **ORF-level Jaccard similarity** | — | **0.9990** |
 
 The 3 genomes with minor differences (NC_028929, OQ291053, PP496440) show small coordinate shifts at gene boundaries — these are edge cases where start-codon selection differs by a few bases, producing biologically equivalent predictions. No internal stop codons were found in any genome.
+
+#### PHANOTATE vs Prodigal-gv
+
+[Prodigal-gv](https://github.com/apcamargo/prodigal-gv) is a gene caller trained on giant viruses and viruses with alternative genetic codes. On the same 100-genome dataset:
+
+| Metric | Python PHANOTATE | PHANOTATE-rs | Prodigal-gv |
+|--------|-----------------|--------------|-------------|
+| **Runtime** | ~9 min 39 s | ~1 s | ~4.6 s |
+| **Total ORFs predicted** | 10,350 | 10,352 | 8,548 |
+| **Exact match with PHANOTATE** | — | 10,346 | 4,065 |
+| **Overlap with PHANOTATE (≥50%)** | — | — | ~4,918 (47.5%) |
+| **Unique to method** | 4 | 6 | 3,657 |
+
+Prodigal-gv predicts fewer ORFs overall (~17% less than PHANOTATE) and agrees on roughly half of PHANOTATE's calls. The differences reflect the distinct algorithms: PHANOTATE uses a graph-based shortest-path approach optimized for phage genome organisation (including small genes and overlapping genes), while Prodigal-gv uses a hidden Markov model trained on a different sequence distribution. Both are valid approaches with different sensitivities.
 
 Benchmarks were run on an Intel 14700HX. Your results may vary.
 
