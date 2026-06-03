@@ -188,8 +188,7 @@ The 3 genomes with minor differences (NC_028929, OQ291053, PP496440) show small 
 | **Overlap with PHANOTATE (≥50%)** | — | — | ~4,918 (47.5%) |
 | **Unique to method** | 4 | 6 | 3,657 |
 
-Prodigal-gv predicts fewer ORFs overall (~17% less than PHANOTATE) and agrees on roughly half of PHANOTATE's calls. The differences reflect the distinct algorithms: PHANOTATE uses a graph-based shortest-path approach optimized for phage genome organisation (including small genes and overlapping genes), while Prodigal-gv uses a hidden Markov model trained on a different sequence distribution. Both are valid approaches with different sensitivities.
-
+Prodigal-gv predicts fewer ORFs overall (~17% less than PHANOTATE) and agrees on roughly half of PHANOTATE's calls.
 Benchmarks were run on an Intel 14700HX. Your results may vary.
 
 ---
@@ -204,6 +203,8 @@ phanotate-rs implements the full PHANOTATE algorithm:
 4. **Graph construction** — Builds a weighted directed acyclic graph where nodes are ORF starts/stops and edges represent genes or inter-genic gaps
 5. **Shortest path** — Solves for the maximum-weight path through the graph using Bellman-Ford with topological relaxation
 6. **Output formatting** — Writes the predicted genes in GenBank, GFF3, or coordinate format
+
+Please refer PHANOTATE manuscript for more information about the algorithm.
 
 ### Automatic table detection (`--detect-table`)
 
