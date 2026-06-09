@@ -2,7 +2,9 @@
 //! Uses topological-order relaxation for DAGs, falls back to Bellman-Ford
 //! if cycles are detected (from strand-switch edges).
 
-use crate::graph::{Graph, Node};
+use crate::graph::Graph;
+#[cfg(test)]
+use crate::graph::Node;
 use num_bigint::BigInt;
 
 /// Find the shortest path from source to target in the graph.

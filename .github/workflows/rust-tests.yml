@@ -61,7 +61,14 @@ jobs:
         run: cargo test --lib -- --skip debug_ --skip regression_ --skip lambda_ --skip table4_
 
       - name: Run integration tests
-        run: cargo test --test cli_tests --test detect_table_tests
+        # Skip tests that require files from the external PHANOTATE repo
+        run: |
+          cargo test --test cli_tests -- \
+            --skip phix174 --skip sco --skip lambda --skip table4 --skip regression \
+            --skip flag_f_gbk --skip flag_f_gff --skip flag_f_sco --skip flag_g_table \
+            --skip flag_a_protein --skip flag_d_nucleotide --skip flag_i_stdin
+          cargo test --test detect_table_tests -- \
+            --skip batch --skip pipe --skip confidence --skip table11 --skip yes_flag
 
       - name: Check formatting
         run: cargo fmt -- --check
