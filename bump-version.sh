@@ -35,9 +35,8 @@ echo "  ✓ VERSION"
 # ---------------------------------------------------------------------------
 # 2. Update Cargo.toml
 # ---------------------------------------------------------------------------
-# Only match "version = " at the start of a line (the package version),
-# not edition or dependency versions.
-perl -i -pe "s/^version = \"[^\"]+\"/version = \"$NEW_VERSION\"/" Cargo.toml
+# Only match the package version (first few lines of file), not dependency versions.
+perl -i -pe 'if ($. <= 5) { s/^version = "[^"]+"/version = "'$NEW_VERSION'"/ }' Cargo.toml
 if grep -q "^version = \"$NEW_VERSION\"" Cargo.toml; then
     echo "  ✓ Cargo.toml"
 else
