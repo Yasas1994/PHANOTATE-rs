@@ -153,22 +153,22 @@ fn rev_comp(seq: &[u8]) -> Vec<u8> {
 /// the given alternative table.  These are the signal codons for detection.
 pub fn reassigned_codons(table: u8) -> &'static [&'static [u8]] {
     match table {
-        1 | 11 => &[],               // baseline — nothing reassigned
-        4      => &[b"tga"],         // TGA → Trp
-        6      => &[b"taa", b"tag"], // TAA → Gln, TAG → Gln
-        15     => &[b"tag"],         // TAG → Gln
-        25     => &[b"tga"],         // TGA → Gly
-        _      => &[],
+        1 | 11 => &[],          // baseline — nothing reassigned
+        4 => &[b"tga"],         // TGA → Trp
+        6 => &[b"taa", b"tag"], // TAA → Gln, TAG → Gln
+        15 => &[b"tag"],        // TAG → Gln
+        25 => &[b"tga"],        // TGA → Gly
+        _ => &[],
     }
 }
 
 /// Result of checking one reassigned codon.
 #[derive(Clone)]
 pub struct ReassignmentResult {
-    pub codon:           [u8; 3],
+    pub codon: [u8; 3],
     pub background_freq: f64,
-    pub orf_freq:        f64,
-    pub ratio:           f64,
+    pub orf_freq: f64,
+    pub ratio: f64,
 }
 
 /// Collect the longest ORFs under `table` (forward strand only) and
@@ -263,8 +263,15 @@ fn sliding_window_signal(
 
     // Pre-compute background counts for the whole sequence
     let (bg_counts, bg_total) = background_freqs(seq, targets);
-    let _bg_freqs: Vec<f64> = bg_counts.iter()
-        .map(|&c| if bg_total > 0 { c as f64 / bg_total as f64 } else { 0.0 })
+    let _bg_freqs: Vec<f64> = bg_counts
+        .iter()
+        .map(|&c| {
+            if bg_total > 0 {
+                c as f64 / bg_total as f64
+            } else {
+                0.0
+            }
+        })
         .collect();
 
     let mut window_scores: Vec<(f64, Vec<ReassignmentResult>)> = Vec::new();
@@ -332,8 +339,15 @@ fn sliding_window_signal(
             }
             window_bg_total += 1;
         }
-        let window_bg_freqs: Vec<f64> = window_bg_counts.iter()
-            .map(|&c| if window_bg_total > 0 { c as f64 / window_bg_total as f64 } else { 0.0 })
+        let window_bg_freqs: Vec<f64> = window_bg_counts
+            .iter()
+            .map(|&c| {
+                if window_bg_total > 0 {
+                    c as f64 / window_bg_total as f64
+                } else {
+                    0.0
+                }
+            })
             .collect();
 
         // Compute signal for this window
@@ -341,24 +355,40 @@ fn sliding_window_signal(
             let tag_idx = targets.iter().position(|&t| t == *b"tag").unwrap_or(0);
             let orf_freq = orf_counts[tag_idx] as f64 / orf_total as f64;
             let bg_freq = window_bg_freqs[tag_idx];
-            if bg_freq > 0.0 { (orf_freq / bg_freq).min(3.0) } else { 0.0 }
+            if bg_freq > 0.0 {
+                (orf_freq / bg_freq).min(3.0)
+            } else {
+                0.0
+            }
         } else if table == 6 {
             let taa_idx = targets.iter().position(|&t| t == *b"taa");
             let tag_idx = targets.iter().position(|&t| t == *b"tag");
             let taa_ratio = taa_idx.map_or(0.0, |i| {
                 let orf_freq = orf_counts[i] as f64 / orf_total as f64;
-                if window_bg_freqs[i] > 0.0 { orf_freq / window_bg_freqs[i] } else { 0.0 }
+                if window_bg_freqs[i] > 0.0 {
+                    orf_freq / window_bg_freqs[i]
+                } else {
+                    0.0
+                }
             });
             let tag_ratio = tag_idx.map_or(0.0, |i| {
                 let orf_freq = orf_counts[i] as f64 / orf_total as f64;
-                if window_bg_freqs[i] > 0.0 { orf_freq / window_bg_freqs[i] } else { 0.0 }
+                if window_bg_freqs[i] > 0.0 {
+                    orf_freq / window_bg_freqs[i]
+                } else {
+                    0.0
+                }
             });
             taa_ratio.min(tag_ratio).min(3.0)
         } else {
             let mut sum_ratio = 0.0;
             for i in 0..targets.len() {
                 let orf_freq = orf_counts[i] as f64 / orf_total as f64;
-                let ratio = if window_bg_freqs[i] > 0.0 { orf_freq / window_bg_freqs[i] } else { 0.0 };
+                let ratio = if window_bg_freqs[i] > 0.0 {
+                    orf_freq / window_bg_freqs[i]
+                } else {
+                    0.0
+                };
                 sum_ratio += ratio;
             }
             (sum_ratio / targets.len() as f64).min(3.0)
@@ -367,7 +397,11 @@ fn sliding_window_signal(
         let mut details = Vec::with_capacity(targets.len());
         for i in 0..targets.len() {
             let orf_freq = orf_counts[i] as f64 / orf_total as f64;
-            let ratio = if window_bg_freqs[i] > 0.0 { orf_freq / window_bg_freqs[i] } else { 0.0 };
+            let ratio = if window_bg_freqs[i] > 0.0 {
+                orf_freq / window_bg_freqs[i]
+            } else {
+                0.0
+            };
             details.push(ReassignmentResult {
                 codon: targets[i],
                 background_freq: window_bg_freqs[i],
@@ -409,7 +443,10 @@ fn sliding_window_signal(
 /// find the strongest local signal.  For tables 4 and 25 we use the whole
 /// genome because TGA readthrough is typically genome-wide.
 fn compute_reassignment_signal(seq: &[u8], table: u8) -> (f64, Vec<ReassignmentResult>) {
-    let targets: Vec<[u8; 3]> = reassigned_codons(table).iter().map(|&c| [c[0], c[1], c[2]]).collect();
+    let targets: Vec<[u8; 3]> = reassigned_codons(table)
+        .iter()
+        .map(|&c| [c[0], c[1], c[2]])
+        .collect();
     if targets.is_empty() {
         return (1.0, vec![]);
     }
@@ -489,7 +526,9 @@ fn compute_reassignment_signal(seq: &[u8], table: u8) -> (f64, Vec<ReassignmentR
                     v.push((s, e));
                 }
                 v
-            }.iter() {
+            }
+            .iter()
+            {
                 let mut pos = start;
                 while pos + 6 <= end {
                     if &seq[pos..pos + 3] == b"tgg" {
@@ -538,7 +577,9 @@ fn compute_reassignment_signal(seq: &[u8], table: u8) -> (f64, Vec<ReassignmentR
                     v.push((s, e));
                 }
                 v
-            }.iter() {
+            }
+            .iter()
+            {
                 let mut pos = start;
                 while pos + 6 <= end {
                     let codon = [seq[pos], seq[pos + 1], seq[pos + 2]];
@@ -579,7 +620,11 @@ fn table11_exclusive_start_count(seq: &[u8]) -> usize {
             if is_stop(codon, stops11) {
                 let len = pos.saturating_sub(region_start);
                 if len >= 90 {
-                    let start_codon = [seq[region_start], seq[region_start + 1], seq[region_start + 2]];
+                    let start_codon = [
+                        seq[region_start],
+                        seq[region_start + 1],
+                        seq[region_start + 2],
+                    ];
                     if exclusive.contains(&start_codon) {
                         count += 1;
                     }
@@ -590,7 +635,11 @@ fn table11_exclusive_start_count(seq: &[u8]) -> usize {
         }
         let len = seq.len().saturating_sub(region_start);
         if len >= 90 {
-            let start_codon = [seq[region_start], seq[region_start + 1], seq[region_start + 2]];
+            let start_codon = [
+                seq[region_start],
+                seq[region_start + 1],
+                seq[region_start + 2],
+            ];
             if exclusive.contains(&start_codon) {
                 count += 1;
             }
@@ -650,8 +699,16 @@ pub fn score_tables(seq: &[u8], min_orf_len: usize) -> Vec<TableScore> {
             let boost = if signal > 0.6 {
                 1.0
             } else if signal > 0.3 {
-                if max_ratio > 2.0 { 1.0 } else { 0.7 }
-            } else if max_ratio > 2.5 { 0.7 } else { 0.4 };
+                if max_ratio > 2.0 {
+                    1.0
+                } else {
+                    0.7
+                }
+            } else if max_ratio > 2.5 {
+                0.7
+            } else {
+                0.4
+            };
             mol_ratio * signal * boost
         };
 
@@ -782,10 +839,7 @@ pub struct BatchResult {
 
 /// Detect the translation table for every genome in `genomes` and return a
 /// summary per genome.  Runs in parallel via Rayon.
-pub fn detect_tables_batch(
-    genomes: &[(String, Vec<u8>)],
-    min_orf_len: usize,
-) -> Vec<BatchResult> {
+pub fn detect_tables_batch(genomes: &[(String, Vec<u8>)], min_orf_len: usize) -> Vec<BatchResult> {
     use rayon::prelude::*;
 
     genomes
@@ -815,15 +869,17 @@ pub fn detect_tables_batch(
                 } else {
                     "low"
                 }
-            } else if scores.len() >= 2 && scores[1].composite == 0.0 && scores[0].composite > 0.0
-            {
+            } else if scores.len() >= 2 && scores[1].composite == 0.0 && scores[0].composite > 0.0 {
                 "high"
             } else {
                 "low"
             }
             .to_string();
 
-            let runner_up = scores.get(1).map(|s| (s.table, s.composite)).unwrap_or((11, 0.0));
+            let runner_up = scores
+                .get(1)
+                .map(|s| (s.table, s.composite))
+                .unwrap_or((11, 0.0));
 
             BatchResult {
                 seq_id: id.clone(),
@@ -851,8 +907,13 @@ pub fn format_batch_tsv(results: &[BatchResult]) -> String {
     for r in results {
         lines.push(format!(
             "{}\t{}\t{}\t{}\t{:.4}\t{}\t{:.4}",
-            r.seq_id, r.seq_len, r.recommended_table, r.confidence, r.top_score,
-            r.runner_up_table, r.runner_up_score
+            r.seq_id,
+            r.seq_len,
+            r.recommended_table,
+            r.confidence,
+            r.top_score,
+            r.runner_up_table,
+            r.runner_up_score
         ));
     }
     lines.join("\n") + "\n"
@@ -865,9 +926,7 @@ pub fn format_batch_tsv(results: &[BatchResult]) -> String {
 #[allow(dead_code)]
 pub fn format_batch_matrix_tsv(results: &[BatchResult]) -> String {
     let mut lines = Vec::new();
-    lines.push(
-        "seq_id\tlen\trecommended\tconfidence\tt1\tt4\tt6\tt11\tt15\tt25".to_string(),
-    );
+    lines.push("seq_id\tlen\trecommended\tconfidence\tt1\tt4\tt6\tt11\tt15\tt25".to_string());
     for r in results {
         // Build a map from table -> composite for quick lookup
         let mut composite_by_table = std::collections::HashMap::new();
@@ -948,7 +1007,10 @@ mod tests {
     fn test_short_sequence_returns_empty() {
         let seq = vec![b'a'; 200];
         let scores = score_tables(&seq, 90);
-        assert!(scores.is_empty(), "short sequence should return empty scores");
+        assert!(
+            scores.is_empty(),
+            "short sequence should return empty scores"
+        );
     }
 
     #[test]
@@ -1024,7 +1086,10 @@ mod tests {
                 top == 11 || top == 1,
                 "Lambda (table 11) should score 11 or 1 first, got {}: {:?}",
                 top,
-                scores.iter().map(|s| (s.table, s.composite)).collect::<Vec<_>>()
+                scores
+                    .iter()
+                    .map(|s| (s.table, s.composite))
+                    .collect::<Vec<_>>()
             );
         }
     }
@@ -1041,9 +1106,13 @@ mod tests {
             let scores = score_tables(&genome.seq, 90);
             assert!(!scores.is_empty());
             assert_eq!(
-                scores[0].table, 4,
+                scores[0].table,
+                4,
                 "SpV4 (NC_003438) should recommend table 4, got {:?}",
-                scores.iter().map(|s| (s.table, s.composite, s.reassignment_signal)).collect::<Vec<_>>()
+                scores
+                    .iter()
+                    .map(|s| (s.table, s.composite, s.reassignment_signal))
+                    .collect::<Vec<_>>()
             );
             let t4_score = scores.iter().find(|s| s.table == 4).unwrap();
             assert!(
@@ -1066,7 +1135,10 @@ mod tests {
                 top == 11 || top == 1,
                 "Lambda should recommend table 11 or 1, got {}: {:?}",
                 top,
-                scores.iter().map(|s| (s.table, s.composite, s.reassignment_signal)).collect::<Vec<_>>()
+                scores
+                    .iter()
+                    .map(|s| (s.table, s.composite, s.reassignment_signal))
+                    .collect::<Vec<_>>()
             );
             let t4_score = scores.iter().find(|s| s.table == 4).unwrap();
             assert!(
@@ -1085,9 +1157,13 @@ mod tests {
             let scores = score_tables(&genome.seq, 90);
             assert!(!scores.is_empty());
             assert_eq!(
-                scores[0].table, 15,
+                scores[0].table,
+                15,
                 "CrAss (BK025033) should recommend table 15, got {:?}",
-                scores.iter().map(|s| (s.table, s.composite, s.reassignment_signal)).collect::<Vec<_>>()
+                scores
+                    .iter()
+                    .map(|s| (s.table, s.composite, s.reassignment_signal))
+                    .collect::<Vec<_>>()
             );
             let t15_score = scores.iter().find(|s| s.table == 15).unwrap();
             assert!(
@@ -1126,7 +1202,9 @@ mod tests {
     }
 
     fn synthetic_seq_with_tga_rate(len: usize, tga_rate: f64) -> Vec<u8> {
-        let non_stops: &[[u8; 3]] = &[*b"atg", *b"aaa", *b"gct", *b"ggc", *b"cgt", *b"tta", *b"cca", *b"gac"];
+        let non_stops: &[[u8; 3]] = &[
+            *b"atg", *b"aaa", *b"gct", *b"ggc", *b"cgt", *b"tta", *b"cca", *b"gac",
+        ];
         let mut seq = Vec::with_capacity(len);
         let mut idx = 0usize;
         while seq.len() < len {

@@ -81,42 +81,18 @@ impl GCframe {
 
         let len = self.total[2].len().saturating_sub(1);
         for i in 0..len {
-            freq.push([
-                self.total[0][i],
-                self.total[1][i],
-                self.total[2][i],
-            ]);
-            freq.push([
-                self.total[1][i],
-                self.total[2][i],
-                self.total[0][i + 1],
-            ]);
-            freq.push([
-                self.total[2][i],
-                self.total[0][i + 1],
-                self.total[1][i + 1],
-            ]);
+            freq.push([self.total[0][i], self.total[1][i], self.total[2][i]]);
+            freq.push([self.total[1][i], self.total[2][i], self.total[0][i + 1]]);
+            freq.push([self.total[2][i], self.total[0][i + 1], self.total[1][i + 1]]);
         }
 
         let i = len;
-        freq.push([
-            self.total[0][i],
-            self.total[1][i],
-            self.total[2][i],
-        ]);
+        freq.push([self.total[0][i], self.total[1][i], self.total[2][i]]);
         if i < self.total[0].len() - 1 {
-            freq.push([
-                self.total[1][i],
-                self.total[2][i],
-                self.total[0][i + 1],
-            ]);
+            freq.push([self.total[1][i], self.total[2][i], self.total[0][i + 1]]);
         }
         if i < self.total[1].len() - 1 {
-            freq.push([
-                self.total[2][i],
-                self.total[0][i + 1],
-                self.total[1][i + 1],
-            ]);
+            freq.push([self.total[2][i], self.total[0][i + 1], self.total[1][i + 1]]);
         }
 
         freq
@@ -192,7 +168,12 @@ mod debug_tests2 {
             for &base in dna {
                 frame_plot.add_base(base);
             }
-            println!("total lengths before close: [{}, {}, {}]", frame_plot.total[0].len(), frame_plot.total[1].len(), frame_plot.total[2].len());
+            println!(
+                "total lengths before close: [{}, {}, {}]",
+                frame_plot.total[0].len(),
+                frame_plot.total[1].len(),
+                frame_plot.total[2].len()
+            );
             let gc = frame_plot.get();
             println!("len(gc): {}", gc.len());
         }

@@ -9,15 +9,15 @@
 //!
 //! Build with maturin:  `maturin develop` or `maturin build --release`
 
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::exceptions::{PyValueError, PyRuntimeError};
 use std::collections::HashMap;
 
 use crate::bellman_ford;
 use crate::codon_table;
 use crate::detect_table;
-use crate::genome;
 use crate::gcfp::{max_idx, min_idx, GCframe};
+use crate::genome;
 use crate::graph::{Graph, Node};
 use crate::orf::{self, Orf};
 use crate::output::{self, Format};
@@ -389,10 +389,22 @@ fn process_single_genome(
     for i in 0..len {
         let base = dna[i];
         match base {
-            b'a' => { freq[0] += 1; freq[1] += 1; }
-            b't' => { freq[1] += 1; freq[0] += 1; }
-            b'c' => { freq[2] += 1; freq[3] += 1; }
-            b'g' => { freq[3] += 1; freq[2] += 1; }
+            b'a' => {
+                freq[0] += 1;
+                freq[1] += 1;
+            }
+            b't' => {
+                freq[1] += 1;
+                freq[0] += 1;
+            }
+            b'c' => {
+                freq[2] += 1;
+                freq[3] += 1;
+            }
+            b'g' => {
+                freq[3] += 1;
+                freq[2] += 1;
+            }
             _ => {}
         }
 
@@ -426,7 +438,15 @@ fn process_single_genome(
     }
 
     // --- Find ORFs ---
-    let mut orfs = orf::find_orfs_with_rc(dna, rc_dna, start_codons, stop_codons, min_orf_len, closed_ends, mask_n);
+    let mut orfs = orf::find_orfs_with_rc(
+        dna,
+        rc_dna,
+        start_codons,
+        stop_codons,
+        min_orf_len,
+        closed_ends,
+        mask_n,
+    );
 
     if orfs.is_empty() {
         let no_orfs = format!("#id:\t{} NO ORFS FOUND\n", id);
@@ -450,7 +470,8 @@ fn process_single_genome(
     let mut pos_max = [1.0f64; 4];
     let mut pos_min = [1.0f64; 4];
 
-    let mut by_stop: std::collections::BTreeMap<usize, Vec<&Orf>> = std::collections::BTreeMap::new();
+    let mut by_stop: std::collections::BTreeMap<usize, Vec<&Orf>> =
+        std::collections::BTreeMap::new();
     for orf in &orfs {
         by_stop.entry(orf.stop).or_default().push(orf);
     }
@@ -481,9 +502,17 @@ fn process_single_genome(
             let n = ((stop - start) / 8) * 3;
             let mut base = start + n;
             while base + 36 < stop && base < gc_pos_freq.len() {
-                let idx = max_idx(gc_pos_freq[base][0], gc_pos_freq[base][1], gc_pos_freq[base][2]);
+                let idx = max_idx(
+                    gc_pos_freq[base][0],
+                    gc_pos_freq[base][1],
+                    gc_pos_freq[base][2],
+                );
                 pos_max[idx] += 1.0;
-                let idx = min_idx(gc_pos_freq[base][0], gc_pos_freq[base][1], gc_pos_freq[base][2]);
+                let idx = min_idx(
+                    gc_pos_freq[base][0],
+                    gc_pos_freq[base][1],
+                    gc_pos_freq[base][2],
+                );
                 pos_min[idx] += 1.0;
                 base += 3;
             }
@@ -491,9 +520,17 @@ fn process_single_genome(
             let n = ((start - stop) / 8) * 3;
             let mut base = start.saturating_sub(n);
             while base > stop + 36 && base < gc_pos_freq.len() {
-                let idx = max_idx(gc_pos_freq[base][2], gc_pos_freq[base][1], gc_pos_freq[base][0]);
+                let idx = max_idx(
+                    gc_pos_freq[base][2],
+                    gc_pos_freq[base][1],
+                    gc_pos_freq[base][0],
+                );
                 pos_max[idx] += 1.0;
-                let idx = min_idx(gc_pos_freq[base][2], gc_pos_freq[base][1], gc_pos_freq[base][0]);
+                let idx = min_idx(
+                    gc_pos_freq[base][2],
+                    gc_pos_freq[base][1],
+                    gc_pos_freq[base][0],
+                );
                 pos_min[idx] += 1.0;
                 if base >= 3 {
                     base -= 3;
@@ -524,16 +561,32 @@ fn process_single_genome(
         if orf.frame > 0 {
             let mut base = start;
             while base < stop && base < gc_pos_freq.len() {
-                let ind_max = max_idx(gc_pos_freq[base][0], gc_pos_freq[base][1], gc_pos_freq[base][2]);
-                let ind_min = min_idx(gc_pos_freq[base][0], gc_pos_freq[base][1], gc_pos_freq[base][2]);
+                let ind_max = max_idx(
+                    gc_pos_freq[base][0],
+                    gc_pos_freq[base][1],
+                    gc_pos_freq[base][2],
+                );
+                let ind_min = min_idx(
+                    gc_pos_freq[base][0],
+                    gc_pos_freq[base][1],
+                    gc_pos_freq[base][2],
+                );
                 log_hold += ln_pns * pos_max[ind_max] * pos_min[ind_min];
                 base += 3;
             }
         } else {
             let mut base = start;
             while base > stop && base < gc_pos_freq.len() {
-                let ind_max = max_idx(gc_pos_freq[base][2], gc_pos_freq[base][1], gc_pos_freq[base][0]);
-                let ind_min = min_idx(gc_pos_freq[base][2], gc_pos_freq[base][1], gc_pos_freq[base][0]);
+                let ind_max = max_idx(
+                    gc_pos_freq[base][2],
+                    gc_pos_freq[base][1],
+                    gc_pos_freq[base][0],
+                );
+                let ind_min = min_idx(
+                    gc_pos_freq[base][2],
+                    gc_pos_freq[base][1],
+                    gc_pos_freq[base][0],
+                );
                 log_hold += ln_pns * pos_max[ind_max] * pos_min[ind_min];
                 if base >= 3 {
                     base -= 3;
@@ -568,12 +621,20 @@ fn process_single_genome(
             let weight = if left.gene == "CDS" && right.gene == "CDS" {
                 if left.node_type == "start" && right.node_type == "stop" && left.frame > 0 {
                     orfs.iter()
-                        .find(|o| o.start == left.position && o.stop == right.position && o.frame == left.frame)
+                        .find(|o| {
+                            o.start == left.position
+                                && o.stop == right.position
+                                && o.frame == left.frame
+                        })
                         .map(|o| o.weight)
                         .unwrap_or(0.0)
                 } else if left.node_type == "stop" && right.node_type == "start" && left.frame < 0 {
                     orfs.iter()
-                        .find(|o| o.stop == left.position && o.start == right.position && o.frame == left.frame)
+                        .find(|o| {
+                            o.stop == left.position
+                                && o.start == right.position
+                                && o.frame == left.frame
+                        })
                         .map(|o| o.weight)
                         .unwrap_or(0.0)
                 } else {
@@ -698,7 +759,15 @@ fn find_orfs(
         .collect();
 
     let rc_dna = genome::rev_comp(&dna);
-    let orfs = orf::find_orfs_with_rc(&dna, &rc_dna, &start_codons, &stop_codons, min_orf_len, closed_ends, mask_n);
+    let orfs = orf::find_orfs_with_rc(
+        &dna,
+        &rc_dna,
+        &start_codons,
+        &stop_codons,
+        min_orf_len,
+        closed_ends,
+        mask_n,
+    );
 
     Ok(orfs.iter().map(|o| PyOrf::from(o)).collect())
 }
@@ -809,8 +878,7 @@ fn score_rbs(sequence: &str) -> PyResult<usize> {
 fn translate(sequence: &str, table: u8) -> PyResult<String> {
     validate_table(table)?;
     let seq = genome::normalize_seq(sequence);
-    codon_table::translate(&seq, table)
-        .map_err(|e| PyValueError::new_err(e))
+    codon_table::translate(&seq, table).map_err(|e| PyValueError::new_err(e))
 }
 
 // ---------------------------------------------------------------------------

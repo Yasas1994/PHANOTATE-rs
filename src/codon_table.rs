@@ -298,13 +298,13 @@ pub fn translate_table25(seq: &[u8]) -> String {
 /// `is_supported_table()` so that errors surface immediately.
 pub fn translate(seq: &[u8], table: u8) -> Result<String, String> {
     match table {
-        1  => Ok(translate_table1(seq)),
-        4  => Ok(translate_table4(seq)),
-        6  => Ok(translate_table6(seq)),
+        1 => Ok(translate_table1(seq)),
+        4 => Ok(translate_table4(seq)),
+        6 => Ok(translate_table6(seq)),
         11 => Ok(translate_table11(seq)),
         15 => Ok(translate_table15(seq)),
         25 => Ok(translate_table25(seq)),
-        n  => Err(format!(
+        n => Err(format!(
             "Translation table {} is not implemented. \
              Supported tables for phage annotation: 1, 4, 6, 11, 15, 25.",
             n
@@ -321,25 +321,25 @@ pub fn is_supported_table(table: u8) -> bool {
 #[allow(dead_code)]
 pub fn table_name(table: u8) -> &'static str {
     match table {
-        1  => "Standard",
-        4  => "Mold/Protozoan/Coelenterate Mitochondrial + Mycoplasma/Spiroplasma",
-        6  => "Ciliate, Dasycladacean and Hexamita Nuclear",
+        1 => "Standard",
+        4 => "Mold/Protozoan/Coelenterate Mitochondrial + Mycoplasma/Spiroplasma",
+        6 => "Ciliate, Dasycladacean and Hexamita Nuclear",
         11 => "Bacterial, Archaeal and Plant Plastid",
         15 => "Blepharisma Nuclear",
         25 => "Candidate Division SR1 and Gracilibacteria",
-        _  => "Unknown",
+        _ => "Unknown",
     }
 }
 
 /// Return the set of stop codons (lowercase) for a given table.
 pub fn stop_codons(table: u8) -> &'static [&'static [u8]] {
     match table {
-        1 | 11                => &[b"taa", b"tag", b"tga"],
-        4                     => &[b"taa", b"tag"],           // TGA is Trp
-        6                     => &[b"tga"],                   // TAA/TAG are Gln
-        15                    => &[b"taa", b"tga"],           // TAG is Gln
-        25                    => &[b"taa", b"tag"],           // TGA is Gly
-        _                     => &[b"taa", b"tag", b"tga"],
+        1 | 11 => &[b"taa", b"tag", b"tga"],
+        4 => &[b"taa", b"tag"],  // TGA is Trp
+        6 => &[b"tga"],          // TAA/TAG are Gln
+        15 => &[b"taa", b"tga"], // TAG is Gln
+        25 => &[b"taa", b"tag"], // TGA is Gly
+        _ => &[b"taa", b"tag", b"tga"],
     }
 }
 
@@ -347,13 +347,15 @@ pub fn stop_codons(table: u8) -> &'static [&'static [u8]] {
 /// These are the codons that PHANOTATE should consider as valid ORF starts.
 pub fn start_codons(table: u8) -> &'static [&'static [u8]] {
     match table {
-        1  => &[b"atg", b"ttg", b"ctg"],
-        4  => &[b"tta", b"ttg", b"ctg", b"att", b"atc", b"ata", b"atg", b"gtg"],
-        6  => &[b"atg"],
+        1 => &[b"atg", b"ttg", b"ctg"],
+        4 => &[
+            b"tta", b"ttg", b"ctg", b"att", b"atc", b"ata", b"atg", b"gtg",
+        ],
+        6 => &[b"atg"],
         11 => &[b"ttg", b"ctg", b"att", b"atc", b"ata", b"atg", b"gtg"],
         15 => &[b"atg"],
         25 => &[b"ttg", b"atg", b"gtg"],
-        _  => &[b"atg"],
+        _ => &[b"atg"],
     }
 }
 
@@ -442,6 +444,9 @@ mod tests {
     #[test]
     fn test_start_codons() {
         assert_eq!(start_codons(1), &[b"atg", b"ttg", b"ctg"]);
-        assert_eq!(start_codons(11), &[b"ttg", b"ctg", b"att", b"atc", b"ata", b"atg", b"gtg"]);
+        assert_eq!(
+            start_codons(11),
+            &[b"ttg", b"ctg", b"att", b"atc", b"ata", b"atg", b"gtg"]
+        );
     }
 }

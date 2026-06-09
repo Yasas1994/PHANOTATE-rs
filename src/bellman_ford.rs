@@ -19,9 +19,11 @@ pub fn shortest_path(graph: &Graph, source_idx: usize, target_idx: usize) -> Opt
     // Nodes are already sorted by position due to BTreeMap insertion order.
     // If any edge goes backward in the node ordering, we have a potential cycle
     // and must fall back to Bellman-Ford.
-    let has_backward_edge = graph.edges.iter().enumerate().any(|(u, edges)| {
-        edges.iter().any(|(v, _)| *v < u)
-    });
+    let has_backward_edge = graph
+        .edges
+        .iter()
+        .enumerate()
+        .any(|(u, edges)| edges.iter().any(|(v, _)| *v < u));
 
     if !has_backward_edge {
         topological_relaxation(graph, source_idx, target_idx)

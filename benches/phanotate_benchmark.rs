@@ -34,5 +34,10 @@ fn benchmark_nc_000866(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, benchmark_phix174, benchmark_nc_001416, benchmark_nc_000866);
+criterion_group!(
+    benches,
+    benchmark_phix174,
+    benchmark_nc_001416,
+    benchmark_nc_000866
+);
 criterion_main!(benches);

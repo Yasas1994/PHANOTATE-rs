@@ -15,9 +15,11 @@ fn is_orf_edge(left: &Node, right: &Node, orfs: &[Orf]) -> bool {
         return false;
     }
     if left.node_type == "start" && right.node_type == "stop" && left.frame > 0 {
-        orfs.iter().any(|o| o.start == left.position && o.stop == right.position && o.frame == left.frame)
+        orfs.iter()
+            .any(|o| o.start == left.position && o.stop == right.position && o.frame == left.frame)
     } else if left.node_type == "stop" && right.node_type == "start" && left.frame < 0 {
-        orfs.iter().any(|o| o.stop == left.position && o.start == right.position && o.frame == left.frame)
+        orfs.iter()
+            .any(|o| o.stop == left.position && o.start == right.position && o.frame == left.frame)
     } else {
         false
     }
@@ -193,11 +195,7 @@ pub fn write_protein_fasta(
 // ---------------------------------------------------------------------------
 // Nucleotide FASTA (for -d flag)
 // ---------------------------------------------------------------------------
-pub fn write_nucleotide_fasta(
-    id: &str,
-    path: &[(Node, Node, f64)],
-    orfs: &[Orf],
-) -> String {
+pub fn write_nucleotide_fasta(id: &str, path: &[(Node, Node, f64)], orfs: &[Orf]) -> String {
     let mut out = String::new();
     for (start, stop, strand, _weight, orf) in collect_orf_edges(path, orfs) {
         out.push_str(&format!(
@@ -307,8 +305,8 @@ mod tests {
         let path = vec![fwd_path(10, 30)];
         let edges = collect_orf_edges(&path, &orfs);
         assert_eq!(edges.len(), 1);
-        assert_eq!(edges[0].0, 10);  // start
-        assert_eq!(edges[0].1, 32);  // stop + 2
+        assert_eq!(edges[0].0, 10); // start
+        assert_eq!(edges[0].1, 32); // stop + 2
         assert_eq!(edges[0].2, '+'); // strand
         assert_eq!(edges[0].3, -42.0); // weight
     }
@@ -319,8 +317,8 @@ mod tests {
         let path = vec![rev_path(10, 30)];
         let edges = collect_orf_edges(&path, &orfs);
         assert_eq!(edges.len(), 1);
-        assert_eq!(edges[0].0, 12);  // right.position + 2
-        assert_eq!(edges[0].1, 30);  // left.position
+        assert_eq!(edges[0].0, 12); // right.position + 2
+        assert_eq!(edges[0].1, 30); // left.position
         assert_eq!(edges[0].2, '-'); // strand
         assert_eq!(edges[0].3, -99.0); // weight
     }
@@ -343,10 +341,7 @@ mod tests {
         let orfs = vec![make_orf(10, 30, 1, b"atg".to_vec())];
         let source = Node::new("source", "source", 0, 0);
         let start = Node::new("CDS", "start", 1, 10);
-        let path = vec![
-            (source, start, 0.0),
-            fwd_path(10, 30),
-        ];
+        let path = vec![(source, start, 0.0), fwd_path(10, 30)];
         let edges = collect_orf_edges(&path, &orfs);
         assert_eq!(edges.len(), 1);
         assert_eq!(edges[0].2, '+');

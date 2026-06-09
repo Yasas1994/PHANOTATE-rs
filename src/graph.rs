@@ -18,7 +18,7 @@ fn f64_to_bigint_weight(w: f64) -> BigInt {
 /// A node in the graph: a start or stop codon at a specific position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Node {
-    pub gene: &'static str, // "CDS", "tRNA", "source", "target"
+    pub gene: &'static str,      // "CDS", "tRNA", "source", "target"
     pub node_type: &'static str, // "start", "stop", "source", "target"
     pub frame: i8,
     pub position: usize, // 1-based position on forward strand
@@ -83,14 +83,8 @@ impl Graph {
         self.edges[src_idx].push((tgt_idx, edge.weight));
     }
 
-
-
     /// Build the graph from ORFs.
-    pub fn from_orfs(
-        orfs: &[Orf],
-        contig_length: usize,
-        pgap: f64,
-    ) -> (Self, Vec<usize>) {
+    pub fn from_orfs(orfs: &[Orf], contig_length: usize, pgap: f64) -> (Self, Vec<usize>) {
         let mut graph = Graph::new();
 
         // other_end maps position -> counterpart position in same ORF
@@ -156,48 +150,52 @@ impl Graph {
         let mut last = 0usize;
         for b in bases.iter().flatten() {
             if *b > last && *b - last > 500 {
-                    let node_list: Vec<Node> = graph.nodes.clone();
-                    for right_node in &node_list {
-                        let r = right_node.position;
-                        for left_node in &node_list {
-                            let l = left_node.position;
-                            if last + 1 >= l && l > last.saturating_sub(500)
-                                && b - 1 <= r && r < b + 500
-                            {
-                                if left_node.frame * right_node.frame > 0 {
-                                    if (left_node.node_type == "stop"
-                                        && right_node.node_type == "start"
-                                        && left_node.frame > 0)
-                                        || (left_node.node_type == "start"
-                                            && right_node.node_type == "stop"
-                                            && left_node.frame < 0)
-                                    {
-                                        let score = score_gap((r as isize) - (l as isize) - 3, "same", pgap);
-                                        graph.add_edge(Edge {
-                                            source: *left_node,
-                                            target: *right_node,
-                                            weight: f64_to_bigint_weight(score * 1000.0),
-                                        });
-                                    }
-                                } else if (left_node.node_type == "stop"
-                                    && right_node.node_type == "stop"
+                let node_list: Vec<Node> = graph.nodes.clone();
+                for right_node in &node_list {
+                    let r = right_node.position;
+                    for left_node in &node_list {
+                        let l = left_node.position;
+                        if last + 1 >= l
+                            && l > last.saturating_sub(500)
+                            && b - 1 <= r
+                            && r < b + 500
+                        {
+                            if left_node.frame * right_node.frame > 0 {
+                                if (left_node.node_type == "stop"
+                                    && right_node.node_type == "start"
                                     && left_node.frame > 0)
                                     || (left_node.node_type == "start"
-                                        && right_node.node_type == "start"
+                                        && right_node.node_type == "stop"
                                         && left_node.frame < 0)
                                 {
-                                    let score = score_gap((r as isize) - (l as isize) - 3, "diff", pgap);
+                                    let score =
+                                        score_gap((r as isize) - (l as isize) - 3, "same", pgap);
                                     graph.add_edge(Edge {
                                         source: *left_node,
                                         target: *right_node,
                                         weight: f64_to_bigint_weight(score * 1000.0),
                                     });
                                 }
+                            } else if (left_node.node_type == "stop"
+                                && right_node.node_type == "stop"
+                                && left_node.frame > 0)
+                                || (left_node.node_type == "start"
+                                    && right_node.node_type == "start"
+                                    && left_node.frame < 0)
+                            {
+                                let score =
+                                    score_gap((r as isize) - (l as isize) - 3, "diff", pgap);
+                                graph.add_edge(Edge {
+                                    source: *left_node,
+                                    target: *right_node,
+                                    weight: f64_to_bigint_weight(score * 1000.0),
+                                });
                             }
                         }
                     }
                 }
-                last = *b;
+            }
+            last = *b;
         }
 
         // Connect the open reading frames to each other
@@ -227,7 +225,8 @@ impl Graph {
                 //             o1 = pgap
                 let o1 = if let Some(orfs_at_l) = stop_to_orfs.get(&l) {
                     if let Some(other) = l_other {
-                        orfs_at_l.iter()
+                        orfs_at_l
+                            .iter()
                             .find(|o| o.start == other)
                             .map(|o| o.pstop)
                             .unwrap_or(pgap)
@@ -239,7 +238,8 @@ impl Graph {
                 };
                 let o2 = if let Some(orfs_at_r) = stop_to_orfs.get(&r) {
                     if let Some(other) = r_other {
-                        orfs_at_r.iter()
+                        orfs_at_r
+                            .iter()
                             .find(|o| o.start == other)
                             .map(|o| o.pstop)
                             .unwrap_or(pgap)
@@ -267,7 +267,11 @@ impl Graph {
                             if left_node.frame != right_node.frame {
                                 if let (Some(lo), Some(ro)) = (l_other, r_other) {
                                     if r < lo && ro < l {
-                                        let score = score_overlap(r as isize - l as isize + 3, "same", pstop);
+                                        let score = score_overlap(
+                                            r as isize - l as isize + 3,
+                                            "same",
+                                            pstop,
+                                        );
                                         graph.add_edge(Edge {
                                             source: *right_node,
                                             target: *left_node,
@@ -282,7 +286,11 @@ impl Graph {
                             if left_node.frame != right_node.frame {
                                 if let (Some(lo), Some(ro)) = (l_other, r_other) {
                                     if r < lo && ro < l {
-                                        let score = score_overlap(r as isize - l as isize + 3, "same", pstop);
+                                        let score = score_overlap(
+                                            r as isize - l as isize + 3,
+                                            "same",
+                                            pstop,
+                                        );
                                         graph.add_edge(Edge {
                                             source: *right_node,
                                             target: *left_node,
@@ -306,7 +314,8 @@ impl Graph {
                         if right_node.frame > 0 {
                             if let (Some(lo), Some(ro)) = (l_other, r_other) {
                                 if ro + 3 < l && r < lo {
-                                    let score = score_overlap(r as isize - l as isize + 3, "diff", pstop);
+                                    let score =
+                                        score_overlap(r as isize - l as isize + 3, "diff", pstop);
                                     graph.add_edge(Edge {
                                         source: *right_node,
                                         target: *left_node,
@@ -333,7 +342,8 @@ impl Graph {
                         } else if right_node.frame < 0 {
                             if let (Some(lo), Some(ro)) = (l_other, r_other) {
                                 if ro < l && r < lo {
-                                    let score = score_overlap(r as isize - l as isize + 3, "diff", pstop);
+                                    let score =
+                                        score_overlap(r as isize - l as isize + 3, "diff", pstop);
                                     graph.add_edge(Edge {
                                         source: *right_node,
                                         target: *left_node,

@@ -30,7 +30,12 @@ mod tests {
         let same = score_overlap(10, "same", 0.05);
         let diff = score_overlap(10, "diff", 0.05);
         // diff direction adds 1/s penalty
-        assert!(diff > same, "diff direction should add penalty: diff={} same={}", diff, same);
+        assert!(
+            diff > same,
+            "diff direction should add penalty: diff={} same={}",
+            diff,
+            same
+        );
     }
 
     #[test]
@@ -51,7 +56,10 @@ mod tests {
         // High pstop means low o = 1 - pstop, so score should be higher
         let low_pstop = score_overlap(10, "same", 0.01);
         let high_pstop = score_overlap(10, "same", 0.5);
-        assert!(high_pstop > low_pstop, "higher pstop should give higher score");
+        assert!(
+            high_pstop > low_pstop,
+            "higher pstop should give higher score"
+        );
     }
 
     #[test]
