@@ -62,6 +62,7 @@ jobs:
 
       - name: Run integration tests
         # Skip tests that require files from the external PHANOTATE repo
+        shell: bash
         run: |
           cargo test --test cli_tests -- \
             --skip phix174 --skip sco --skip lambda --skip table4 --skip regression \
