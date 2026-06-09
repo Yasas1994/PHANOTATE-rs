@@ -128,7 +128,7 @@ fn max_orf_length(seq: &[u8], table: u8, min_len: usize) -> usize {
 }
 
 fn is_stop(codon: &[u8], stops: &[&[u8]]) -> bool {
-    stops.iter().any(|&s| s == codon)
+    stops.contains(&codon)
 }
 
 fn rev_comp(seq: &[u8]) -> Vec<u8> {
