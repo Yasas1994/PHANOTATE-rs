@@ -3,9 +3,11 @@
 A fast Rust reimplementation of **PHANOTATE** — a gene caller optimized for bacteriophage genomes.
 
 [![Crates.io](https://img.shields.io/crates/v/phanotate-rs)](https://crates.io/crates/phanotate-rs)
+[![PyPI](https://img.shields.io/pypi/v/phanotate-rs.svg)](https://pypi.org/project/phanotate-rs/)
 [![GitHub Release](https://img.shields.io/github/v/release/Yasas1994/PHANOTATE-rs)](https://github.com/Yasas1994/PHANOTATE-rs/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org)
+[![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org)
 [![Tests](https://img.shields.io/badge/tests-128%20passing-brightgreen.svg)](#testing)
 [![Bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](http://bioconda.github.io/recipes/phanotate-rs/README.html)
 [![Homebrew](https://img.shields.io/badge/install%20with-Homebrew-orange.svg?style=flat)](https://github.com/Yasas1994/PHANOTATE-rs#installation)
@@ -23,6 +25,7 @@ A fast Rust reimplementation of **PHANOTATE** — a gene caller optimized for ba
 - **Automatic translation table detection** (`--detect-table`) — Detects the most likely genetic code from the sequence itself before annotation
 - **Multi-threaded** — Process multiple contigs in parallel via Rayon
 - **Fast** — Significantly faster than the Python reference implementation (see [Benchmarks](#benchmarks))
+- **Python bindings** — Use `import phanotate_rs` from Python (see [Python API](#python-api))
 
 ---
 
@@ -77,6 +80,14 @@ The binary will be at `./target/release/phanotate-rs`.
 Pre-built binaries for Linux (x86_64, aarch64, musl), macOS (Intel, Apple Silicon),
 and Windows (x86_64) are available from the
 [Releases](https://github.com/Yasas1994/PHANOTATE-rs/releases) page.
+
+### PyPI (Python package) ✅
+
+```bash
+pip install phanotate-rs
+```
+
+Requires Python 3.9+ and a compatible platform (wheels provided for Linux, macOS, Windows).
 
 ---
 
@@ -141,6 +152,66 @@ Options:
 | 11 | Bacterial/Archaeal | **Default** for all bacteriophages |
 | 15 | Blepharisma nuclear | Some Crassvirales (TAG → Gln) |
 | 25 | SR1/Gracilibacteria | Gracilibacteria phages (TGA → Gly) |
+
+---
+
+## Python API
+
+`phanotate-rs` can be used directly from Python via PyO3 bindings:
+
+```bash
+pip install phanotate-rs
+```
+
+```python
+import phanotate_rs
+
+# Run the full gene-calling pipeline
+result = phanotate_rs.phanotate(
+    "ATG" + "A" * 300 + "TAA",
+    seq_id="my_phage",
+    format="gbk",      # gbk, gff, or sco
+    table=11,          # NCBI translation table
+    closed_ends=False,
+    mask_n=False,
+    detect_table=False,
+)
+
+print(result["primary"])       # Annotation output
+print(result["protein"])       # Protein FASTA
+print(result["nucleotide"])    # Nucleotide FASTA
+print(result["table_used"])    # Table that was actually used
+
+# Access predicted genes
+for gene in result["genes"]:
+    print(f"{gene.start}..{gene.stop} {gene.strand} ({gene.start_codon})")
+
+# Low-level ORF finder (no graph/path step)
+orfs = phanotate_rs.find_orfs("ATG" + "A" * 300 + "TAA")
+for orf in orfs:
+    print(f"ORF {orf.start}-{orf.stop} frame={orf.frame} rbs={orf.rbs_score}")
+
+# Detect the most likely translation table
+scores = phanotate_rs.detect_table("ATG...")
+for s in scores:
+    print(f"Table {s.table}: composite={s.composite:.2f}")
+
+# Utilities
+print(phanotate_rs.supported_tables())          # [1, 4, 6, 11, 15, 25]
+print(phanotate_rs.table_name(11))              # "Bacterial, Archaeal and Plant Plastid"
+print(phanotate_rs.translate("atgtggtaa"))      # "MW*"
+print(phanotate_rs.score_rbs("aaggaggtgagtaacaaaacc"))  # 13
+```
+
+### Building from source (Python)
+
+```bash
+git clone https://github.com/Yasas1994/PHANOTATE-rs.git
+cd PHANOTATE-rs
+pip install maturin
+maturin develop
+python -c "import phanotate_rs; print(phanotate_rs.supported_tables())"
+```
 
 ---
 
@@ -274,15 +345,19 @@ Columns:
 
 ## Testing
 
-The test suite includes 117 tests across three categories:
+The test suite includes 168 tests across four categories:
 
-- **84 unit tests** — ORF enumeration, weight calculations, table detection algorithms, confidence scoring
+- **84 Rust unit tests** — ORF enumeration, weight calculations, table detection algorithms, confidence scoring
 - **20 CLI integration tests** — Flag parsing, output format validation, golden-file comparisons against the Python reference
 - **10 detect-table integration tests** — Real-genome regression tests (SpV4 → table 4, Lambda → table 11, crAssphage → table 15) plus synthetic sequence tests
+- **51 Python binding tests** — Full coverage of the PyO3 API (`phanotate`, `find_orfs`, `detect_table`, `translate`, `score_rbs`, and all data classes)
 
 ```bash
-# Run all tests
+# Run Rust tests
 cargo test
+
+# Run Python tests (requires maturin develop first)
+pytest tests/test_python_bindings.py -v
 
 # Run with Clippy (zero warnings policy)
 cargo clippy -- -D warnings

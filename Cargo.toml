@@ -20,6 +20,19 @@ indicatif = { version = "0.17", features = ["rayon"] }
 num-bigint = "0.4.6"
 rayon = "1.12.0"
 
+[dependencies.pyo3]
+version = "0.22"
+features = ["extension-module"]
+optional = true
+
+[features]
+default = []
+python = ["dep:pyo3"]
+
+[lib]
+name = "phanotate_rs"
+crate-type = ["cdylib", "rlib"]
+
 [dev-dependencies]
 criterion = "0.5"
 pretty_assertions = "1.4"

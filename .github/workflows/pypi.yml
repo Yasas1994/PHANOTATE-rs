@@ -1,0 +1,135 @@
+name: Build and Publish Python Wheels
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to PyPI (true/false)'
+        required: false
+        default: 'false'
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  # macOS deployment target — must be high enough for modern systems
+  # while keeping backward compatibility. 14.0 covers macOS Sonoma+.
+  MACOSX_DEPLOYMENT_TARGET: "14.0"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build wheels for all platforms using maturin-action
+  # ---------------------------------------------------------------------------
+  build-wheels:
+    name: Build wheels (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux
+          - os: ubuntu-latest
+            target: x86_64
+            manylinux: auto
+          - os: ubuntu-latest
+            target: aarch64
+            manylinux: auto
+          # macOS
+          - os: macos-latest
+            target: universal2-apple-darwin
+            manylinux: ''
+          # Windows
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            manylinux: ''
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: ${{ matrix.manylinux || '' }}
+          args: --release --out dist
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}-${{ matrix.target }}
+          path: dist/*.whl
+
+  # ---------------------------------------------------------------------------
+  # Build source distribution
+  # ---------------------------------------------------------------------------
+  build-sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Build sdist
+        run: maturin sdist --out dist
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  # ---------------------------------------------------------------------------
+  # Publish to PyPI (only on tag pushes or explicit workflow dispatch)
+  # Uses trusted publishing (OIDC) — no API token needed.
+  #
+  # Setup required on PyPI:
+  #   1. Go to https://pypi.org/manage/project/phanotate-rs/settings/publishing/
+  #   2. Add a new pending publisher:
+  #        Owner:       Yasas1994
+  #        Repository:  PHANOTATE-rs
+  #        Workflow:    pypi.yml
+  #        Environment: pypi
+  # ---------------------------------------------------------------------------
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [build-wheels, build-sdist]
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'true')
+    environment:
+      name: pypi
+      url: https://pypi.org/p/phanotate-rs
+    permissions:
+      id-token: write  # Required for trusted publishing (OIDC)
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: 'wheels-*|sdist'
+          merge-multiple: true
+
+      - name: List distributions
+        run: ls -la dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          skip-existing: true

@@ -385,3 +385,131 @@ impl Graph {
         (graph, vec![source_idx, target_idx])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_node_new() {
+        let node = Node::new("CDS", "start", 1, 100);
+        assert_eq!(node.gene, "CDS");
+        assert_eq!(node.node_type, "start");
+        assert_eq!(node.frame, 1);
+        assert_eq!(node.position, 100);
+    }
+
+    #[test]
+    fn test_graph_new() {
+        let graph = Graph::new();
+        assert!(graph.nodes.is_empty());
+        assert!(graph.edges.is_empty());
+        assert!(graph.node_to_idx.is_empty());
+    }
+
+    #[test]
+    fn test_graph_add_node() {
+        let mut graph = Graph::new();
+        let node = Node::new("CDS", "start", 1, 100);
+        let idx = graph.add_node(node);
+        assert_eq!(idx, 0);
+        assert_eq!(graph.nodes.len(), 1);
+        assert_eq!(graph.edges.len(), 1);
+        assert!(graph.node_to_idx.contains_key(&node));
+    }
+
+    #[test]
+    fn test_graph_add_duplicate_node() {
+        let mut graph = Graph::new();
+        let node = Node::new("CDS", "start", 1, 100);
+        let idx1 = graph.add_node(node);
+        let idx2 = graph.add_node(node);
+        assert_eq!(idx1, idx2);
+        assert_eq!(graph.nodes.len(), 1);
+    }
+
+    #[test]
+    fn test_graph_add_edge() {
+        let mut graph = Graph::new();
+        let source = Node::new("CDS", "start", 1, 100);
+        let target = Node::new("CDS", "stop", 1, 200);
+
+        graph.add_edge(Edge {
+            source,
+            target,
+            weight: BigInt::from(-42),
+        });
+
+        assert_eq!(graph.nodes.len(), 2);
+        assert_eq!(graph.edges.len(), 2);
+
+        let s_idx = graph.node_to_idx[&source];
+        assert_eq!(graph.edges[s_idx].len(), 1);
+        assert_eq!(graph.edges[s_idx][0].1, BigInt::from(-42));
+    }
+
+    #[test]
+    fn test_graph_add_multiple_edges() {
+        let mut graph = Graph::new();
+        let a = Node::new("CDS", "start", 1, 10);
+        let b = Node::new("CDS", "stop", 1, 20);
+        let c = Node::new("CDS", "start", 2, 30);
+
+        let a_idx = graph.add_node(a);
+        let b_idx = graph.add_node(b);
+        let c_idx = graph.add_node(c);
+
+        graph.edges[a_idx].push((b_idx, BigInt::from(1)));
+        graph.edges[a_idx].push((c_idx, BigInt::from(2)));
+
+        assert_eq!(graph.edges[a_idx].len(), 2);
+    }
+
+    #[test]
+    fn test_node_equality() {
+        let a = Node::new("CDS", "start", 1, 100);
+        let b = Node::new("CDS", "start", 1, 100);
+        let c = Node::new("CDS", "stop", 1, 100);
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn test_node_ordering() {
+        let a = Node::new("CDS", "start", 1, 100);
+        let b = Node::new("CDS", "start", 1, 200);
+        assert!(a < b);
+    }
+
+    #[test]
+    fn test_graph_from_orfs_empty() {
+        let orfs: Vec<Orf> = vec![];
+        let (graph, endpoints) = Graph::from_orfs(&orfs, 100, 0.05);
+        assert_eq!(graph.nodes.len(), 2); // source + target
+        assert_eq!(endpoints.len(), 2);
+    }
+
+    #[test]
+    fn test_graph_from_orfs_single() {
+        let orfs = vec![Orf {
+            start: 1,
+            stop: 30,
+            frame: 1,
+            seq: b"atg".to_vec(),
+            rbs_score: 10,
+            pstop: 0.05,
+            weight_rbs: 1.0,
+            hold: 1.0,
+            weight: -1.0,
+        }];
+        let (graph, endpoints) = Graph::from_orfs(&orfs, 100, 0.05);
+        assert!(graph.nodes.len() >= 2);
+        assert_eq!(endpoints.len(), 2);
+    }
+
+    #[test]
+    fn test_graph_default() {
+        let graph: Graph = Default::default();
+        assert!(graph.nodes.is_empty());
+    }
+}
