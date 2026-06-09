@@ -162,7 +162,10 @@ mod tests {
 
     #[test]
     fn test_normalize() {
-        assert_eq!(normalize_seq("ATGCSBVX"), vec![b'a', b't', b'g', b'c', b'g', b'g', b'g', b'a']);
+        assert_eq!(
+            normalize_seq("ATGCSBVX"),
+            vec![b'a', b't', b'g', b'c', b'g', b'g', b'g', b'a']
+        );
     }
 }
 
@@ -175,8 +178,14 @@ mod debug_tests {
         let genomes = read_fasta("../PHANOTATE/tests/phiX174.fasta").unwrap();
         for genome in genomes {
             println!("Rust len: {}", genome.seq.len());
-            println!("Rust first 50: {}", String::from_utf8_lossy(&genome.seq[..50]));
-            println!("Rust last 50: {}", String::from_utf8_lossy(&genome.seq[genome.seq.len()-50..]));
+            println!(
+                "Rust first 50: {}",
+                String::from_utf8_lossy(&genome.seq[..50])
+            );
+            println!(
+                "Rust last 50: {}",
+                String::from_utf8_lossy(&genome.seq[genome.seq.len() - 50..])
+            );
         }
     }
 }

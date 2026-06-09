@@ -17,8 +17,8 @@ use phanotate_rs::orf;
 use phanotate_rs::output;
 
 use codon_table::is_supported_table;
-use genome::{read_fasta_data, read_genbank, Genome};
 use gcfp::{max_idx, min_idx, GCframe};
+use genome::{read_fasta_data, read_genbank, Genome};
 use graph::{Graph, Node};
 use orf::{find_orfs_with_rc, score_rbs, Orf};
 use output::Format;
@@ -26,7 +26,9 @@ use output::Format;
 #[derive(Parser, Debug)]
 #[command(name = "phanotate-rs")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
-#[command(about = "A Gene caller for phage genomes based on PHANOTATE https://github.com/deprekate/PHANOTATE")]
+#[command(
+    about = "A Gene caller for phage genomes based on PHANOTATE https://github.com/deprekate/PHANOTATE"
+)]
 struct Cli {
     /// Write protein translations to FILE
     #[arg(short = 'a', value_name = "FILE")]
@@ -168,10 +170,22 @@ fn process_genome(
     for i in 0..len {
         let base = dna[i];
         match base {
-            b'a' => { freq[0] += 1; freq[1] += 1; }
-            b't' => { freq[1] += 1; freq[0] += 1; }
-            b'c' => { freq[2] += 1; freq[3] += 1; }
-            b'g' => { freq[3] += 1; freq[2] += 1; }
+            b'a' => {
+                freq[0] += 1;
+                freq[1] += 1;
+            }
+            b't' => {
+                freq[1] += 1;
+                freq[0] += 1;
+            }
+            b'c' => {
+                freq[2] += 1;
+                freq[3] += 1;
+            }
+            b'g' => {
+                freq[3] += 1;
+                freq[2] += 1;
+            }
             _ => {}
         }
 
@@ -206,7 +220,15 @@ fn process_genome(
     }
 
     // --- Find ORFs ---
-    let mut orfs = find_orfs_with_rc(dna, &genome.rc_seq, start_codons, stop_codons, 90, closed_ends, mask_n);
+    let mut orfs = find_orfs_with_rc(
+        dna,
+        &genome.rc_seq,
+        start_codons,
+        stop_codons,
+        90,
+        closed_ends,
+        mask_n,
+    );
 
     if orfs.is_empty() {
         let no_orfs = format!("#id:\t{} NO ORFS FOUND\n", genome.id);
@@ -230,7 +252,8 @@ fn process_genome(
     let mut pos_max = [1.0f64; 4];
     let mut pos_min = [1.0f64; 4];
 
-    let mut by_stop: std::collections::BTreeMap<usize, Vec<&Orf>> = std::collections::BTreeMap::new();
+    let mut by_stop: std::collections::BTreeMap<usize, Vec<&Orf>> =
+        std::collections::BTreeMap::new();
     for orf in &orfs {
         by_stop.entry(orf.stop).or_default().push(orf);
     }
@@ -383,12 +406,20 @@ fn process_genome(
             let weight = if left.gene == "CDS" && right.gene == "CDS" {
                 if left.node_type == "start" && right.node_type == "stop" && left.frame > 0 {
                     orfs.iter()
-                        .find(|o| o.start == left.position && o.stop == right.position && o.frame == left.frame)
+                        .find(|o| {
+                            o.start == left.position
+                                && o.stop == right.position
+                                && o.frame == left.frame
+                        })
                         .map(|o| o.weight)
                         .unwrap_or(0.0)
                 } else if left.node_type == "stop" && right.node_type == "start" && left.frame < 0 {
                     orfs.iter()
-                        .find(|o| o.stop == left.position && o.start == right.position && o.frame == left.frame)
+                        .find(|o| {
+                            o.stop == left.position
+                                && o.start == right.position
+                                && o.frame == left.frame
+                        })
                         .map(|o| o.weight)
                         .unwrap_or(0.0)
                 } else {
@@ -579,9 +610,18 @@ fn main() -> Result<()> {
             .collect()
     };
 
-    let primary_output = results.iter().map(|(p, _, _)| p.as_str()).collect::<String>();
-    let protein_output = results.iter().map(|(_, pr, _)| pr.as_str()).collect::<String>();
-    let nuc_output = results.iter().map(|(_, _, n)| n.as_str()).collect::<String>();
+    let primary_output = results
+        .iter()
+        .map(|(p, _, _)| p.as_str())
+        .collect::<String>();
+    let protein_output = results
+        .iter()
+        .map(|(_, pr, _)| pr.as_str())
+        .collect::<String>();
+    let nuc_output = results
+        .iter()
+        .map(|(_, _, n)| n.as_str())
+        .collect::<String>();
 
     // Write primary output
     if let Some(path) = cli.output {

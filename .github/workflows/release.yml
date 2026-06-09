@@ -88,3 +88,19 @@ jobs:
         with:
           files: artifacts/*
           generate_release_notes: true
+
+      - name: Release Summary
+        run: |
+          echo "========================================"
+          echo "  Release ${{ github.ref_name }} Complete"
+          echo "========================================"
+          echo ""
+          echo "Artifacts published to GitHub Release:"
+          ls -la artifacts/
+          echo ""
+          echo "Other workflows triggered:"
+          echo "  • PyPI wheels: .github/workflows/pypi.yml"
+          echo "  • Bioconda recipe: .github/workflows/bioconda.yml"
+          echo ""
+          echo "PyPI package: https://pypi.org/project/phanotate-rs/"
+          echo "========================================"

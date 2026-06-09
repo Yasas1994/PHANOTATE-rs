@@ -1,15 +1,14 @@
-
 #[derive(Debug, Clone)]
 pub struct Orf {
-    pub start: usize,    // 1-based, inclusive start of start codon (forward coords)
-    pub stop: usize,     // 1-based, inclusive stop of stop codon (forward coords)
-    pub frame: i8,       // 1,2,3 for forward; -1,-2,-3 for reverse
-    pub seq: Vec<u8>,    // the ORF nucleotide sequence (forward direction)
+    pub start: usize, // 1-based, inclusive start of start codon (forward coords)
+    pub stop: usize,  // 1-based, inclusive stop of stop codon (forward coords)
+    pub frame: i8,    // 1,2,3 for forward; -1,-2,-3 for reverse
+    pub seq: Vec<u8>, // the ORF nucleotide sequence (forward direction)
     pub rbs_score: usize,
-    pub pstop: f64,      // P(stop) for this ORF
+    pub pstop: f64, // P(stop) for this ORF
     pub weight_rbs: f64,
-    pub hold: f64,       // product of adjusted P(not_stop) per codon
-    pub weight: f64,     // final ORF edge weight (negative)
+    pub hold: f64,   // product of adjusted P(not_stop) per codon
+    pub weight: f64, // final ORF edge weight (negative)
 }
 
 impl Orf {
@@ -68,7 +67,15 @@ pub fn find_orfs(
     mask_n: bool,
 ) -> Vec<Orf> {
     let rc_dna = crate::genome::rev_comp(dna);
-    find_orfs_with_rc(dna, &rc_dna, start_codons, stop_codons, min_orf_len, closed_ends, mask_n)
+    find_orfs_with_rc(
+        dna,
+        &rc_dna,
+        start_codons,
+        stop_codons,
+        min_orf_len,
+        closed_ends,
+        mask_n,
+    )
 }
 
 /// Enumerate all ORFs in all six reading frames using a pre-computed reverse complement.
@@ -85,11 +92,7 @@ pub fn find_orfs_with_rc(
     let contig_length = dna.len();
 
     // Pre-compute masked regions if needed
-    let masked_regions: Vec<(usize, usize)> = if mask_n {
-        find_n_runs(dna)
-    } else {
-        Vec::new()
-    };
+    let masked_regions: Vec<(usize, usize)> = if mask_n { find_n_runs(dna) } else { Vec::new() };
 
     // The dicts that hold start and stop codons
     // frames: 1,2,3,-1,-2,-3
@@ -97,11 +100,16 @@ pub fn find_orfs_with_rc(
         [(1, 0), (2, 0), (3, 0), (-1, 1), (-2, 2), (-3, 3)]
             .into_iter()
             .collect();
-    let mut starts: std::collections::HashMap<i8, Vec<usize>> =
-        [(1, Vec::new()), (2, Vec::new()), (3, Vec::new()),
-         (-1, Vec::new()), (-2, Vec::new()), (-3, Vec::new())]
-            .into_iter()
-            .collect();
+    let mut starts: std::collections::HashMap<i8, Vec<usize>> = [
+        (1, Vec::new()),
+        (2, Vec::new()),
+        (3, Vec::new()),
+        (-1, Vec::new()),
+        (-2, Vec::new()),
+        (-3, Vec::new()),
+    ]
+    .into_iter()
+    .collect();
 
     // Initial fragment starts if first codon is NOT a start
     if !closed_ends {
@@ -342,8 +350,13 @@ pub fn score_rbs(seq: &[u8]) -> usize {
     };
 
     // Ported from Python's score_rbs in functions.py — using byte patterns
-    if in_range(b"ggagga", 5, 11) || in_range(b"ggagga", 6, 12) || in_range(b"ggagga", 7, 13)
-        || in_range(b"ggagga", 8, 14) || in_range(b"ggagga", 9, 15) || in_range(b"ggagga", 10, 16) {
+    if in_range(b"ggagga", 5, 11)
+        || in_range(b"ggagga", 6, 12)
+        || in_range(b"ggagga", 7, 13)
+        || in_range(b"ggagga", 8, 14)
+        || in_range(b"ggagga", 9, 15)
+        || in_range(b"ggagga", 10, 16)
+    {
         return 27;
     }
     if in_range(b"ggagga", 3, 9) || in_range(b"ggagga", 4, 10) {
@@ -352,179 +365,365 @@ pub fn score_rbs(seq: &[u8]) -> usize {
     if in_range(b"ggagga", 11, 17) || in_range(b"ggagga", 12, 18) {
         return 25;
     }
-    if in_range(b"ggagg", 5, 10) || in_range(b"ggagg", 6, 11) || in_range(b"ggagg", 7, 12)
-        || in_range(b"ggagg", 8, 13) || in_range(b"ggagg", 9, 14) || in_range(b"ggagg", 10, 15) {
+    if in_range(b"ggagg", 5, 10)
+        || in_range(b"ggagg", 6, 11)
+        || in_range(b"ggagg", 7, 12)
+        || in_range(b"ggagg", 8, 13)
+        || in_range(b"ggagg", 9, 14)
+        || in_range(b"ggagg", 10, 15)
+    {
         return 24;
     }
     if in_range(b"ggagg", 3, 8) || in_range(b"ggagg", 4, 9) {
         return 23;
     }
-    if in_range(b"gagga", 5, 10) || in_range(b"gagga", 6, 11) || in_range(b"gagga", 7, 12)
-        || in_range(b"gagga", 8, 13) || in_range(b"gagga", 9, 14) || in_range(b"gagga", 10, 15) {
+    if in_range(b"gagga", 5, 10)
+        || in_range(b"gagga", 6, 11)
+        || in_range(b"gagga", 7, 12)
+        || in_range(b"gagga", 8, 13)
+        || in_range(b"gagga", 9, 14)
+        || in_range(b"gagga", 10, 15)
+    {
         return 22;
     }
     if in_range(b"gagga", 3, 8) || in_range(b"gagga", 4, 9) {
         return 21;
     }
-    if in_range(b"gagga", 11, 16) || in_range(b"gagga", 12, 17)
-        || in_range(b"ggagg", 11, 16) || in_range(b"ggagg", 12, 17) {
+    if in_range(b"gagga", 11, 16)
+        || in_range(b"gagga", 12, 17)
+        || in_range(b"ggagg", 11, 16)
+        || in_range(b"ggagg", 12, 17)
+    {
         return 20;
     }
-    if in_range(b"ggacga", 5, 11) || in_range(b"ggacga", 6, 12) || in_range(b"ggacga", 7, 13)
-        || in_range(b"ggacga", 8, 14) || in_range(b"ggacga", 9, 15) || in_range(b"ggacga", 10, 16) {
+    if in_range(b"ggacga", 5, 11)
+        || in_range(b"ggacga", 6, 12)
+        || in_range(b"ggacga", 7, 13)
+        || in_range(b"ggacga", 8, 14)
+        || in_range(b"ggacga", 9, 15)
+        || in_range(b"ggacga", 10, 16)
+    {
         return 19;
     }
-    if in_range(b"ggatga", 5, 11) || in_range(b"ggatga", 6, 12) || in_range(b"ggatga", 7, 13)
-        || in_range(b"ggatga", 8, 14) || in_range(b"ggatga", 9, 15) || in_range(b"ggatga", 10, 16) {
+    if in_range(b"ggatga", 5, 11)
+        || in_range(b"ggatga", 6, 12)
+        || in_range(b"ggatga", 7, 13)
+        || in_range(b"ggatga", 8, 14)
+        || in_range(b"ggatga", 9, 15)
+        || in_range(b"ggatga", 10, 16)
+    {
         return 19;
     }
-    if in_range(b"ggaaga", 5, 11) || in_range(b"ggaaga", 6, 12) || in_range(b"ggaaga", 7, 13)
-        || in_range(b"ggaaga", 8, 14) || in_range(b"ggaaga", 9, 15) || in_range(b"ggaaga", 10, 16) {
+    if in_range(b"ggaaga", 5, 11)
+        || in_range(b"ggaaga", 6, 12)
+        || in_range(b"ggaaga", 7, 13)
+        || in_range(b"ggaaga", 8, 14)
+        || in_range(b"ggaaga", 9, 15)
+        || in_range(b"ggaaga", 10, 16)
+    {
         return 19;
     }
-    if in_range(b"ggcgga", 5, 11) || in_range(b"ggcgga", 6, 12) || in_range(b"ggcgga", 7, 13)
-        || in_range(b"ggcgga", 8, 14) || in_range(b"ggcgga", 9, 15) || in_range(b"ggcgga", 10, 16) {
+    if in_range(b"ggcgga", 5, 11)
+        || in_range(b"ggcgga", 6, 12)
+        || in_range(b"ggcgga", 7, 13)
+        || in_range(b"ggcgga", 8, 14)
+        || in_range(b"ggcgga", 9, 15)
+        || in_range(b"ggcgga", 10, 16)
+    {
         return 19;
     }
-    if in_range(b"ggggga", 5, 11) || in_range(b"ggggga", 6, 12) || in_range(b"ggggga", 7, 13)
-        || in_range(b"ggggga", 8, 14) || in_range(b"ggggga", 9, 15) || in_range(b"ggggga", 10, 16) {
+    if in_range(b"ggggga", 5, 11)
+        || in_range(b"ggggga", 6, 12)
+        || in_range(b"ggggga", 7, 13)
+        || in_range(b"ggggga", 8, 14)
+        || in_range(b"ggggga", 9, 15)
+        || in_range(b"ggggga", 10, 16)
+    {
         return 19;
     }
-    if in_range(b"ggtgga", 5, 11) || in_range(b"ggtgga", 6, 12) || in_range(b"ggtgga", 7, 13)
-        || in_range(b"ggtgga", 8, 14) || in_range(b"ggtgga", 9, 15) || in_range(b"ggtgga", 10, 16) {
+    if in_range(b"ggtgga", 5, 11)
+        || in_range(b"ggtgga", 6, 12)
+        || in_range(b"ggtgga", 7, 13)
+        || in_range(b"ggtgga", 8, 14)
+        || in_range(b"ggtgga", 9, 15)
+        || in_range(b"ggtgga", 10, 16)
+    {
         return 19;
     }
-    if in_range(b"ggaaga", 3, 9) || in_range(b"ggaaga", 4, 10)
-        || in_range(b"ggatga", 3, 9) || in_range(b"ggatga", 4, 10)
-        || in_range(b"ggacga", 3, 9) || in_range(b"ggacga", 4, 10) {
+    if in_range(b"ggaaga", 3, 9)
+        || in_range(b"ggaaga", 4, 10)
+        || in_range(b"ggatga", 3, 9)
+        || in_range(b"ggatga", 4, 10)
+        || in_range(b"ggacga", 3, 9)
+        || in_range(b"ggacga", 4, 10)
+    {
         return 18;
     }
-    if in_range(b"ggtgga", 3, 9) || in_range(b"ggtgga", 4, 10)
-        || in_range(b"ggggga", 3, 9) || in_range(b"ggggga", 4, 10)
-        || in_range(b"ggcgga", 3, 9) || in_range(b"ggcgga", 4, 10) {
+    if in_range(b"ggtgga", 3, 9)
+        || in_range(b"ggtgga", 4, 10)
+        || in_range(b"ggggga", 3, 9)
+        || in_range(b"ggggga", 4, 10)
+        || in_range(b"ggcgga", 3, 9)
+        || in_range(b"ggcgga", 4, 10)
+    {
         return 18;
     }
-    if in_range(b"ggaaga", 11, 17) || in_range(b"ggaaga", 12, 18)
-        || in_range(b"ggatga", 11, 17) || in_range(b"ggatga", 12, 18)
-        || in_range(b"ggacga", 11, 17) || in_range(b"ggacga", 12, 18) {
+    if in_range(b"ggaaga", 11, 17)
+        || in_range(b"ggaaga", 12, 18)
+        || in_range(b"ggatga", 11, 17)
+        || in_range(b"ggatga", 12, 18)
+        || in_range(b"ggacga", 11, 17)
+        || in_range(b"ggacga", 12, 18)
+    {
         return 17;
     }
-    if in_range(b"ggtgga", 11, 17) || in_range(b"ggtgga", 12, 18)
-        || in_range(b"ggggga", 11, 17) || in_range(b"ggggga", 12, 18)
-        || in_range(b"ggcgga", 11, 17) || in_range(b"ggcgga", 12, 18) {
+    if in_range(b"ggtgga", 11, 17)
+        || in_range(b"ggtgga", 12, 18)
+        || in_range(b"ggggga", 11, 17)
+        || in_range(b"ggggga", 12, 18)
+        || in_range(b"ggcgga", 11, 17)
+        || in_range(b"ggcgga", 12, 18)
+    {
         return 17;
     }
-    if in_range(b"ggag", 5, 9) || in_range(b"ggag", 6, 10) || in_range(b"ggag", 7, 11)
-        || in_range(b"ggag", 8, 12) || in_range(b"ggag", 9, 13) || in_range(b"ggag", 10, 14) {
+    if in_range(b"ggag", 5, 9)
+        || in_range(b"ggag", 6, 10)
+        || in_range(b"ggag", 7, 11)
+        || in_range(b"ggag", 8, 12)
+        || in_range(b"ggag", 9, 13)
+        || in_range(b"ggag", 10, 14)
+    {
         return 16;
     }
-    if in_range(b"gagg", 5, 9) || in_range(b"gagg", 6, 10) || in_range(b"gagg", 7, 11)
-        || in_range(b"gagg", 8, 12) || in_range(b"gagg", 9, 13) || in_range(b"gagg", 10, 14) {
+    if in_range(b"gagg", 5, 9)
+        || in_range(b"gagg", 6, 10)
+        || in_range(b"gagg", 7, 11)
+        || in_range(b"gagg", 8, 12)
+        || in_range(b"gagg", 9, 13)
+        || in_range(b"gagg", 10, 14)
+    {
         return 16;
     }
-    if in_range(b"agga", 5, 9) || in_range(b"agga", 6, 10) || in_range(b"agga", 7, 11)
-        || in_range(b"agga", 8, 12) || in_range(b"agga", 9, 13) || in_range(b"agga", 10, 14) {
+    if in_range(b"agga", 5, 9)
+        || in_range(b"agga", 6, 10)
+        || in_range(b"agga", 7, 11)
+        || in_range(b"agga", 8, 12)
+        || in_range(b"agga", 9, 13)
+        || in_range(b"agga", 10, 14)
+    {
         return 15;
     }
-    if in_range(b"ggtgg", 5, 10) || in_range(b"ggtgg", 6, 11) || in_range(b"ggtgg", 7, 12)
-        || in_range(b"ggtgg", 8, 13) || in_range(b"ggtgg", 9, 14) || in_range(b"ggtgg", 10, 15) {
+    if in_range(b"ggtgg", 5, 10)
+        || in_range(b"ggtgg", 6, 11)
+        || in_range(b"ggtgg", 7, 12)
+        || in_range(b"ggtgg", 8, 13)
+        || in_range(b"ggtgg", 9, 14)
+        || in_range(b"ggtgg", 10, 15)
+    {
         return 14;
     }
-    if in_range(b"ggggg", 5, 10) || in_range(b"ggggg", 6, 11) || in_range(b"ggggg", 7, 12)
-        || in_range(b"ggggg", 8, 13) || in_range(b"ggggg", 9, 14) || in_range(b"ggggg", 10, 15) {
+    if in_range(b"ggggg", 5, 10)
+        || in_range(b"ggggg", 6, 11)
+        || in_range(b"ggggg", 7, 12)
+        || in_range(b"ggggg", 8, 13)
+        || in_range(b"ggggg", 9, 14)
+        || in_range(b"ggggg", 10, 15)
+    {
         return 14;
     }
-    if in_range(b"ggcgg", 5, 10) || in_range(b"ggcgg", 6, 11) || in_range(b"ggcgg", 7, 12)
-        || in_range(b"ggcgg", 8, 13) || in_range(b"ggcgg", 9, 14) || in_range(b"ggcgg", 10, 15) {
+    if in_range(b"ggcgg", 5, 10)
+        || in_range(b"ggcgg", 6, 11)
+        || in_range(b"ggcgg", 7, 12)
+        || in_range(b"ggcgg", 8, 13)
+        || in_range(b"ggcgg", 9, 14)
+        || in_range(b"ggcgg", 10, 15)
+    {
         return 14;
     }
-    if in_range(b"agg", 5, 8) || in_range(b"agg", 6, 9) || in_range(b"agg", 7, 10)
-        || in_range(b"agg", 8, 11) || in_range(b"agg", 9, 12) || in_range(b"agg", 10, 13) {
+    if in_range(b"agg", 5, 8)
+        || in_range(b"agg", 6, 9)
+        || in_range(b"agg", 7, 10)
+        || in_range(b"agg", 8, 11)
+        || in_range(b"agg", 9, 12)
+        || in_range(b"agg", 10, 13)
+    {
         return 13;
     }
-    if in_range(b"gag", 5, 8) || in_range(b"gag", 6, 9) || in_range(b"gag", 7, 10)
-        || in_range(b"gag", 8, 11) || in_range(b"gag", 9, 12) || in_range(b"gag", 10, 13) {
+    if in_range(b"gag", 5, 8)
+        || in_range(b"gag", 6, 9)
+        || in_range(b"gag", 7, 10)
+        || in_range(b"gag", 8, 11)
+        || in_range(b"gag", 9, 12)
+        || in_range(b"gag", 10, 13)
+    {
         return 13;
     }
-    if in_range(b"gga", 5, 8) || in_range(b"gga", 6, 9) || in_range(b"gga", 7, 10)
-        || in_range(b"gga", 8, 11) || in_range(b"gga", 9, 12) || in_range(b"gga", 10, 13) {
+    if in_range(b"gga", 5, 8)
+        || in_range(b"gga", 6, 9)
+        || in_range(b"gga", 7, 10)
+        || in_range(b"gga", 8, 11)
+        || in_range(b"gga", 9, 12)
+        || in_range(b"gga", 10, 13)
+    {
         return 13;
     }
-    if in_range(b"agga", 11, 15) || in_range(b"agga", 12, 16)
-        || in_range(b"gagg", 11, 15) || in_range(b"gagg", 12, 16)
-        || in_range(b"ggag", 11, 15) || in_range(b"ggag", 12, 16) {
+    if in_range(b"agga", 11, 15)
+        || in_range(b"agga", 12, 16)
+        || in_range(b"gagg", 11, 15)
+        || in_range(b"gagg", 12, 16)
+        || in_range(b"ggag", 11, 15)
+        || in_range(b"ggag", 12, 16)
+    {
         return 12;
     }
-    if in_range(b"agga", 3, 7) || in_range(b"agga", 4, 8)
-        || in_range(b"gagg", 3, 7) || in_range(b"gagg", 4, 8)
-        || in_range(b"ggag", 3, 7) || in_range(b"ggag", 4, 8) {
+    if in_range(b"agga", 3, 7)
+        || in_range(b"agga", 4, 8)
+        || in_range(b"gagg", 3, 7)
+        || in_range(b"gagg", 4, 8)
+        || in_range(b"ggag", 3, 7)
+        || in_range(b"ggag", 4, 8)
+    {
         return 11;
     }
-    if in_range(b"gagga", 13, 18) || in_range(b"gagga", 14, 19) || in_range(b"gagga", 15, 20)
-        || in_range(b"ggagg", 13, 18) || in_range(b"ggagg", 14, 19) || in_range(b"ggagg", 15, 20)
-        || in_range(b"ggagga", 13, 19) || in_range(b"ggagga", 14, 20) || in_range(b"ggagga", 15, 21) {
+    if in_range(b"gagga", 13, 18)
+        || in_range(b"gagga", 14, 19)
+        || in_range(b"gagga", 15, 20)
+        || in_range(b"ggagg", 13, 18)
+        || in_range(b"ggagg", 14, 19)
+        || in_range(b"ggagg", 15, 20)
+        || in_range(b"ggagga", 13, 19)
+        || in_range(b"ggagga", 14, 20)
+        || in_range(b"ggagga", 15, 21)
+    {
         return 10;
     }
-    if in_range(b"gaaga", 5, 10) || in_range(b"gaaga", 6, 11) || in_range(b"gaaga", 7, 12)
-        || in_range(b"gaaga", 8, 13) || in_range(b"gaaga", 9, 14) || in_range(b"gaaga", 10, 15) {
+    if in_range(b"gaaga", 5, 10)
+        || in_range(b"gaaga", 6, 11)
+        || in_range(b"gaaga", 7, 12)
+        || in_range(b"gaaga", 8, 13)
+        || in_range(b"gaaga", 9, 14)
+        || in_range(b"gaaga", 10, 15)
+    {
         return 9;
     }
-    if in_range(b"gatga", 5, 10) || in_range(b"gatga", 6, 11) || in_range(b"gatga", 7, 12)
-        || in_range(b"gatga", 8, 13) || in_range(b"gatga", 9, 14) || in_range(b"gatga", 10, 15) {
+    if in_range(b"gatga", 5, 10)
+        || in_range(b"gatga", 6, 11)
+        || in_range(b"gatga", 7, 12)
+        || in_range(b"gatga", 8, 13)
+        || in_range(b"gatga", 9, 14)
+        || in_range(b"gatga", 10, 15)
+    {
         return 9;
     }
-    if in_range(b"gacga", 5, 10) || in_range(b"gacga", 6, 11) || in_range(b"gacga", 7, 12)
-        || in_range(b"gacga", 8, 13) || in_range(b"gacga", 9, 14) || in_range(b"gacga", 10, 15) {
+    if in_range(b"gacga", 5, 10)
+        || in_range(b"gacga", 6, 11)
+        || in_range(b"gacga", 7, 12)
+        || in_range(b"gacga", 8, 13)
+        || in_range(b"gacga", 9, 14)
+        || in_range(b"gacga", 10, 15)
+    {
         return 9;
     }
-    if in_range(b"ggtgg", 3, 8) || in_range(b"ggtgg", 4, 9)
-        || in_range(b"ggggg", 3, 8) || in_range(b"ggggg", 4, 9)
-        || in_range(b"ggcgg", 3, 8) || in_range(b"ggcgg", 4, 9) {
+    if in_range(b"ggtgg", 3, 8)
+        || in_range(b"ggtgg", 4, 9)
+        || in_range(b"ggggg", 3, 8)
+        || in_range(b"ggggg", 4, 9)
+        || in_range(b"ggcgg", 3, 8)
+        || in_range(b"ggcgg", 4, 9)
+    {
         return 8;
     }
-    if in_range(b"ggtgg", 11, 16) || in_range(b"ggtgg", 12, 17)
-        || in_range(b"ggggg", 11, 16) || in_range(b"ggggg", 12, 17)
-        || in_range(b"ggcgg", 11, 16) || in_range(b"ggcgg", 12, 17) {
+    if in_range(b"ggtgg", 11, 16)
+        || in_range(b"ggtgg", 12, 17)
+        || in_range(b"ggggg", 11, 16)
+        || in_range(b"ggggg", 12, 17)
+        || in_range(b"ggcgg", 11, 16)
+        || in_range(b"ggcgg", 12, 17)
+    {
         return 7;
     }
-    if in_range(b"agg", 11, 14) || in_range(b"agg", 12, 15)
-        || in_range(b"gag", 11, 14) || in_range(b"gag", 12, 15)
-        || in_range(b"gga", 11, 14) || in_range(b"gga", 12, 15) {
+    if in_range(b"agg", 11, 14)
+        || in_range(b"agg", 12, 15)
+        || in_range(b"gag", 11, 14)
+        || in_range(b"gag", 12, 15)
+        || in_range(b"gga", 11, 14)
+        || in_range(b"gga", 12, 15)
+    {
         return 6;
     }
-    if in_range(b"gaaga", 3, 8) || in_range(b"gaaga", 4, 9)
-        || in_range(b"gatga", 3, 8) || in_range(b"gatga", 4, 9)
-        || in_range(b"gacga", 3, 8) || in_range(b"gacga", 4, 9) {
+    if in_range(b"gaaga", 3, 8)
+        || in_range(b"gaaga", 4, 9)
+        || in_range(b"gatga", 3, 8)
+        || in_range(b"gatga", 4, 9)
+        || in_range(b"gacga", 3, 8)
+        || in_range(b"gacga", 4, 9)
+    {
         return 5;
     }
-    if in_range(b"gaaga", 11, 16) || in_range(b"gaaga", 12, 17)
-        || in_range(b"gatga", 11, 16) || in_range(b"gatga", 12, 17)
-        || in_range(b"gacga", 11, 16) || in_range(b"gacga", 12, 17) {
+    if in_range(b"gaaga", 11, 16)
+        || in_range(b"gaaga", 12, 17)
+        || in_range(b"gatga", 11, 16)
+        || in_range(b"gatga", 12, 17)
+        || in_range(b"gacga", 11, 16)
+        || in_range(b"gacga", 12, 17)
+    {
         return 4;
     }
-    if in_range(b"agga", 13, 17) || in_range(b"agga", 14, 18) || in_range(b"agga", 15, 19)
-        || in_range(b"gagg", 13, 17) || in_range(b"gagg", 14, 18) || in_range(b"gagg", 15, 19)
-        || in_range(b"ggag", 13, 17) || in_range(b"ggag", 14, 18) || in_range(b"ggag", 15, 19) {
+    if in_range(b"agga", 13, 17)
+        || in_range(b"agga", 14, 18)
+        || in_range(b"agga", 15, 19)
+        || in_range(b"gagg", 13, 17)
+        || in_range(b"gagg", 14, 18)
+        || in_range(b"gagg", 15, 19)
+        || in_range(b"ggag", 13, 17)
+        || in_range(b"ggag", 14, 18)
+        || in_range(b"ggag", 15, 19)
+    {
         return 3;
     }
-    if in_range(b"agg", 13, 16) || in_range(b"agg", 14, 17) || in_range(b"agg", 15, 18)
-        || in_range(b"gag", 13, 16) || in_range(b"gag", 14, 17) || in_range(b"gag", 15, 18)
-        || in_range(b"gga", 13, 16) || in_range(b"gga", 14, 17) || in_range(b"gga", 15, 18) {
+    if in_range(b"agg", 13, 16)
+        || in_range(b"agg", 14, 17)
+        || in_range(b"agg", 15, 18)
+        || in_range(b"gag", 13, 16)
+        || in_range(b"gag", 14, 17)
+        || in_range(b"gag", 15, 18)
+        || in_range(b"gga", 13, 16)
+        || in_range(b"gga", 14, 17)
+        || in_range(b"gga", 15, 18)
+    {
         return 2;
     }
-    if in_range(b"ggaaga", 13, 19) || in_range(b"ggaaga", 14, 20) || in_range(b"ggaaga", 15, 21)
-        || in_range(b"ggatga", 13, 19) || in_range(b"ggatga", 14, 20) || in_range(b"ggatga", 15, 21)
-        || in_range(b"ggacga", 13, 19) || in_range(b"ggacga", 14, 20) || in_range(b"ggacga", 15, 21) {
+    if in_range(b"ggaaga", 13, 19)
+        || in_range(b"ggaaga", 14, 20)
+        || in_range(b"ggaaga", 15, 21)
+        || in_range(b"ggatga", 13, 19)
+        || in_range(b"ggatga", 14, 20)
+        || in_range(b"ggatga", 15, 21)
+        || in_range(b"ggacga", 13, 19)
+        || in_range(b"ggacga", 14, 20)
+        || in_range(b"ggacga", 15, 21)
+    {
         return 2;
     }
-    if in_range(b"ggtgg", 13, 18) || in_range(b"ggtgg", 14, 19) || in_range(b"ggtgg", 15, 20)
-        || in_range(b"ggggg", 13, 18) || in_range(b"ggggg", 14, 19) || in_range(b"ggggg", 15, 20)
-        || in_range(b"ggcgg", 13, 18) || in_range(b"ggcgg", 14, 19) || in_range(b"ggcgg", 15, 20) {
+    if in_range(b"ggtgg", 13, 18)
+        || in_range(b"ggtgg", 14, 19)
+        || in_range(b"ggtgg", 15, 20)
+        || in_range(b"ggggg", 13, 18)
+        || in_range(b"ggggg", 14, 19)
+        || in_range(b"ggggg", 15, 20)
+        || in_range(b"ggcgg", 13, 18)
+        || in_range(b"ggcgg", 14, 19)
+        || in_range(b"ggcgg", 15, 20)
+    {
         return 2;
     }
-    if in_range(b"agg", 3, 6) || in_range(b"agg", 4, 7)
-        || in_range(b"gag", 3, 6) || in_range(b"gag", 4, 7)
-        || in_range(b"gga", 3, 6) || in_range(b"gga", 4, 7) {
+    if in_range(b"agg", 3, 6)
+        || in_range(b"agg", 4, 7)
+        || in_range(b"gag", 3, 6)
+        || in_range(b"gag", 4, 7)
+        || in_range(b"gga", 3, 6)
+        || in_range(b"gga", 4, 7)
+    {
         return 1;
     }
     0
@@ -626,21 +825,26 @@ mod tests {
         // Test a few specific window sequences against Python's actual behavior.
         // These short sequences produce truncated slices in Python's score_rbs.
         let cases: Vec<(&[u8], usize)> = vec![
-            (b"aggagg", 1),    // 6-char: agg in s[3:6]
-            (b"ggagg", 0),     // 5-char: no match
-            (b"aaggag", 0),    // 6-char: no match
-            (b"aggtgg", 1),    // 6-char: agg in s[3:6]
-            (b"ggtggt", 0),    // 6-char: no match
-            (b"ggtgg", 0),     // 5-char: no match
-            (b"agga", 0),      // 4-char: no match
-            (b"gggg", 0),      // 4-char: no match
-            (b"ggtgga", 0),    // 6-char: no match
-            (b"gaggt", 0),     // 5-char: no match
-            (b"gaggc", 0),     // 5-char: no match
-            (b"gagga", 0),     // 5-char: no match
+            (b"aggagg", 1), // 6-char: agg in s[3:6]
+            (b"ggagg", 0),  // 5-char: no match
+            (b"aaggag", 0), // 6-char: no match
+            (b"aggtgg", 1), // 6-char: agg in s[3:6]
+            (b"ggtggt", 0), // 6-char: no match
+            (b"ggtgg", 0),  // 5-char: no match
+            (b"agga", 0),   // 4-char: no match
+            (b"gggg", 0),   // 4-char: no match
+            (b"ggtgga", 0), // 6-char: no match
+            (b"gaggt", 0),  // 5-char: no match
+            (b"gaggc", 0),  // 5-char: no match
+            (b"gagga", 0),  // 5-char: no match
         ];
         for (seq, expected) in cases {
-            assert_eq!(score_rbs(seq), expected, "Failed for sequence: {:?}", std::str::from_utf8(seq));
+            assert_eq!(
+                score_rbs(seq),
+                expected,
+                "Failed for sequence: {:?}",
+                std::str::from_utf8(seq)
+            );
         }
     }
 
@@ -658,7 +862,14 @@ mod tests {
         // This ORF was missing in earlier versions
         let dna = include_bytes!("../tests/golden/NC_001416.1.tabular");
         // Just verify the function doesn't panic
-        let _ = find_orfs(dna, &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()], &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()], 90, false, false);
+        let _ = find_orfs(
+            dna,
+            &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()],
+            &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()],
+            90,
+            false,
+            false,
+        );
     }
 }
 
@@ -671,10 +882,20 @@ mod debug_tests {
     fn debug_phix174_orf() {
         let genomes = read_fasta("../PHANOTATE/tests/phiX174.fasta").unwrap();
         for genome in genomes {
-            let orfs = find_orfs(&genome.seq, &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()], &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()], 90, false, false);
+            let orfs = find_orfs(
+                &genome.seq,
+                &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()],
+                &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()],
+                90,
+                false,
+                false,
+            );
             println!("Found {} ORFs", orfs.len());
             for orf in &orfs[..10.min(orfs.len())] {
-                println!("ORF {}-{} frame={} rbs={}", orf.start, orf.stop, orf.frame, orf.rbs_score);
+                println!(
+                    "ORF {}-{} frame={} rbs={}",
+                    orf.start, orf.stop, orf.frame, orf.rbs_score
+                );
             }
         }
     }
@@ -683,8 +904,16 @@ mod debug_tests {
     fn debug_pos_max_min() {
         let genomes = read_fasta("../PHANOTATE/tests/phiX174.fasta").unwrap();
         for genome in genomes {
-            let orfs = find_orfs(&genome.seq, &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()], &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()], 90, false, false);
-            let mut by_stop: std::collections::BTreeMap<usize, Vec<&Orf>> = std::collections::BTreeMap::new();
+            let orfs = find_orfs(
+                &genome.seq,
+                &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()],
+                &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()],
+                90,
+                false,
+                false,
+            );
+            let mut by_stop: std::collections::BTreeMap<usize, Vec<&Orf>> =
+                std::collections::BTreeMap::new();
             for orf in &orfs {
                 by_stop.entry(orf.stop).or_default().push(orf);
             }
@@ -708,8 +937,16 @@ mod debug_tests {
     fn debug_pos_max_min_fixed() {
         let genomes = read_fasta("../PHANOTATE/tests/phiX174.fasta").unwrap();
         for genome in genomes {
-            let orfs = find_orfs(&genome.seq, &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()], &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()], 90, false, false);
-            let mut by_stop: std::collections::BTreeMap<usize, Vec<&Orf>> = std::collections::BTreeMap::new();
+            let orfs = find_orfs(
+                &genome.seq,
+                &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()],
+                &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()],
+                90,
+                false,
+                false,
+            );
+            let mut by_stop: std::collections::BTreeMap<usize, Vec<&Orf>> =
+                std::collections::BTreeMap::new();
             for orf in &orfs {
                 by_stop.entry(orf.stop).or_default().push(orf);
             }
@@ -744,9 +981,21 @@ mod debug_tests {
     fn count_atg_orfs() {
         let genomes = read_fasta("../PHANOTATE/tests/phiX174.fasta").unwrap();
         for genome in genomes {
-            let orfs = find_orfs(&genome.seq, &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()], &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()], 90, false, false);
+            let orfs = find_orfs(
+                &genome.seq,
+                &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()],
+                &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()],
+                90,
+                false,
+                false,
+            );
             let atg_count = orfs.iter().filter(|o| o.start_codon() == b"atg").count();
-            println!("ATG ORFs: {}/{} ({}%)", atg_count, orfs.len(), atg_count * 100 / orfs.len());
+            println!(
+                "ATG ORFs: {}/{} ({}%)",
+                atg_count,
+                orfs.len(),
+                atg_count * 100 / orfs.len()
+            );
         }
     }
 
@@ -754,7 +1003,14 @@ mod debug_tests {
     fn count_all_orfs() {
         let genomes = read_fasta("../PHANOTATE/tests/phiX174.fasta").unwrap();
         for genome in genomes {
-            let orfs = find_orfs(&genome.seq, &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()], &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()], 90, false, false);
+            let orfs = find_orfs(
+                &genome.seq,
+                &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()],
+                &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()],
+                90,
+                false,
+                false,
+            );
             println!("Total ORFs: {}", orfs.len());
             let fwd = orfs.iter().filter(|o| o.frame > 0).count();
             let rev = orfs.iter().filter(|o| o.frame < 0).count();
@@ -766,8 +1022,16 @@ mod debug_tests {
     fn compare_stops() {
         let genomes = read_fasta("../PHANOTATE/tests/phiX174.fasta").unwrap();
         for genome in genomes {
-            let orfs = find_orfs(&genome.seq, &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()], &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()], 90, false, false);
-            let mut stops: std::collections::BTreeMap<usize, usize> = std::collections::BTreeMap::new();
+            let orfs = find_orfs(
+                &genome.seq,
+                &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()],
+                &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()],
+                90,
+                false,
+                false,
+            );
+            let mut stops: std::collections::BTreeMap<usize, usize> =
+                std::collections::BTreeMap::new();
             for orf in &orfs {
                 *stops.entry(orf.stop).or_insert(0) += 1;
             }
@@ -781,8 +1045,16 @@ mod debug_tests {
     fn compare_training_orfs() {
         let genomes = read_fasta("../PHANOTATE/tests/phiX174.fasta").unwrap();
         for genome in genomes {
-            let orfs = find_orfs(&genome.seq, &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()], &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()], 90, false, false);
-            let mut by_stop: std::collections::BTreeMap<usize, Vec<&Orf>> = std::collections::BTreeMap::new();
+            let orfs = find_orfs(
+                &genome.seq,
+                &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()],
+                &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()],
+                90,
+                false,
+                false,
+            );
+            let mut by_stop: std::collections::BTreeMap<usize, Vec<&Orf>> =
+                std::collections::BTreeMap::new();
             for orf in &orfs {
                 by_stop.entry(orf.stop).or_default().push(orf);
             }
@@ -810,8 +1082,16 @@ mod debug_tests {
     fn compare_first_orfs() {
         let genomes = read_fasta("../PHANOTATE/tests/phiX174.fasta").unwrap();
         for genome in genomes {
-            let orfs = find_orfs(&genome.seq, &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()], &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()], 90, false, false);
-            let mut by_stop: std::collections::BTreeMap<usize, Vec<&Orf>> = std::collections::BTreeMap::new();
+            let orfs = find_orfs(
+                &genome.seq,
+                &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()],
+                &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()],
+                90,
+                false,
+                false,
+            );
+            let mut by_stop: std::collections::BTreeMap<usize, Vec<&Orf>> =
+                std::collections::BTreeMap::new();
             for orf in &orfs {
                 by_stop.entry(orf.stop).or_default().push(orf);
             }
@@ -823,11 +1103,24 @@ mod debug_tests {
                 }
             }
             for (stop, orfs_at_stop) in by_stop.iter().take(10) {
-                println!("Stop {}: first ATG ORF = {}-{} frame={}",
+                println!(
+                    "Stop {}: first ATG ORF = {}-{} frame={}",
                     stop,
-                    orfs_at_stop.iter().find(|o| o.start_codon() == b"atg").map(|o| o.start).unwrap_or(0),
-                    orfs_at_stop.iter().find(|o| o.start_codon() == b"atg").map(|o| o.stop).unwrap_or(0),
-                    orfs_at_stop.iter().find(|o| o.start_codon() == b"atg").map(|o| o.frame).unwrap_or(0),
+                    orfs_at_stop
+                        .iter()
+                        .find(|o| o.start_codon() == b"atg")
+                        .map(|o| o.start)
+                        .unwrap_or(0),
+                    orfs_at_stop
+                        .iter()
+                        .find(|o| o.start_codon() == b"atg")
+                        .map(|o| o.stop)
+                        .unwrap_or(0),
+                    orfs_at_stop
+                        .iter()
+                        .find(|o| o.start_codon() == b"atg")
+                        .map(|o| o.frame)
+                        .unwrap_or(0),
                 );
             }
         }
@@ -837,11 +1130,24 @@ mod debug_tests {
     fn compare_reverse_orfs() {
         let genomes = read_fasta("../PHANOTATE/tests/phiX174.fasta").unwrap();
         for genome in genomes {
-            let orfs = find_orfs(&genome.seq, &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()], &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()], 90, false, false);
+            let orfs = find_orfs(
+                &genome.seq,
+                &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()],
+                &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()],
+                90,
+                false,
+                false,
+            );
             let rev_orfs: Vec<_> = orfs.iter().filter(|o| o.frame < 0).collect();
             println!("Reverse ORFs: {}", rev_orfs.len());
             for orf in rev_orfs.iter().take(10) {
-                println!("  {}-{} frame={} start_codon={:?}", orf.start, orf.stop, orf.frame, std::str::from_utf8(orf.start_codon()));
+                println!(
+                    "  {}-{} frame={} start_codon={:?}",
+                    orf.start,
+                    orf.stop,
+                    orf.frame,
+                    std::str::from_utf8(orf.start_codon())
+                );
             }
         }
     }
@@ -850,8 +1156,16 @@ mod debug_tests {
     fn count_training_bases() {
         let genomes = read_fasta("../PHANOTATE/tests/phiX174.fasta").unwrap();
         for genome in genomes {
-            let orfs = find_orfs(&genome.seq, &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()], &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()], 90, false, false);
-            let mut by_stop: std::collections::BTreeMap<usize, Vec<&Orf>> = std::collections::BTreeMap::new();
+            let orfs = find_orfs(
+                &genome.seq,
+                &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()],
+                &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()],
+                90,
+                false,
+                false,
+            );
+            let mut by_stop: std::collections::BTreeMap<usize, Vec<&Orf>> =
+                std::collections::BTreeMap::new();
             for orf in &orfs {
                 by_stop.entry(orf.stop).or_default().push(orf);
             }
@@ -884,9 +1198,21 @@ mod debug_tests {
     fn compare_longest_orfs() {
         let genomes = read_fasta("../PHANOTATE/tests/phiX174.fasta").unwrap();
         for genome in genomes {
-            let orfs = find_orfs(&genome.seq, &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()], &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()], 90, false, false);
+            let orfs = find_orfs(
+                &genome.seq,
+                &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()],
+                &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()],
+                90,
+                false,
+                false,
+            );
             let longest = orfs.iter().max_by_key(|o| o.seq.len()).unwrap();
-            println!("Longest ORF: {}-{} ({} nt)", longest.start, longest.stop, longest.seq.len());
+            println!(
+                "Longest ORF: {}-{} ({} nt)",
+                longest.start,
+                longest.stop,
+                longest.seq.len()
+            );
         }
     }
 
@@ -894,8 +1220,16 @@ mod debug_tests {
     fn check_mixed_stops() {
         let genomes = read_fasta("../PHANOTATE/tests/phiX174.fasta").unwrap();
         for genome in genomes {
-            let orfs = find_orfs(&genome.seq, &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()], &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()], 90, false, false);
-            let mut stop_counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+            let orfs = find_orfs(
+                &genome.seq,
+                &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()],
+                &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()],
+                90,
+                false,
+                false,
+            );
+            let mut stop_counts: std::collections::BTreeMap<String, usize> =
+                std::collections::BTreeMap::new();
             for orf in &orfs {
                 let stop = &genome.seq[orf.stop.saturating_sub(1)..orf.stop + 2];
                 let key = String::from_utf8_lossy(stop).to_string();
@@ -911,7 +1245,14 @@ mod debug_tests {
     fn check_reverse_orfs_nc001416() {
         let genomes = read_fasta("../PHANOTATE/tests/NC_001416.1.fasta").unwrap();
         for genome in genomes {
-            let orfs = find_orfs(&genome.seq, &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()], &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()], 90, false, false);
+            let orfs = find_orfs(
+                &genome.seq,
+                &[b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()],
+                &[b"tag".to_vec(), b"tga".to_vec(), b"taa".to_vec()],
+                90,
+                false,
+                false,
+            );
             let rev_orfs: Vec<_> = orfs.iter().filter(|o| o.frame < 0).collect();
             println!("NC_001416 Reverse ORFs: {}", rev_orfs.len());
             for orf in rev_orfs.iter().take(5) {

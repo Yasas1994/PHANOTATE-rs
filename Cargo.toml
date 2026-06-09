@@ -1,6 +1,6 @@
 [package]
 name = "phanotate-rs"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 authors = ["Yasas Wijesekara <yasas.wijesekara@uni-greifswald.de>", "Lars Kaderali <lars.kaderali@uni-greifswald.de>"]
 description = "A fast Rust implementation of PHANOTATE with automatic genetic-code detection for phage genomes"
@@ -19,6 +19,19 @@ clap = { version = "4.5", features = ["derive"] }
 indicatif = { version = "0.17", features = ["rayon"] }
 num-bigint = "0.4.6"
 rayon = "1.12.0"
+
+[dependencies.pyo3]
+version = "0.22"
+features = ["extension-module"]
+optional = true
+
+[features]
+default = []
+python = ["dep:pyo3"]
+
+[lib]
+name = "phanotate_rs"
+crate-type = ["cdylib", "rlib"]
 
 [dev-dependencies]
 criterion = "0.5"

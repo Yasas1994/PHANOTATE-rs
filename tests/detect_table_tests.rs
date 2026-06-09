@@ -52,7 +52,9 @@ fn random_seq(len: usize, seed: u64) -> String {
 /// requested rate.  This ensures TGA appears at the expected frequency in the
 /// coding frame, matching the unit-test construction in detect_table.rs.
 fn synthetic_seq_with_tga_rate(len: usize, tga_rate: f64) -> String {
-    let non_stops: &[[u8; 3]] = &[*b"atg", *b"aaa", *b"gct", *b"ggc", *b"cgt", *b"tta", *b"cca", *b"gac"];
+    let non_stops: &[[u8; 3]] = &[
+        *b"atg", *b"aaa", *b"gct", *b"ggc", *b"cgt", *b"tta", *b"cca", *b"gac",
+    ];
     let mut seq = Vec::with_capacity(len);
     let mut idx = 0usize;
     while seq.len() < len {
@@ -91,7 +93,10 @@ fn fasta(id: &str, seq: &str) -> String {
 // ---------------------------------------------------------------------------
 #[test]
 fn test_table11_genome_scores_highest() {
-    let (_stdout, stderr, code) = run(&["--detect-table", "--yes", "-i", LAMBDA, "-f", "sco"], None);
+    let (_stdout, stderr, code) = run(
+        &["--detect-table", "--yes", "-i", LAMBDA, "-f", "sco"],
+        None,
+    );
     assert_eq!(code, 0, "should exit 0: {}", stderr);
     // Lambda is a table-11 genome; tables 1 and 11 are tied (same stop set).
     // Either is acceptable as the top recommendation.
@@ -199,7 +204,10 @@ fn test_confidence_high() {
     // Lambda is a well-characterised table-11 phage; confidence should be
     // at least medium (tables 1 and 11 tie, so ratio is 1.0 = low).
     // We accept any confidence level as long as it runs.
-    let (_stdout, stderr, code) = run(&["--detect-table", "--yes", "-i", LAMBDA, "-f", "sco"], None);
+    let (_stdout, stderr, code) = run(
+        &["--detect-table", "--yes", "-i", LAMBDA, "-f", "sco"],
+        None,
+    );
     assert_eq!(code, 0, "should exit 0: {}", stderr);
     assert!(
         stderr.contains("confidence:"),
@@ -222,9 +230,13 @@ fn test_confidence_low() {
     for i in 0..seq.len() {
         state = state.wrapping_mul(1103515245).wrapping_add(12345);
         if (state % 100) < 70 {
-            unsafe { seq.as_bytes_mut()[i] = b'a'; }
+            unsafe {
+                seq.as_bytes_mut()[i] = b'a';
+            }
         } else {
-            unsafe { seq.as_bytes_mut()[i] = b't'; }
+            unsafe {
+                seq.as_bytes_mut()[i] = b't';
+            }
         }
     }
     let fasta = fasta("at_rich", &seq);
@@ -243,7 +255,10 @@ fn test_confidence_low() {
 // ---------------------------------------------------------------------------
 #[test]
 fn test_yes_flag_skips_prompt() {
-    let (_stdout, stderr, code) = run(&["--detect-table", "--yes", "-i", PHIX174, "-f", "sco"], None);
+    let (_stdout, stderr, code) = run(
+        &["--detect-table", "--yes", "-i", PHIX174, "-f", "sco"],
+        None,
+    );
     assert_eq!(code, 0, "should exit 0: {}", stderr);
     assert!(
         stderr.contains("Using table") || stderr.contains("Recommended table:"),
@@ -263,7 +278,9 @@ fn test_pipe_mode_no_prompt() {
     let (_stdout, stderr, code) = run(&["--detect-table", "-f", "sco"], Some(&fasta));
     assert_eq!(code, 0, "should exit 0: {}", stderr);
     assert!(
-        stderr.contains("not a TTY") || stderr.contains("Using table") || stderr.contains("Recommended table:"),
+        stderr.contains("not a TTY")
+            || stderr.contains("Using table")
+            || stderr.contains("Recommended table:"),
         "should auto-select in pipe mode: {}",
         stderr
     );
@@ -283,22 +300,33 @@ fn test_detect_table_batch_tsv_output() {
     assert_eq!(code, 0, "should exit 0: stderr={}", stderr);
 
     // Check TSV header
-    assert!(stdout.contains("seq_id\tlen\trecommended\tconfidence\ttop_score\trunner_up\trunner_up_score"));
+    assert!(stdout
+        .contains("seq_id\tlen\trecommended\tconfidence\ttop_score\trunner_up\trunner_up_score"));
 
     // Check that both genomes appear
     let lines: Vec<&str> = stdout.lines().collect();
-    assert!(lines.len() >= 3, "expected header + 2 data rows, got: {}", stdout);
+    assert!(
+        lines.len() >= 3,
+        "expected header + 2 data rows, got: {}",
+        stdout
+    );
 
     // Find SpV4 row — should recommend table 4
-    let spv4_line = lines.iter().find(|l| l.contains("NC_003438")).unwrap_or_else(|| {
-        panic!("SpV4 not found in output: {}", stdout)
-    });
-    assert!(spv4_line.contains("\t4\t"), "SpV4 should recommend table 4: {}", spv4_line);
+    let spv4_line = lines
+        .iter()
+        .find(|l| l.contains("NC_003438"))
+        .unwrap_or_else(|| panic!("SpV4 not found in output: {}", stdout));
+    assert!(
+        spv4_line.contains("\t4\t"),
+        "SpV4 should recommend table 4: {}",
+        spv4_line
+    );
 
     // Find lambda row — should recommend table 11 or 1
-    let lambda_line = lines.iter().find(|l| l.contains("NC_001416")).unwrap_or_else(|| {
-        panic!("Lambda not found in output: {}", stdout)
-    });
+    let lambda_line = lines
+        .iter()
+        .find(|l| l.contains("NC_001416"))
+        .unwrap_or_else(|| panic!("Lambda not found in output: {}", stdout));
     assert!(
         lambda_line.contains("\t11\t") || lambda_line.contains("\t1\t"),
         "Lambda should recommend table 11 or 1: {}",
@@ -316,7 +344,11 @@ fn test_detect_table_batch_single_record() {
     assert_eq!(code, 0);
     let lines: Vec<&str> = stdout.lines().collect();
     assert_eq!(lines.len(), 2, "expected header + 1 data row: {}", stdout);
-    assert!(lines[1].contains("\t4\t"), "SpV4 should be table 4: {}", lines[1]);
+    assert!(
+        lines[1].contains("\t4\t"),
+        "SpV4 should be table 4: {}",
+        lines[1]
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -330,7 +362,11 @@ fn test_detect_table_batch_short_sequence() {
     let lines: Vec<&str> = stdout.lines().collect();
     assert_eq!(lines.len(), 2);
     // Should fallback to table 11 with "too_short" confidence
-    assert!(lines[1].contains("\t11\ttoo_short"), "short seq should fallback: {}", lines[1]);
+    assert!(
+        lines[1].contains("\t11\ttoo_short"),
+        "short seq should fallback: {}",
+        lines[1]
+    );
 }
 
 // =============================================================================
@@ -375,14 +411,14 @@ fn synthetic_seq(length_nt: usize, tga_rate: f64, tag_rate: f64) -> Vec<u8> {
     // Use a simple LCG seeded at 42.
     let mut rng_state: u64 = 42;
     let mut next_usize = |bound: usize| -> usize {
-        rng_state = rng_state.wrapping_mul(6364136223846793005)
+        rng_state = rng_state
+            .wrapping_mul(6364136223846793005)
             .wrapping_add(1442695040888963407);
         ((rng_state >> 33) as usize) % bound
     };
 
     let sense: &[&[u8]] = &[
-        b"aaa", b"gct", b"att", b"ggt", b"cct",
-        b"ttt", b"gcc", b"aac", b"gaa", b"cag",
+        b"aaa", b"gct", b"att", b"ggt", b"cct", b"ttt", b"gcc", b"aac", b"gaa", b"cag",
     ];
 
     let mut codons: Vec<&[u8]> = Vec::new();
@@ -392,7 +428,9 @@ fn synthetic_seq(length_nt: usize, tga_rate: f64, tag_rate: f64) -> Vec<u8> {
     while pos < total_codons {
         let run = 30 + next_usize(21); // 30–50 codons
         for _ in 0..run {
-            if pos >= total_codons { break; }
+            if pos >= total_codons {
+                break;
+            }
             codons.push(sense[pos % sense.len()]);
             pos += 1;
         }
@@ -403,7 +441,9 @@ fn synthetic_seq(length_nt: usize, tga_rate: f64, tag_rate: f64) -> Vec<u8> {
     }
 
     // Collect interior (non-TAA) indices
-    let mut interior: Vec<usize> = codons.iter().enumerate()
+    let mut interior: Vec<usize> = codons
+        .iter()
+        .enumerate()
         .filter(|(_, c)| **c != b"taa")
         .map(|(i, _)| i)
         .collect();
@@ -411,7 +451,9 @@ fn synthetic_seq(length_nt: usize, tga_rate: f64, tag_rate: f64) -> Vec<u8> {
     // Place TGA codons
     let n_tga = (interior.len() as f64 * tga_rate) as usize;
     for _ in 0..n_tga {
-        if interior.is_empty() { break; }
+        if interior.is_empty() {
+            break;
+        }
         let idx = next_usize(interior.len());
         let codon_idx = interior.remove(idx);
         codons[codon_idx] = b"tga";
@@ -420,13 +462,19 @@ fn synthetic_seq(length_nt: usize, tga_rate: f64, tag_rate: f64) -> Vec<u8> {
     // Place TAG codons
     let n_tag = (interior.len() as f64 * tag_rate) as usize;
     for _ in 0..n_tag {
-        if interior.is_empty() { break; }
+        if interior.is_empty() {
+            break;
+        }
         let idx = next_usize(interior.len());
         let codon_idx = interior.remove(idx);
         codons[codon_idx] = b"tag";
     }
 
-    codons.iter().flat_map(|c| c.iter().copied()).take(length_nt).collect()
+    codons
+        .iter()
+        .flat_map(|c| c.iter().copied())
+        .take(length_nt)
+        .collect()
 }
 
 // --- Table 4 (TGA → Trp) synthetic tests ---
@@ -436,11 +484,16 @@ fn synthetic_standard_code_table11_wins() {
     // No TGA inside ORFs → table 11 should win
     let seq = synthetic_seq(5000, 0.00, 0.00);
     let scores = phanotate_rs::detect_table::score_tables(&seq, 90);
-    assert_eq!(scores[0].table, 11,
-        "Standard-code sequence should score table 11 first");
+    assert_eq!(
+        scores[0].table, 11,
+        "Standard-code sequence should score table 11 first"
+    );
     let t4 = scores.iter().find(|s| s.table == 4).unwrap();
-    assert!(t4.reassignment_signal < 0.1,
-        "Table 4 signal should be low when TGA is absent: got {}", t4.reassignment_signal);
+    assert!(
+        t4.reassignment_signal < 0.1,
+        "Table 4 signal should be low when TGA is absent: got {}",
+        t4.reassignment_signal
+    );
 }
 
 #[test]
@@ -448,14 +501,26 @@ fn synthetic_table4_signal_rises_with_tga() {
     // TGA at ~4% in-frame → table 4 signal should be higher than at 0%
     let seq0 = synthetic_seq(5000, 0.00, 0.00);
     let scores0 = phanotate_rs::detect_table::score_tables(&seq0, 90);
-    let sig0 = scores0.iter().find(|s| s.table == 4).unwrap().reassignment_signal;
+    let sig0 = scores0
+        .iter()
+        .find(|s| s.table == 4)
+        .unwrap()
+        .reassignment_signal;
 
     let seq4 = synthetic_seq(5000, 0.04, 0.00);
     let scores4 = phanotate_rs::detect_table::score_tables(&seq4, 90);
-    let sig4 = scores4.iter().find(|s| s.table == 4).unwrap().reassignment_signal;
+    let sig4 = scores4
+        .iter()
+        .find(|s| s.table == 4)
+        .unwrap()
+        .reassignment_signal;
 
-    assert!(sig4 > sig0,
-        "Table 4 signal should rise when TGA is present: 0%={} 4%={}", sig0, sig4);
+    assert!(
+        sig4 > sig0,
+        "Table 4 signal should rise when TGA is present: 0%={} 4%={}",
+        sig0,
+        sig4
+    );
 }
 
 #[test]
@@ -464,9 +529,11 @@ fn synthetic_table4_weak_low_confidence() {
     let seq = synthetic_seq(5000, 0.01, 0.00);
     let scores = phanotate_rs::detect_table::score_tables(&seq, 90);
     let t4 = scores.iter().find(|s| s.table == 4).unwrap();
-    assert!(t4.reassignment_signal < 0.5,
+    assert!(
+        t4.reassignment_signal < 0.5,
         "Table 4 signal should be below threshold at 1% TGA rate: got {}",
-        t4.reassignment_signal);
+        t4.reassignment_signal
+    );
 }
 
 // --- Table 15 (TAG → Gln) synthetic tests ---
@@ -476,8 +543,10 @@ fn synthetic_table15_present_in_results() {
     // Table 15 must appear in score_tables() results (regression test)
     let seq = synthetic_seq(5000, 0.00, 0.00);
     let scores = phanotate_rs::detect_table::score_tables(&seq, 90);
-    assert!(scores.iter().any(|s| s.table == 15),
-        "Table 15 must always appear in score_tables() results");
+    assert!(
+        scores.iter().any(|s| s.table == 15),
+        "Table 15 must always appear in score_tables() results"
+    );
 }
 
 #[test]
@@ -487,11 +556,15 @@ fn synthetic_table15_tag_detected_in_details() {
     let scores = phanotate_rs::detect_table::score_tables(&seq, 90);
     let t15 = scores.iter().find(|s| s.table == 15).unwrap();
     // TAG should appear in the background frequency count
-    let tag_detail = t15.codon_details.iter()
+    let tag_detail = t15
+        .codon_details
+        .iter()
         .find(|d| d.codon == *b"tag")
         .expect("TAG detail should exist for table 15");
-    assert!(tag_detail.background_freq > 0.0,
-        "TAG background frequency should be > 0 when TAG is present in sequence");
+    assert!(
+        tag_detail.background_freq > 0.0,
+        "TAG background frequency should be > 0 when TAG is present in sequence"
+    );
 }
 
 // --- Table 25 (TGA → Gly) synthetic tests ---
@@ -501,14 +574,26 @@ fn synthetic_table25_signal_rises_with_tga() {
     // TGA at ~4% in-frame → table 25 signal should be higher than at 0%
     let seq0 = synthetic_seq(5000, 0.00, 0.00);
     let scores0 = phanotate_rs::detect_table::score_tables(&seq0, 90);
-    let sig0 = scores0.iter().find(|s| s.table == 25).unwrap().reassignment_signal;
+    let sig0 = scores0
+        .iter()
+        .find(|s| s.table == 25)
+        .unwrap()
+        .reassignment_signal;
 
     let seq4 = synthetic_seq(5000, 0.04, 0.00);
     let scores4 = phanotate_rs::detect_table::score_tables(&seq4, 90);
-    let sig4 = scores4.iter().find(|s| s.table == 25).unwrap().reassignment_signal;
+    let sig4 = scores4
+        .iter()
+        .find(|s| s.table == 25)
+        .unwrap()
+        .reassignment_signal;
 
-    assert!(sig4 > sig0,
-        "Table 25 signal should rise when TGA is present: 0%={} 4%={}", sig0, sig4);
+    assert!(
+        sig4 > sig0,
+        "Table 25 signal should rise when TGA is present: 0%={} 4%={}",
+        sig0,
+        sig4
+    );
 }
 
 #[test]
@@ -516,8 +601,10 @@ fn synthetic_table25_in_results() {
     // Confirm table 25 appears in results at all (regression for the missing-table bug)
     let seq = synthetic_seq(5000, 0.00, 0.00);
     let scores = phanotate_rs::detect_table::score_tables(&seq, 90);
-    assert!(scores.iter().any(|s| s.table == 25),
-        "Table 25 must always appear in score_tables() results");
+    assert!(
+        scores.iter().any(|s| s.table == 25),
+        "Table 25 must always appear in score_tables() results"
+    );
 }
 
 // --- Decision boundary test ---
@@ -526,16 +613,28 @@ fn synthetic_table25_in_results() {
 fn synthetic_reassignment_signal_tracks_tga_rate() {
     // As TGA rate increases, table-4 reassignment_signal should increase monotonically
     let rates = [0.00f64, 0.01, 0.02, 0.03, 0.04];
-    let signals: Vec<f64> = rates.iter().map(|&r| {
-        let seq = synthetic_seq(5000, r, 0.00);
-        let scores = phanotate_rs::detect_table::score_tables(&seq, 90);
-        scores.iter().find(|s| s.table == 4).unwrap().reassignment_signal
-    }).collect();
+    let signals: Vec<f64> = rates
+        .iter()
+        .map(|&r| {
+            let seq = synthetic_seq(5000, r, 0.00);
+            let scores = phanotate_rs::detect_table::score_tables(&seq, 90);
+            scores
+                .iter()
+                .find(|s| s.table == 4)
+                .unwrap()
+                .reassignment_signal
+        })
+        .collect();
 
     for i in 1..signals.len() {
-        assert!(signals[i] >= signals[i-1],
+        assert!(
+            signals[i] >= signals[i - 1],
             "Signal should increase as TGA rate increases: \
              rate={} signal={} < rate={} signal={}",
-            rates[i], signals[i], rates[i-1], signals[i-1]);
+            rates[i],
+            signals[i],
+            rates[i - 1],
+            signals[i - 1]
+        );
     }
 }

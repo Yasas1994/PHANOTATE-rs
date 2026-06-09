@@ -12,3 +12,8 @@ pub mod graph;
 pub mod orf;
 pub mod output;
 pub mod weights;
+
+// Include Python bindings module only when the `python` feature is enabled.
+// This avoids linking against libpython during `cargo test --lib`.
+#[cfg(feature = "python")]
+mod lib_python;
