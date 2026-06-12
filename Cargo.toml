@@ -25,9 +25,18 @@ version = "0.22"
 features = ["extension-module"]
 optional = true
 
+[dependencies.ort]
+version = "2.0.0-rc.12"
+optional = true
+
+[dependencies.ndarray]
+version = "0.17"
+optional = true
+
 [features]
 default = []
 python = ["dep:pyo3"]
+ml = ["dep:ort", "dep:ndarray"]
 
 [lib]
 name = "phanotate_rs"

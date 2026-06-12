@@ -46,6 +46,29 @@ impl Orf {
         s *= self.weight_rbs;
         self.weight = -s;
     }
+
+    /// Hybrid scoring: heuristic baseline + ML adjustment.
+    ///
+    /// Computes the heuristic score as in [`Self::score`], then multiplies
+    /// by an ML-predicted adjustment factor.  The adjustment is clamped to
+    /// [0.5, 2.0] so the ML model cannot destabilise the shortest-path search.
+    #[cfg(feature = "ml")]
+    pub fn score_hybrid(
+        &mut self,
+        start_codons: &std::collections::HashMap<Vec<u8>, f64>,
+        ml: &crate::ml_scorer::MlScorer,
+    ) {
+        // 1. Compute heuristic baseline
+        self.score(start_codons);
+        let heuristic_weight = self.weight;
+
+        // 2. Extract features and get ML adjustment
+        let features = self.extract_features();
+        let adjustment = ml.predict_adjustment(&features);
+
+        // 3. Apply adjustment (weight is negative, so multiply)
+        self.weight = heuristic_weight * adjustment;
+    }
 }
 
 /// Enumerate all ORFs in all six reading frames.

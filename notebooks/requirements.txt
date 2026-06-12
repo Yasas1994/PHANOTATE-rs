@@ -1,0 +1,20 @@
+# Python dependencies for PHANOTATE-rs ML training notebooks
+# Install with: pip install -r requirements.txt
+
+# Core data science
+numpy>=1.24
+pandas>=2.0
+matplotlib>=3.7
+seaborn>=0.12
+jupyter>=1.0
+
+# Machine learning
+scikit-learn>=1.3
+xgboost>=2.0
+
+# ONNX export for Rust inference
+onnx>=1.14
+skl2onnx>=1.15
+
+# Optional: for hyperparameter tuning visualization
+# optuna>=3.0

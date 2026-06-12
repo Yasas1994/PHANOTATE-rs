@@ -84,6 +84,16 @@ struct Cli {
     /// Uses the top-ranked table automatically.
     #[arg(long, default_value_t = false)]
     yes: bool,
+
+    /// Path to an ONNX model for ML-adjusted ORF scoring.
+    /// Requires the `ml` feature to be enabled at compile time.
+    #[arg(long = "ml-model", value_name = "FILE")]
+    ml_model: Option<PathBuf>,
+
+    /// Export ORF features to FILE and exit without running annotation.
+    /// Useful for generating training data for the ML model.
+    #[arg(long = "export-features", value_name = "FILE")]
+    export_features: Option<PathBuf>,
 }
 
 /// Build start-codon weights from a list of codons.
@@ -156,6 +166,8 @@ fn process_genome(
     closed_ends: bool,
     mask_n: bool,
     table: u8,
+    #[cfg(feature = "ml")] ml_scorer: &Option<phanotate_rs::ml_scorer::MlScorer>,
+    #[cfg(not(feature = "ml"))] _ml_scorer: &Option<()>,
 ) -> (String, String, String) {
     let contig_length = genome.seq.len();
     let dna = &genome.seq;
@@ -383,6 +395,18 @@ fn process_genome(
         orf.hold = log_hold.exp();
     }
 
+    // --- Score ORFs ---
+    #[cfg(feature = "ml")]
+    if let Some(ref ml) = ml_scorer {
+        for orf in &mut orfs {
+            orf.score_hybrid(start_codons_map, ml);
+        }
+    } else {
+        for orf in &mut orfs {
+            orf.score(start_codons_map);
+        }
+    }
+    #[cfg(not(feature = "ml"))]
     for orf in &mut orfs {
         orf.score(start_codons_map);
     }
@@ -468,6 +492,15 @@ fn main() -> Result<()> {
         );
     }
 
+    // Validate ML model flag
+    #[cfg(not(feature = "ml"))]
+    if cli.ml_model.is_some() {
+        anyhow::bail!(
+            "The --ml-model flag requires the 'ml' feature to be enabled at compile time. \
+             Rebuild with: cargo build --features ml"
+        );
+    }
+
     // Set thread pool size if requested
     if let Some(n) = cli.threads {
         rayon::ThreadPoolBuilder::new()
@@ -480,6 +513,46 @@ fn main() -> Result<()> {
     let genomes = load_genomes(&cli.input)?;
     if genomes.is_empty() {
         anyhow::bail!("No sequences found in input.");
+    }
+
+    // --- Export features mode (no annotation) ---
+    if let Some(ref features_path) = cli.export_features {
+        let stop_codons: Vec<Vec<u8>> = codon_table::stop_codons(cli.table)
+            .iter()
+            .map(|&c| c.to_vec())
+            .collect();
+        let start_codons: Vec<Vec<u8>> = match cli.table {
+            1 | 11 => vec![b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()],
+            _ => codon_table::start_codons(cli.table)
+                .iter()
+                .map(|&c| c.to_vec())
+                .collect(),
+        };
+
+        let mut file = fs::File::create(features_path)
+            .with_context(|| format!("Failed to create features file: {:?}", features_path))?;
+        let mut header_written = false;
+
+        for genome in genomes {
+            let orfs = find_orfs_with_rc(
+                &genome.seq,
+                &genome.rc_seq,
+                &start_codons,
+                &stop_codons,
+                90,
+                cli.closed_ends,
+                cli.mask_n,
+            );
+            phanotate_rs::ml_features::write_features_tsv(
+                &mut file,
+                &orfs,
+                !header_written,
+            )
+            .context("Failed to write features")?;
+            header_written = true;
+        }
+        eprintln!("Exported features to {:?}", features_path);
+        return Ok(());
     }
 
     // --- Batch table detection (all records, no annotation) ---
@@ -567,6 +640,19 @@ fn main() -> Result<()> {
         }
     };
 
+    // Load ML model if provided
+    #[cfg(feature = "ml")]
+    let ml_scorer: Option<phanotate_rs::ml_scorer::MlScorer> = cli
+        .ml_model
+        .as_ref()
+        .map(|p| {
+            phanotate_rs::ml_scorer::MlScorer::from_file(p.to_str().unwrap_or(""))
+                .with_context(|| format!("Failed to load ML model from {:?}", p))
+        })
+        .transpose()?;
+    #[cfg(not(feature = "ml"))]
+    let ml_scorer: Option<()> = None;
+
     // Process each contig in parallel
     let results: Vec<(String, String, String)> = if cli.progress {
         let pb = ProgressBar::new(genomes.len() as u64);
@@ -589,6 +675,7 @@ fn main() -> Result<()> {
                     cli.closed_ends,
                     cli.mask_n,
                     effective_table,
+                    &ml_scorer,
                 )
             })
             .collect()
@@ -605,6 +692,7 @@ fn main() -> Result<()> {
                     cli.closed_ends,
                     cli.mask_n,
                     effective_table,
+                    &ml_scorer,
                 )
             })
             .collect()

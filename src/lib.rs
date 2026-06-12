@@ -9,9 +9,13 @@ pub mod detect_table;
 pub mod gcfp;
 pub mod genome;
 pub mod graph;
+pub mod ml_features;
 pub mod orf;
 pub mod output;
 pub mod weights;
+
+#[cfg(feature = "ml")]
+pub mod ml_scorer;
 
 // Include Python bindings module only when the `python` feature is enabled.
 // This avoids linking against libpython during `cargo test --lib`.
