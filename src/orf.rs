@@ -7,8 +7,9 @@ pub struct Orf {
     pub rbs_score: usize,
     pub pstop: f64, // P(stop) for this ORF
     pub weight_rbs: f64,
-    pub hold: f64,   // product of adjusted P(not_stop) per codon
-    pub weight: f64, // final ORF edge weight (negative)
+    pub motif_score: f64, // non-Shine-Dalgarno motif score multiplier
+    pub hold: f64,        // product of adjusted P(not_stop) per codon
+    pub weight: f64,      // final ORF edge weight (negative)
 }
 
 impl Orf {
@@ -44,6 +45,7 @@ impl Orf {
             s *= w;
         }
         s *= self.weight_rbs;
+        s *= self.motif_score;
         self.weight = -s;
     }
 
@@ -179,6 +181,7 @@ pub fn find_orfs_with_rc(
                         rbs_score,
                         pstop,
                         weight_rbs: 1.0,
+                        motif_score: 1.0,
                         hold: 1.0,
                         weight: 1.0,
                     });
@@ -225,6 +228,7 @@ pub fn find_orfs_with_rc(
                         rbs_score,
                         pstop,
                         weight_rbs: 1.0,
+                        motif_score: 1.0,
                         hold: 1.0,
                         weight: 1.0,
                     });
@@ -258,6 +262,7 @@ pub fn find_orfs_with_rc(
                         rbs_score,
                         pstop,
                         weight_rbs: 1.0,
+                        motif_score: 1.0,
                         hold: 1.0,
                         weight: 1.0,
                     });
@@ -298,6 +303,7 @@ pub fn find_orfs_with_rc(
                         rbs_score,
                         pstop,
                         weight_rbs: 1.0,
+                        motif_score: 1.0,
                         hold: 1.0,
                         weight: 1.0,
                     });

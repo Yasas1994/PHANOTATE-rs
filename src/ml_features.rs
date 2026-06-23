@@ -76,11 +76,7 @@ impl Orf {
         features[7] = if sc == b"ttg" { 1.0 } else { 0.0 };
 
         // 8. GC content of the ORF sequence
-        let gc_count = self
-            .seq
-            .iter()
-            .filter(|&&b| b == b'g' || b == b'c')
-            .count();
+        let gc_count = self.seq.iter().filter(|&&b| b == b'g' || b == b'c').count();
         features[8] = if !self.seq.is_empty() {
             gc_count as f32 / self.seq.len() as f32
         } else {
@@ -134,6 +130,7 @@ mod tests {
             rbs_score: 15,
             pstop: 0.05,
             weight_rbs: 2.5,
+            motif_score: 1.0,
             hold: 0.8,
             weight: -1.0,
         }
@@ -193,7 +190,7 @@ mod tests {
     fn test_frame_onehot() {
         let orf = test_orf();
         let f = orf.extract_features();
-        assert_eq!(f.0[9], 1.0);  // fwd
+        assert_eq!(f.0[9], 1.0); // fwd
         assert_eq!(f.0[10], 1.0); // frame 1
         assert_eq!(f.0[11], 0.0); // frame 2
         assert_eq!(f.0[12], 0.0); // frame 3
@@ -204,7 +201,7 @@ mod tests {
         let mut orf = test_orf();
         orf.frame = -2;
         let f = orf.extract_features();
-        assert_eq!(f.0[9], 0.0);  // not fwd
+        assert_eq!(f.0[9], 0.0); // not fwd
         assert_eq!(f.0[10], 0.0); // not frame 1
         assert_eq!(f.0[11], 1.0); // frame 2
         assert_eq!(f.0[12], 0.0); // not frame 3

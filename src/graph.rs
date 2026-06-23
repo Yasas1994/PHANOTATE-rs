@@ -509,6 +509,7 @@ mod tests {
             rbs_score: 10,
             pstop: 0.05,
             weight_rbs: 1.0,
+            motif_score: 1.0,
             hold: 1.0,
             weight: -1.0,
         }];
