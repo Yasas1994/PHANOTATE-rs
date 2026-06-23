@@ -10,6 +10,7 @@ pub mod gcfp;
 pub mod genome;
 pub mod graph;
 pub mod ml_features;
+pub mod nonsd_motif;
 pub mod orf;
 pub mod output;
 pub mod weights;
