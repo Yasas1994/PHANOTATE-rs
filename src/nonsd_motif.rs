@@ -240,6 +240,20 @@ impl Default for NonSdModel {
 }
 
 impl NonSdModel {
+    /// Score a single ORF and return a positive multiplier.
+    pub fn score_orf(&self, orf: &Orf, dna: &[u8], rc_dna: &[u8]) -> f64 {
+        let (wseq, start) = upstream_context(dna, rc_dna, orf);
+        if start < 18 + MIN_MOTIF_LEN {
+            return 1.0;
+        }
+        let hit = find_best_motif(&self.mot_wt, wseq, start, self.no_mot);
+        let type_idx = start_codon_index(orf.start_codon()).unwrap_or(0);
+        let type_bonus = self.type_wt[type_idx];
+        let comp_bonus = score_upstream_composition(wseq, start, &self.ups_comp);
+        let log_score = hit.score + type_bonus + comp_bonus;
+        log_score.exp().clamp(0.25, 4.0)
+    }
+
     /// Train a non-SD motif model from ORFs using a 20-iteration 3-stage EM loop.
     pub fn train(
         orfs: &[Orf],
@@ -528,6 +542,24 @@ fn count_upstream_composition(seq: &[u8], start: usize, ups_comp: &mut [[f64; 4]
     }
 }
 
+/// Score upstream composition using trained log-odds weights.
+fn score_upstream_composition(seq: &[u8], start: usize, ups_comp: &[[f64; 4]; 32]) -> f64 {
+    let mut score = 0.0;
+    let mut count = 0;
+    for i in 1..45 {
+        if i > 2 && i < 15 {
+            continue;
+        }
+        if start >= i {
+            if let Some(base) = encode_base(seq[start - i]) {
+                score += 0.4 * 4.35 * ups_comp[count][base];
+            }
+        }
+        count += 1;
+    }
+    score
+}
+
 /// Convert raw upstream composition counts to log-odds weights.
 #[allow(clippy::needless_range_loop)]
 fn finalize_upstream_composition(ups_comp: &mut [[f64; 4]; 32], dna: &[u8], rc_dna: &[u8]) {
@@ -734,5 +766,27 @@ mod tests {
         let hit = find_best_motif(&model.mot_wt, &seq, 21, model.no_mot);
         assert_eq!(hit.len, 6);
         assert_eq!(kmer_decode(hit.ndx, 6), b"AAAAAA".to_vec());
+    }
+
+    #[test]
+    fn score_orf_returns_reasonable_multiplier() {
+        let model = NonSdModel::default();
+        let orf = Orf {
+            start: 25,
+            stop: 60,
+            frame: 1,
+            seq: vec![b'a'; 36],
+            rbs_score: 0,
+            pstop: 0.01,
+            weight_rbs: 1.0,
+            hold: 100.0,
+            motif_score: 1.0,
+            weight: 1.0,
+        };
+        let dna = vec![b'a'; 100];
+        let rc = dna.clone();
+        let s = model.score_orf(&orf, &dna, &rc);
+        assert!(s > 0.0);
+        assert!(s <= 4.0);
     }
 }
