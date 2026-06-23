@@ -120,6 +120,8 @@ pub struct PyOrf {
     #[pyo3(get)]
     pub weight_rbs: f64,
     #[pyo3(get)]
+    pub motif_score: f64,
+    #[pyo3(get)]
     pub hold: f64,
     #[pyo3(get)]
     pub weight: f64,
@@ -138,6 +140,7 @@ impl From<&Orf> for PyOrf {
             rbs_score: orf.rbs_score,
             pstop: orf.pstop,
             weight_rbs: orf.weight_rbs,
+            motif_score: orf.motif_score,
             hold: orf.hold,
             weight: orf.weight,
             start_codon: String::from_utf8_lossy(orf.start_codon()).to_string(),
@@ -719,8 +722,8 @@ fn process_single_genome(
 /// -------
 /// list[Orf]
 ///     A list of Orf objects, each with attributes:
-///     start, stop, frame, rbs_score, pstop, weight_rbs, hold, weight,
-///     start_codon, sequence.
+///     start, stop, frame, rbs_score, pstop, weight_rbs, motif_score, hold,
+///     weight, start_codon, sequence.
 ///
 /// Examples
 /// --------

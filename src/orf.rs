@@ -900,6 +900,29 @@ mod tests {
             false,
         );
     }
+
+    #[test]
+    fn motif_score_scales_weight() {
+        let mut orf = Orf {
+            start: 100,
+            stop: 200,
+            frame: 1,
+            seq: b"atgttagctagctagctaa".to_vec(),
+            rbs_score: 10,
+            pstop: 0.05,
+            weight_rbs: 1.0,
+            hold: 2.0,
+            motif_score: 1.0,
+            weight: 1.0,
+        };
+        let start_codons = std::collections::HashMap::new();
+        orf.score(&start_codons);
+        let base_weight = orf.weight;
+
+        orf.motif_score = 2.0;
+        orf.score(&start_codons);
+        assert!((orf.weight - base_weight * 2.0).abs() < 1e-9);
+    }
 }
 
 #[cfg(test)]
