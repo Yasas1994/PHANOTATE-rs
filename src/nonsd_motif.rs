@@ -3,11 +3,6 @@
 //! Discovers arbitrary 3-6 bp motifs enriched upstream of start codons,
 //! mirroring Prodigal's train_starts_nonsd algorithm.
 
-#[allow(unused_imports)]
-use crate::orf::Orf;
-#[allow(unused_imports)]
-use std::collections::HashMap;
-
 /// Number of possible spacer distance groups.
 pub const NUM_SPACERS: usize = 4;
 /// Minimum motif length (3 bp).
@@ -16,6 +11,9 @@ pub const MIN_MOTIF_LEN: usize = 3;
 pub const MAX_MOTIF_LEN: usize = 6;
 /// Maximum encoded motif index (4^6).
 pub const MAX_MOTIF_INDEX: usize = 4096;
+
+/// Weight array indexed by `[motif_length_index][spacer_group][motif_index]`.
+pub type MotifWeights = [[[f64; MAX_MOTIF_INDEX]; NUM_SPACERS]; MAX_MOTIF_LEN - MIN_MOTIF_LEN + 1];
 
 /// 2-bit encode a single base: A=0, C=1, G=2, T=3.
 fn encode_base(b: u8) -> Option<usize> {
@@ -64,10 +62,14 @@ pub fn kmer_decode(index: usize, len: usize) -> Vec<u8> {
 /// A single non-Shine-Dalgarno motif occurrence upstream of a start codon.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MotifHit {
-    pub len: usize,      // 3..6
-    pub spacer: usize,   // 3..15
-    pub spacendx: usize, // 0..3
-    pub ndx: usize,      // encoded motif
+    /// Motif length in bp (3..6).
+    pub len: usize,
+    /// Distance from motif start to coding start (3..18).
+    pub spacer: usize,
+    /// Spacer group index (0..3).
+    pub spacendx: usize,
+    /// Encoded motif index.
+    pub ndx: usize,
     pub score: f64,
 }
 
@@ -77,7 +79,7 @@ fn spacer_group(spacer: usize) -> usize {
         3 | 4 => 1,
         5..=10 => 0,
         11 | 12 => 2,
-        13..=15 => 3,
+        13..=18 => 3,
         _ => panic!("spacer out of range: {}", spacer),
     }
 }
@@ -86,12 +88,7 @@ fn spacer_group(spacer: usize) -> usize {
 /// return the highest scoring motif. If no valid motif is found, returns a
 /// zeroed hit with score set to the caller's `no_mot` value.
 #[allow(clippy::needless_range_loop)]
-pub fn find_best_motif(
-    mot_wt: &[[[f64; MAX_MOTIF_INDEX]; NUM_SPACERS]; MAX_MOTIF_LEN - MIN_MOTIF_LEN + 1],
-    seq: &[u8],
-    start: usize,
-    no_mot: f64,
-) -> MotifHit {
+pub fn find_best_motif(mot_wt: &MotifWeights, seq: &[u8], start: usize, no_mot: f64) -> MotifHit {
     let mut best = MotifHit {
         score: no_mot,
         ..Default::default()
@@ -129,11 +126,11 @@ pub type CoverageMap = [[[u8; MAX_MOTIF_INDEX]; NUM_SPACERS]; MAX_MOTIF_LEN - MI
 /// Build a coverage map. A motif is "good" if it contains a 3-mer subset
 /// present in at least 20% of selected genes.
 #[allow(clippy::needless_range_loop)]
-pub fn build_coverage_map(
-    real: &[[[f64; MAX_MOTIF_INDEX]; NUM_SPACERS]; MAX_MOTIF_LEN - MIN_MOTIF_LEN + 1],
-    ngenes: f64,
-) -> CoverageMap {
+pub fn build_coverage_map(real: &MotifWeights, ngenes: f64) -> CoverageMap {
     let mut good = [[[0u8; MAX_MOTIF_INDEX]; NUM_SPACERS]; MAX_MOTIF_LEN - MIN_MOTIF_LEN + 1];
+    if ngenes == 0.0 {
+        return good;
+    }
     let thresh = 0.2;
 
     // 3-base motifs
@@ -163,8 +160,8 @@ pub fn build_coverage_map(
     for sp in 0..NUM_SPACERS {
         for j in 0..1024 {
             let d0 = (j & 0b1111110000) >> 4;
-            let d1 = (j & 0b0000111100) >> 2;
-            let d2 = j & 0b0000001111;
+            let d1 = (j & 0b11111100) >> 2;
+            let d2 = j & 0b00111111;
             if good[0][sp][d0] == 0 || good[0][sp][d1] == 0 || good[0][sp][d2] == 0 {
                 continue;
             }
@@ -187,7 +184,7 @@ pub fn build_coverage_map(
     for sp in 0..NUM_SPACERS {
         for j in 0..MAX_MOTIF_INDEX {
             let d0 = (j & 0b111111111100) >> 2;
-            let d1 = j & 0b000000111111;
+            let d1 = j & 0b001111111111;
             if good[2][sp][d0] == 0 || good[2][sp][d1] == 0 {
                 continue;
             }
@@ -237,5 +234,45 @@ mod tests {
         real[0][0][kmer_encode(b"aaa", 0, 3).unwrap()] = 1.0;
         let good = build_coverage_map(&real, ngenes);
         assert_eq!(good[0][0][kmer_encode(b"aaa", 0, 3).unwrap()], 0);
+    }
+
+    #[test]
+    fn coverage_map_4mer_propagates_from_3mers() {
+        let mut real = [[[0.0; MAX_MOTIF_INDEX]; NUM_SPACERS]; MAX_MOTIF_LEN - MIN_MOTIF_LEN + 1];
+        let ngenes = 10.0;
+        let sp = 0;
+        // 4-mer "AACG" needs 3-mers "AAC" (positions 0-2) and "ACG" (positions 1-3).
+        real[0][sp][kmer_encode(b"AAC", 0, 3).unwrap()] = ngenes;
+        real[0][sp][kmer_encode(b"ACG", 0, 3).unwrap()] = ngenes;
+        let good = build_coverage_map(&real, ngenes);
+        assert_eq!(good[1][sp][kmer_encode(b"AACG", 0, 4).unwrap()], 1);
+    }
+
+    #[test]
+    fn coverage_map_5mer_propagates_from_3mers() {
+        let mut real = [[[0.0; MAX_MOTIF_INDEX]; NUM_SPACERS]; MAX_MOTIF_LEN - MIN_MOTIF_LEN + 1];
+        let ngenes = 10.0;
+        let sp = 0;
+        // 5-mer "AACGT" needs 3-mers "AAC", "ACG", and "CGT".
+        real[0][sp][kmer_encode(b"AAC", 0, 3).unwrap()] = ngenes;
+        real[0][sp][kmer_encode(b"ACG", 0, 3).unwrap()] = ngenes;
+        real[0][sp][kmer_encode(b"CGT", 0, 3).unwrap()] = ngenes;
+        let good = build_coverage_map(&real, ngenes);
+        assert_eq!(good[2][sp][kmer_encode(b"AACGT", 0, 5).unwrap()], 1);
+    }
+
+    #[test]
+    fn coverage_map_6mer_propagates_from_5mers() {
+        let mut real = [[[0.0; MAX_MOTIF_INDEX]; NUM_SPACERS]; MAX_MOTIF_LEN - MIN_MOTIF_LEN + 1];
+        let ngenes = 10.0;
+        let sp = 0;
+        // 6-mer "AACGTT" needs 5-mers "AACGT" and "ACGTT".
+        // "AACGT" needs 3-mers AAC, ACG, CGT; "ACGTT" needs ACG, CGT, GTT.
+        real[0][sp][kmer_encode(b"AAC", 0, 3).unwrap()] = ngenes;
+        real[0][sp][kmer_encode(b"ACG", 0, 3).unwrap()] = ngenes;
+        real[0][sp][kmer_encode(b"CGT", 0, 3).unwrap()] = ngenes;
+        real[0][sp][kmer_encode(b"GTT", 0, 3).unwrap()] = ngenes;
+        let good = build_coverage_map(&real, ngenes);
+        assert_eq!(good[3][sp][kmer_encode(b"AACGTT", 0, 6).unwrap()], 1);
     }
 }
