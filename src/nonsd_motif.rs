@@ -117,7 +117,7 @@ pub fn find_best_motif(mot_wt: &MotifWeights, seq: &[u8], start: usize, no_mot: 
     for len_idx in 0..=(MAX_MOTIF_LEN - MIN_MOTIF_LEN) {
         let len = MIN_MOTIF_LEN + len_idx;
         let earliest = start.saturating_sub(18 + len);
-        let latest = start.saturating_sub(6 + len);
+        let latest = start.saturating_sub(3 + len);
         for pos in earliest..=latest {
             if pos + len > seq.len() {
                 continue;
@@ -126,7 +126,7 @@ pub fn find_best_motif(mot_wt: &MotifWeights, seq: &[u8], start: usize, no_mot: 
                 let spacer = start - pos - len;
                 let spacendx = spacer_group(spacer);
                 let score = mot_wt[len_idx][spacendx][ndx];
-                if score >= best.score {
+                if score > best.score {
                     best = MotifHit {
                         len,
                         spacer,
@@ -187,7 +187,7 @@ pub fn build_coverage_map(real: &MotifWeights, ngenes: f64) -> CoverageMap {
                 continue;
             }
             good[2][sp][j] = 1;
-            // flip bits 3 and 4 of the 5-mer (positions 2 and 3) to allow one mismatch
+            // flip the bits of the middle position (position 2) to allow one mismatch
             let mut tmp = j;
             for k in [0, 16] {
                 tmp ^= k;
@@ -333,15 +333,14 @@ impl NonSdModel {
                         let type_idx = start_codon_index(orf.start_codon()).unwrap_or(0);
                         let coding_score = 1.0 / orf.hold;
                         let score = coding_score + st_wt * (hit.score + model.type_wt[type_idx]);
-                        Some((orf, hit, score, type_idx))
+                        Some((orf, wseq, start, hit, score, type_idx))
                     })
-                    .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
+                    .max_by(|a, b| a.4.partial_cmp(&b.4).unwrap());
 
-                if let Some((orf, hit, score, type_idx)) = best {
+                if let Some((_orf, wseq, start, hit, score, type_idx)) = best {
                     if score >= sthresh {
                         ngenes += 1.0;
                         treal[type_idx] += 1.0;
-                        let (wseq, start) = upstream_context(dna, rc_dna, orf);
                         update_motif_counts(&mut mreal, &mut zreal, wseq, start, &hit, stage);
                         if iter == 19 {
                             count_upstream_composition(wseq, start, &mut model.ups_comp);
@@ -350,44 +349,51 @@ impl NonSdModel {
                 }
             }
 
-            // Coverage filter and weight update.
+            // Coverage filter (stages 0 and 1 only).
             if stage < 2 {
                 let mgood = build_coverage_map(&mreal, ngenes);
-                let mreal_sum = mreal
-                    .iter()
-                    .flat_map(|a| a.iter())
-                    .flat_map(|b| b.iter())
-                    .sum::<f64>()
-                    + zreal;
-                if mreal_sum == 0.0 {
-                    model.mot_wt = zero_motif_weights();
-                    model.no_mot = 0.0;
-                } else {
-                    for li in 0..=MAX_MOTIF_LEN - MIN_MOTIF_LEN {
-                        for si in 0..NUM_SPACERS {
-                            for mi in 0..MAX_MOTIF_INDEX {
-                                if mgood[li][si][mi] == 0 {
-                                    zreal += mreal[li][si][mi];
-                                    zbg += mreal[li][si][mi];
-                                    mreal[li][si][mi] = 0.0;
-                                }
-                                mreal[li][si][mi] /= mreal_sum;
-                                model.mot_wt[li][si][mi] = if mbg[li][si][mi] != 0.0 {
-                                    (mreal[li][si][mi] / mbg[li][si][mi]).ln()
-                                } else {
-                                    -4.0
-                                }
-                                .clamp(-4.0, 4.0);
+                for li in 0..=MAX_MOTIF_LEN - MIN_MOTIF_LEN {
+                    for si in 0..NUM_SPACERS {
+                        for mi in 0..MAX_MOTIF_INDEX {
+                            if mgood[li][si][mi] == 0 {
+                                zreal += mreal[li][si][mi];
+                                mreal[li][si][mi] = 0.0;
                             }
                         }
                     }
-                    model.no_mot = if zbg != 0.0 {
-                        (zreal / mreal_sum / zbg).ln()
-                    } else {
-                        -4.0
-                    }
-                    .clamp(-4.0, 4.0);
                 }
+            }
+
+            // Weight update (all stages).
+            let mreal_sum = mreal
+                .iter()
+                .flat_map(|a| a.iter())
+                .flat_map(|b| b.iter())
+                .sum::<f64>()
+                + zreal;
+            if mreal_sum == 0.0 {
+                model.mot_wt = zero_motif_weights();
+                model.no_mot = 0.0;
+            } else {
+                for li in 0..=MAX_MOTIF_LEN - MIN_MOTIF_LEN {
+                    for si in 0..NUM_SPACERS {
+                        for mi in 0..MAX_MOTIF_INDEX {
+                            mreal[li][si][mi] /= mreal_sum;
+                            model.mot_wt[li][si][mi] = if mbg[li][si][mi] != 0.0 {
+                                (mreal[li][si][mi] / mbg[li][si][mi]).ln()
+                            } else {
+                                -4.0
+                            }
+                            .clamp(-4.0, 4.0);
+                        }
+                    }
+                }
+                model.no_mot = if zbg != 0.0 {
+                    (zreal / mreal_sum / zbg).ln()
+                } else {
+                    -4.0
+                }
+                .clamp(-4.0, 4.0);
             }
 
             // Update type weights.
@@ -469,7 +475,7 @@ fn update_motif_counts(
             for len_idx in 0..=MAX_MOTIF_LEN - MIN_MOTIF_LEN {
                 let len = MIN_MOTIF_LEN + len_idx;
                 let earliest = start.saturating_sub(18 + len);
-                let latest = start.saturating_sub(6 + len);
+                let latest = start.saturating_sub(3 + len);
                 for pos in earliest..=latest {
                     if pos + len > seq.len() {
                         continue;
@@ -642,6 +648,23 @@ mod tests {
         real[0][sp][kmer_encode(b"GTT", 0, 3).unwrap()] = ngenes;
         let good = build_coverage_map(&real, ngenes);
         assert_eq!(good[3][sp][kmer_encode(b"AACGTT", 0, 6).unwrap()], 1);
+    }
+
+    #[test]
+    fn find_best_motif_spacer_three() {
+        // Motif "AAAAAA" placed 3 bp upstream of the start codon.
+        // 12 bp upstream spacer + 6 bp motif + 3 bp gap + ATG = 24 bp.
+        // The start codon begins at 0-based index 21.
+        let seq = b"ccccccccccccaaaaaacccatg";
+        let mut weights = zero_motif_weights();
+        let ndx = kmer_encode(b"aaaaaa", 0, 6).unwrap();
+        let sp = spacer_group(3);
+        weights[3][sp][ndx] = 5.0;
+
+        let hit = find_best_motif(&weights, seq, 21, 0.0);
+        assert_eq!(hit.len, 6);
+        assert_eq!(hit.spacer, 3);
+        assert_eq!(kmer_decode(hit.ndx, 6), b"AAAAAA".to_vec());
     }
 
     #[test]
