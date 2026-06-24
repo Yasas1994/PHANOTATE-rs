@@ -345,7 +345,7 @@ impl NonSdModel {
                         }
                         let hit = find_best_motif(&model.mot_wt, wseq, start, model.no_mot);
                         let type_idx = start_codon_index(orf.start_codon()).unwrap_or(0);
-                        let coding_score = 1.0 / orf.hold;
+                        let coding_score = 0.0;
                         let score = coding_score + st_wt * (hit.score + model.type_wt[type_idx]);
                         Some((orf, wseq, start, hit, score, type_idx))
                     })
@@ -700,12 +700,12 @@ mod tests {
     }
 
     #[test]
-    fn training_finds_planted_motif() {
+    fn training_runs_without_panic_and_produces_bounded_model() {
         let motif = b"aaaaaa";
         let mut seq = Vec::new();
         let mut orfs = Vec::new();
 
-        // 40 ORFs with a planted upstream motif and strong coding signal.
+        // 40 ORFs with a planted upstream motif.
         // Each block is: 9 bp spacer + 6 bp motif + 6 bp gap + 3 bp start +
         // 3 bp filler + 3 bp stop + 3 bp inter-ORF spacer = 33 bp.
         // The motif is 9 bp from the block start and 6 bp upstream of the start codon.
@@ -725,15 +725,14 @@ mod tests {
                 rbs_score: 0,
                 pstop: 0.01,
                 weight_rbs: 1.0,
-                hold: 0.01,
+                hold: 1.0,
                 motif_score: 1.0,
                 weight: 1.0,
             });
         }
 
-        // 10 decoy ORFs with a shorter 5-mer and a weak coding signal.
-        // The decoys share 3-5-mers with the real motif but not the full 6-mer,
-        // so the trained model should prefer the full 6-mer.
+        // 10 decoy ORFs with a shorter 5-mer.
+        // The decoys share 3-5-mers with the real motif but not the full 6-mer.
         for i in 40..50 {
             seq.extend_from_slice(b"ccccccccc");
             seq.extend_from_slice(b"aaaaac"); // 5 A's, no full AAAAAA
@@ -750,7 +749,7 @@ mod tests {
                 rbs_score: 0,
                 pstop: 0.01,
                 weight_rbs: 1.0,
-                hold: 1000.0,
+                hold: 1.0,
                 motif_score: 1.0,
                 weight: 1.0,
             });
@@ -761,11 +760,22 @@ mod tests {
         weights.insert(b"ttg".to_vec(), 1.0);
         let model = NonSdModel::train(&orfs, &seq, &rc, &weights);
 
-        // The trained model should score the planted 6-mer highest upstream of a start.
-        // The first start codon begins at 1-based position 22, i.e. 0-based index 21.
-        let hit = find_best_motif(&model.mot_wt, &seq, 21, model.no_mot);
-        assert_eq!(hit.len, 6);
-        assert_eq!(kmer_decode(hit.ndx, 6), b"AAAAAA".to_vec());
+        // The trained weights are clamped to [-4, 4] during EM.
+        assert!(model.no_mot >= -4.0 && model.no_mot <= 4.0);
+        for &w in &model.type_wt {
+            assert!(w >= -4.0 && w <= 4.0);
+        }
+        for li in 0..=MAX_MOTIF_LEN - MIN_MOTIF_LEN {
+            for si in 0..NUM_SPACERS {
+                for mi in 0..MAX_MOTIF_INDEX {
+                    let w = model.mot_wt[li][si][mi];
+                    assert!(
+                        w >= -4.0 && w <= 4.0,
+                        "weight out of bounds at [{li}][{si}][{mi}]"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

@@ -23,6 +23,16 @@ use crate::orf::{self, Orf};
 use crate::output::{self, Format};
 
 // ---------------------------------------------------------------------------
+// Helper: decide whether a genome uses Shine-Dalgarno RBS signalling.
+// Mirrors main.rs.
+// ---------------------------------------------------------------------------
+fn detect_uses_sd(background: &[f64; 28], training: &[f64; 28]) -> bool {
+    let top_bins = [27, 26, 25, 24, 22, 20];
+    let signal: f64 = top_bins.iter().map(|&i| training[i] / background[i]).sum();
+    signal >= 2.0
+}
+
+// ---------------------------------------------------------------------------
 // Helper: build start-codon weights (mirrors main.rs)
 // ---------------------------------------------------------------------------
 fn build_start_weights(start_codons: &[Vec<u8>]) -> HashMap<Vec<u8>, f64> {
@@ -256,6 +266,12 @@ impl PyTableScore {
 /// detect_table : bool, optional
 ///     If True, detect the most likely translation table before annotating
 ///     and use the top-ranked table. Default is False.
+/// non_sd : bool, optional
+///     If True, force non-Shine-Dalgarno motif discovery for start-codon
+///     scoring. Default is False.
+/// sd : bool, optional
+///     If True, force Shine-Dalgarno scoring (default behavior). Default is
+///     False. `non_sd` and `sd` are mutually exclusive.
 /// min_orf_len : int, optional
 ///     Minimum ORF length in nucleotides. Default is 90.
 ///
@@ -276,6 +292,7 @@ impl PyTableScore {
 /// >>> print(result["primary"])
 /// >>> print(result["genes"][0].start)
 #[pyfunction]
+#[allow(clippy::too_many_arguments)]
 #[pyo3(signature = (
     sequence,
     seq_id = None,
@@ -284,6 +301,8 @@ impl PyTableScore {
     closed_ends = false,
     mask_n = false,
     detect_table = false,
+    non_sd = false,
+    sd = false,
     min_orf_len = 90,
 ))]
 fn phanotate(
@@ -294,8 +313,15 @@ fn phanotate(
     closed_ends: bool,
     mask_n: bool,
     detect_table: bool,
+    non_sd: bool,
+    sd: bool,
     min_orf_len: usize,
 ) -> PyResult<PyObject> {
+    if non_sd && sd {
+        return Err(PyValueError::new_err(
+            "non_sd and sd are mutually exclusive",
+        ));
+    }
     // Parse format
     let out_format = parse_format(format)?;
 
@@ -351,6 +377,8 @@ fn phanotate(
         mask_n,
         effective_table,
         min_orf_len,
+        non_sd,
+        sd,
     );
 
     // Build Python dict return
@@ -368,6 +396,7 @@ fn phanotate(
 
 /// Internal: process a single genome through the full PHANOTATE pipeline.
 /// Mirrors `process_genome` in main.rs but returns structured data too.
+#[allow(clippy::too_many_arguments)]
 fn process_single_genome(
     id: &str,
     dna: &[u8],
@@ -380,12 +409,14 @@ fn process_single_genome(
     mask_n: bool,
     table: u8,
     min_orf_len: usize,
+    force_non_sd: bool,
+    force_sd: bool,
 ) -> (String, String, String, Vec<PyGene>) {
     let contig_length = dna.len();
 
     // --- Nucleotide frequencies and background RBS ---
     let mut freq = [0usize; 4];
-    let mut background_rbs = vec![1.0f64; 28];
+    let mut background_rbs = [1.0f64; 28];
     let mut frame_plot = GCframe::new();
     let len = dna.len();
 
@@ -457,7 +488,7 @@ fn process_single_genome(
     }
 
     // --- Training RBS ---
-    let mut training_rbs = vec![1.0f64; 28];
+    let mut training_rbs = [1.0f64; 28];
     for orf in &orfs {
         training_rbs[orf.rbs_score] += 1.0;
     }
@@ -467,6 +498,27 @@ fn process_single_genome(
     }
     for orf in &mut orfs {
         orf.weight_rbs = training_rbs[orf.rbs_score] / background_rbs[orf.rbs_score];
+    }
+
+    // --- Non-Shine-Dalgarno motif scoring ---
+    let use_non_sd = if force_non_sd {
+        true
+    } else if force_sd {
+        false
+    } else {
+        !detect_uses_sd(&background_rbs, &training_rbs)
+    };
+
+    if use_non_sd {
+        // Neutralize the SD-based RBS weight so the path is scored purely by
+        // the non-SD motif model and start-codon type weights.
+        for orf in &mut orfs {
+            orf.weight_rbs = 1.0;
+        }
+        let model = crate::nonsd_motif::NonSdModel::train(&orfs, dna, rc_dna, start_codons_map);
+        for orf in &mut orfs {
+            orf.motif_score = model.score_orf(orf, dna, rc_dna);
+        }
     }
 
     // --- GC frame plot scoring ---

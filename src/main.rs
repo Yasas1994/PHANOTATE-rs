@@ -288,6 +288,11 @@ fn process_genome(
     };
 
     if use_non_sd {
+        // Neutralize the SD-based RBS weight so the path is scored purely by
+        // the non-SD motif model and start-codon type weights.
+        for orf in &mut orfs {
+            orf.weight_rbs = 1.0;
+        }
         let model =
             phanotate_rs::nonsd_motif::NonSdModel::train(&orfs, dna, rc_dna, start_codons_map);
         for orf in &mut orfs {
