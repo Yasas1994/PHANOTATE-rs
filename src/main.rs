@@ -211,7 +211,7 @@ fn process_genome(
     #[cfg(not(feature = "ml"))] _ml_scorer: &Option<()>,
     prodigal_rbs: bool,
     dicodon: bool,
-    start_model: Option<&std::path::Path>,
+    start_model: Option<&phanotate_rs::start_refiner::StartModel>,
 ) -> Result<(String, String, String)> {
     let contig_length = genome.seq.len();
     let dna = &genome.seq;
@@ -536,9 +536,7 @@ fn process_genome(
         }
     }
 
-    if let Some(path) = start_model {
-        let model = phanotate_rs::start_refiner::StartModel::from_json(path)
-            .with_context(|| format!("Failed to load start model from {:?}", path))?;
+    if let Some(model) = start_model {
         for orf in &mut orfs {
             let features = phanotate_rs::start_refiner::StartSiteFeatures::new(orf);
             orf.start_score = model.score(&features);
@@ -814,6 +812,16 @@ fn main() -> Result<()> {
     #[cfg(not(feature = "ml"))]
     let ml_scorer: Option<()> = None;
 
+    // Load start-site scoring model if provided
+    let start_model: Option<phanotate_rs::start_refiner::StartModel> = cli
+        .start_model
+        .as_ref()
+        .map(|p| {
+            phanotate_rs::start_refiner::StartModel::from_json(p)
+                .with_context(|| format!("Failed to load start model from {:?}", p))
+        })
+        .transpose()?;
+
     // Process each contig in parallel
     let results: Vec<(String, String, String)> = if cli.progress {
         let pb = ProgressBar::new(genomes.len() as u64);
@@ -841,7 +849,7 @@ fn main() -> Result<()> {
                     &ml_scorer,
                     cli.prodigal_rbs,
                     cli.dicodon,
-                    cli.start_model.as_deref(),
+                    start_model.as_ref(),
                 )
             })
             .collect::<Result<Vec<_>>>()?
@@ -863,7 +871,7 @@ fn main() -> Result<()> {
                     &ml_scorer,
                     cli.prodigal_rbs,
                     cli.dicodon,
-                    cli.start_model.as_deref(),
+                    start_model.as_ref(),
                 )
             })
             .collect::<Result<Vec<_>>>()?
