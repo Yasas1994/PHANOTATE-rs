@@ -39,7 +39,7 @@ pub const FEATURE_NAMES: [&str; NUM_FEATURES] = [
     "frame_1",
     "frame_2",
     "frame_3",
-    "motif_score",
+    "log_motif_score",
 ];
 
 impl Orf {
@@ -94,7 +94,7 @@ impl Orf {
         features[12] = if abs_frame == 3 { 1.0 } else { 0.0 };
 
         // 13. log(motif_score)
-        features[13] = self.motif_score.ln() as f32;
+        features[13] = self.motif_score.max(1e-6).ln() as f32;
 
         OrfFeatures(features)
     }
@@ -216,7 +216,7 @@ mod tests {
         let mut orf = test_orf();
         orf.motif_score = 2.0;
         let f = orf.extract_features();
-        assert_eq!(f.0.len(), 14);
+        assert_eq!(f.0.len(), NUM_FEATURES);
         assert!((f.0[13] - 2.0f32.ln()).abs() < 0.001);
     }
 
@@ -226,7 +226,7 @@ mod tests {
         let mut buf = Vec::new();
         write_features_tsv(&mut buf, &orfs, true).unwrap();
         let s = String::from_utf8(buf).unwrap();
-        assert!(s.starts_with("log_length\trbs_score_norm\tlog_hold\tpstop\tweight_rbs_log\tstart_codon_atg\tstart_codon_gtg\tstart_codon_ttg\tgc_content\tframe_fwd\tframe_1\tframe_2\tframe_3\tmotif_score"));
+        assert!(s.starts_with("log_length\trbs_score_norm\tlog_hold\tpstop\tweight_rbs_log\tstart_codon_atg\tstart_codon_gtg\tstart_codon_ttg\tgc_content\tframe_fwd\tframe_1\tframe_2\tframe_3\tlog_motif_score"));
     }
 
     #[test]

@@ -49,7 +49,7 @@ cargo run --release --features ml -- \
 ## Model Requirements
 
 ### Input
-- **Shape**: `[batch_size, 13]` where `batch_size` can be any positive integer
+- **Shape**: `[batch_size, 14]` where `batch_size` can be any positive integer
 - **Type**: `float32`
 - **Features**: See `src/ml_features.rs` for feature definitions
 
@@ -58,7 +58,7 @@ cargo run --release --features ml -- \
 - **Type**: `float32`
 - **Interpretation**: Log-scale adjustment value. The Rust code clamps to `[ln(0.5), ln(2.0)]` and exponentiates to get a multiplicative factor in `[0.5, 2.0]`.
 
-## Feature List (13 features)
+## Feature List (14 features)
 
 | # | Feature | Description |
 |---|---------|-------------|
@@ -75,6 +75,9 @@ cargo run --release --features ml -- \
 | 10 | `frame_1` | 1 if reading frame 1 |
 | 11 | `frame_2` | 1 if reading frame 2 |
 | 12 | `frame_3` | 1 if reading frame 3 |
+| 13 | `log_motif_score` | ln(motif score) |
+
+> **Note:** Existing ONNX models in this directory were trained with the original 13-feature set and do not include `log_motif_score`. They must be retrained with the updated 14-feature export before they can be used with the current code.
 
 ## Training with Real Data
 
@@ -132,7 +135,7 @@ For production models, you should either:
 
 ### "Failed to load ONNX model"
 - Check the model path is correct
-- Verify the model has input shape `[?, 13]` and output shape `[?, 1]`
+- Verify the model has input shape `[?, 14]` and output shape `[?, 1]`
 - Ensure the model is a regressor, not a classifier
 
 ### "ONNX model inference failed"

@@ -40,7 +40,7 @@ End-to-end training pipeline:
 
 ## Feature Description
 
-The 13 features extracted per ORF (from `src/ml_features.rs`):
+The 14 features extracted per ORF (from `src/ml_features.rs`):
 
 | Feature | Description | Range |
 |---------|-------------|-------|
@@ -57,6 +57,7 @@ The 13 features extracted per ORF (from `src/ml_features.rs`):
 | `frame_1` | 1 if \|frame\| == 1, else 0 | 0 or 1 |
 | `frame_2` | 1 if \|frame\| == 2, else 0 | 0 or 1 |
 | `frame_3` | 1 if \|frame\| == 3, else 0 | 0 or 1 |
+| `log_motif_score` | Natural log of motif score | varies |
 
 ## Training Data
 
