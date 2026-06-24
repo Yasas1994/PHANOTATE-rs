@@ -311,6 +311,9 @@ impl PyTableScore {
 /// dicodon : bool, optional
 ///     If True, use a Prodigal-style 6-mer dicodon coding-potential model.
 ///     Default is False.
+/// start_model : str, optional
+///     Path to a JSON start-site scoring model produced by
+///     `scripts/train_start_model.py`. Default is None.
 /// min_orf_len : int, optional
 ///     Minimum ORF length in nucleotides. Default is 90.
 ///
@@ -346,6 +349,7 @@ impl PyTableScore {
     sd = false,
     prodigal_rbs = false,
     dicodon = false,
+    start_model = None,
     min_orf_len = 90,
 ))]
 fn phanotate(
@@ -360,6 +364,7 @@ fn phanotate(
     sd: bool,
     prodigal_rbs: bool,
     dicodon: bool,
+    start_model: Option<&str>,
     min_orf_len: usize,
 ) -> PyResult<PyObject> {
     if non_sd && sd {
@@ -431,7 +436,8 @@ fn phanotate(
         sd,
         prodigal_rbs,
         dicodon,
-    );
+        start_model,
+    )?;
 
     // Build Python dict return
     Python::with_gil(|py| {
@@ -466,7 +472,8 @@ fn process_single_genome(
     force_sd: bool,
     prodigal_rbs: bool,
     dicodon: bool,
-) -> (String, String, String, Vec<PyGene>, bool) {
+    start_model: Option<&str>,
+) -> PyResult<(String, String, String, Vec<PyGene>, bool)> {
     let contig_length = dna.len();
 
     // --- Nucleotide frequencies and background RBS ---
@@ -547,13 +554,13 @@ fn process_single_genome(
 
     if orfs.is_empty() {
         let no_orfs = format!("#id:\t{} NO ORFS FOUND\n", id);
-        return (
+        return Ok((
             no_orfs.clone(),
             no_orfs.clone(),
             no_orfs,
             Vec::new(),
             force_non_sd,
-        );
+        ));
     }
 
     // --- Training RBS ---
@@ -781,6 +788,15 @@ fn process_single_genome(
         }
     }
 
+    if let Some(path) = start_model {
+        let model = crate::start_refiner::StartModel::from_json(std::path::Path::new(path))
+            .map_err(|e| PyRuntimeError::new_err(format!("Failed to load start model: {}", e)))?;
+        for orf in &mut orfs {
+            let features = crate::start_refiner::StartSiteFeatures::new(orf);
+            orf.start_score = model.score(&features);
+        }
+    }
+
     for orf in &mut orfs {
         orf.score(start_codons_map);
     }
@@ -893,7 +909,7 @@ fn process_single_genome(
     // --- Nucleotide output ---
     let nucleotide = output::write_nucleotide_fasta(id, &path_edges, &orfs);
 
-    (primary, protein, nucleotide, genes, !use_non_sd)
+    Ok((primary, protein, nucleotide, genes, !use_non_sd))
 }
 
 // ---------------------------------------------------------------------------
@@ -920,6 +936,9 @@ fn process_single_genome(
 ///     If True, score upstream RBS motifs with Prodigal-style SD scanning
 ///     and fall back to non-SD motifs for ORFs without a strong SD signal.
 ///     Default is False.
+/// start_model : str, optional
+///     Path to a JSON start-site scoring model produced by
+///     `scripts/train_start_model.py`. Default is None.
 ///
 /// Returns
 /// -------
@@ -941,6 +960,7 @@ fn process_single_genome(
     mask_n = false,
     min_orf_len = 90,
     prodigal_rbs = false,
+    start_model = None,
 ))]
 fn find_orfs(
     sequence: &str,
@@ -949,6 +969,7 @@ fn find_orfs(
     mask_n: bool,
     min_orf_len: usize,
     prodigal_rbs: bool,
+    start_model: Option<&str>,
 ) -> PyResult<Vec<PyOrf>> {
     validate_table(table)?;
 
@@ -1031,6 +1052,15 @@ fn find_orfs(
                     .best_motif_label(orf, &dna, &rc_dna)
                     .map(|m| format!("nonSD:{m}"));
             }
+        }
+    }
+
+    if let Some(path) = start_model {
+        let model = crate::start_refiner::StartModel::from_json(std::path::Path::new(path))
+            .map_err(|e| PyRuntimeError::new_err(format!("Failed to load start model: {}", e)))?;
+        for orf in &mut orfs {
+            let features = crate::start_refiner::StartSiteFeatures::new(orf);
+            orf.start_score = model.score(&features);
         }
     }
 
