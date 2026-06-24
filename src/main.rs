@@ -106,6 +106,10 @@ struct Cli {
     /// Use Prodigal-style SD scanner with non-SD fallback.
     #[arg(long = "prodigal-rbs")]
     prodigal_rbs: bool,
+
+    /// Use a Prodigal-style 6-mer dicodon coding-potential model.
+    #[arg(long = "dicodon")]
+    dicodon: bool,
 }
 
 /// Build start-codon weights from a list of codons.
@@ -202,6 +206,7 @@ fn process_genome(
     #[cfg(feature = "ml")] ml_scorer: &Option<phanotate_rs::ml_scorer::MlScorer>,
     #[cfg(not(feature = "ml"))] _ml_scorer: &Option<()>,
     prodigal_rbs: bool,
+    dicodon: bool,
 ) -> (String, String, String) {
     let contig_length = genome.seq.len();
     let dna = &genome.seq;
@@ -513,9 +518,17 @@ fn process_genome(
             }
         }
         orf.hold = log_hold.exp();
-        // Keep dicodon_score in sync with the recomputed hold in default mode.
-        // When the optional dicodon model is active it will overwrite this.
-        orf.dicodon_score = 1.0 / orf.hold;
+        if !dicodon {
+            // Default mode: GC-frame hold is the coding-potential multiplier.
+            orf.dicodon_score = 1.0 / orf.hold;
+        }
+    }
+
+    if dicodon {
+        let model = phanotate_rs::dicodon::DicodonModel::train(&orfs, dna, rc_dna);
+        for orf in &mut orfs {
+            orf.dicodon_score = model.score_orf(orf);
+        }
     }
 
     // --- Score ORFs ---
@@ -813,6 +826,7 @@ fn main() -> Result<()> {
                     cli.force_sd,
                     &ml_scorer,
                     cli.prodigal_rbs,
+                    cli.dicodon,
                 )
             })
             .collect()
@@ -833,6 +847,7 @@ fn main() -> Result<()> {
                     cli.force_sd,
                     &ml_scorer,
                     cli.prodigal_rbs,
+                    cli.dicodon,
                 )
             })
             .collect()

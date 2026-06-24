@@ -371,6 +371,11 @@ class TestPhanotatePipeline:
         with pytest.raises(ValueError):
             phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", prodigal_rbs=True, sd=True)
 
+    def test_phanotate_dicodon(self):
+        default = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test")
+        dicodon = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", dicodon=True)
+        assert default["primary"] != dicodon["primary"]
+
 
 # ---------------------------------------------------------------------------
 # 5. Integration tests with real data

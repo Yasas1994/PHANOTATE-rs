@@ -97,6 +97,25 @@ impl DicodonModel {
 
         model
     }
+
+    /// Score an ORF by summing per-dicodon log-likelihoods in its translational
+    /// frame and converting the average to a positive multiplier.
+    pub fn score_orf(&self, orf: &Orf) -> f64 {
+        let seq = orf.sequence();
+        let mut sum = 0.0;
+        let mut count = 0;
+        for i in (0..seq.len().saturating_sub(5)).step_by(3) {
+            if let Some(ndx) = kmer_encode(seq, i, 6) {
+                sum += self.scores[ndx];
+                count += 1;
+            }
+        }
+        if count == 0 {
+            return 1.0;
+        }
+        let avg = sum / count as f64;
+        avg.exp().clamp(0.1, 10.0)
+    }
 }
 
 #[cfg(test)]
@@ -146,5 +165,35 @@ mod tests {
         let model = DicodonModel::train(&orfs, &seq, &rc);
         assert!(model.scores.iter().all(|&s| s.is_finite()));
         assert!(model.scores.iter().any(|&s| s > 0.0));
+    }
+
+    #[test]
+    fn score_orf_returns_positive_multiplier() {
+        let unit = b"atgaaaaaaaatgaaaaaaatgaaaaaaa";
+        let seq = unit
+            .iter()
+            .cycle()
+            .take(unit.len() * 20)
+            .copied()
+            .collect::<Vec<u8>>();
+        let rc = crate::genome::rev_comp(&seq);
+        let orfs = vec![Orf {
+            start: 1,
+            stop: seq.len() - 2,
+            frame: 1,
+            seq: seq.clone(),
+            rbs_score: 0,
+            rbs_motif: None,
+            pstop: 0.01,
+            weight_rbs: 2.0,
+            hold: 100.0,
+            motif_score: 1.0,
+            dicodon_score: 1.0,
+            weight: 1.0,
+        }];
+        let model = DicodonModel::train(&orfs, &seq, &rc);
+        let s = model.score_orf(&orfs[0]);
+        assert!(s > 0.0);
+        assert!(s <= 10.0);
     }
 }

@@ -308,6 +308,9 @@ impl PyTableScore {
 ///     If True, use Prodigal-style SD scanning with non-SD fallback.
 ///     Default is False. `prodigal_rbs` is mutually exclusive with `sd`
 ///     and `non_sd`.
+/// dicodon : bool, optional
+///     If True, use a Prodigal-style 6-mer dicodon coding-potential model.
+///     Default is False.
 /// min_orf_len : int, optional
 ///     Minimum ORF length in nucleotides. Default is 90.
 ///
@@ -342,6 +345,7 @@ impl PyTableScore {
     non_sd = false,
     sd = false,
     prodigal_rbs = false,
+    dicodon = false,
     min_orf_len = 90,
 ))]
 fn phanotate(
@@ -355,6 +359,7 @@ fn phanotate(
     non_sd: bool,
     sd: bool,
     prodigal_rbs: bool,
+    dicodon: bool,
     min_orf_len: usize,
 ) -> PyResult<PyObject> {
     if non_sd && sd {
@@ -425,6 +430,7 @@ fn phanotate(
         non_sd,
         sd,
         prodigal_rbs,
+        dicodon,
     );
 
     // Build Python dict return
@@ -459,6 +465,7 @@ fn process_single_genome(
     force_non_sd: bool,
     force_sd: bool,
     prodigal_rbs: bool,
+    dicodon: bool,
 ) -> (String, String, String, Vec<PyGene>, bool) {
     let contig_length = dna.len();
 
@@ -762,7 +769,16 @@ fn process_single_genome(
             }
         }
         orf.hold = log_hold.exp();
-        orf.dicodon_score = 1.0 / orf.hold;
+        if !dicodon {
+            orf.dicodon_score = 1.0 / orf.hold;
+        }
+    }
+
+    if dicodon {
+        let model = crate::dicodon::DicodonModel::train(&orfs, dna, rc_dna);
+        for orf in &mut orfs {
+            orf.dicodon_score = model.score_orf(orf);
+        }
     }
 
     for orf in &mut orfs {

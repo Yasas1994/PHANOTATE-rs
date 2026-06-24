@@ -503,6 +503,37 @@ fn prodigal_rbs_conflicts_with_sd() {
 }
 
 // ---------------------------------------------------------------------------
+// Dicodon scoring
+// ---------------------------------------------------------------------------
+#[test]
+fn dicodon_flag_runs_without_error() {
+    let (stdout, _stderr, code) = run(
+        &["-i", "tests/data/small.fasta", "--dicodon", "-f", "sco"],
+        None,
+    );
+    assert_eq!(code, 0, "--dicodon run should succeed");
+    let data_line = stdout.lines().find(|l| !l.starts_with('#')).unwrap_or("");
+    assert!(!data_line.is_empty(), "--dicodon should produce data lines");
+    let cols: Vec<_> = data_line.split('\t').collect();
+    assert_eq!(cols.len(), 5, "SCO line should have 5 columns");
+}
+
+#[test]
+fn dicodon_changes_output() {
+    let (default_out, _, default_code) = run(&["-i", "tests/data/small.fasta", "-f", "sco"], None);
+    let (dicodon_out, _, dicodon_code) = run(
+        &["-i", "tests/data/small.fasta", "--dicodon", "-f", "sco"],
+        None,
+    );
+    assert_eq!(default_code, 0, "default run should succeed");
+    assert_eq!(dicodon_code, 0, "--dicodon run should succeed");
+    assert_ne!(
+        default_out, dicodon_out,
+        "--dicodon should change the annotation output"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Regression test for internal stop codons with non-standard genetic codes
 // ---------------------------------------------------------------------------
 #[test]
