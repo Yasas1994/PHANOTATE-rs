@@ -67,8 +67,8 @@ impl Orf {
         // 3. P(stop) for this ORF
         features[3] = self.pstop as f32;
 
-        // 4. log(weight_rbs)
-        features[4] = self.weight_rbs.ln() as f32;
+        // 4. log(weight_rbs) — guard against zero/negative weights
+        features[4] = self.weight_rbs.max(1e-6).ln() as f32;
 
         // 5-7. Start codon one-hot (ATG, GTG, TTG)
         let sc = self.start_codon();

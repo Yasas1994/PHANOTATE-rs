@@ -111,7 +111,29 @@ phanotate-rs -i genome.fasta -g 4 -f sco
 
 # Write protein and nucleotide sequences to separate files
 phanotate-rs -i genome.fasta -a proteins.faa -d nucleotides.fna
+
+# Force non-Shine-Dalgarno motif discovery for start-codon scoring
+phanotate-rs -i genome.fasta --non-sd
+
+# Force Shine-Dalgarno scoring and skip non-SD auto-detection
+phanotate-rs -i genome.fasta --sd
 ```
+
+### Shine-Dalgarno vs non-SD scoring
+
+By default, PHANOTATE-rs scores Shine–Dalgarno (SD) motifs upstream of start codons.
+For genomes that lack a strong SD signal, it can instead discover an enriched
+non-SD motif upstream of start codons (similar to Prodigal's non-SD mode):
+
+- `--non-sd` — force non-SD motif discovery.
+- `--sd` — force SD scoring and skip automatic non-SD detection.
+
+When automatic selection is used (neither flag), the tool compares the high-score
+tail of the RBS training distribution to the genomic background and switches to
+the non-SD model when the SD signal is weak.
+
+For Python API users, the result dictionary from `phanotate_rs.phanotate()`
+contains a `uses_sd` key (`bool`) indicating whether SD scoring was used.
 
 ### Stdin input
 

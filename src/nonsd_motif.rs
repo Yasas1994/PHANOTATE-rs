@@ -22,18 +22,10 @@ pub type MotifWeights =
 
 /// Allocate a zeroed motif weight array directly on the heap.
 ///
-/// `Box::new([...])` would place the 512 KiB array on the stack first, which
-/// overflows the small stacks used by test threads. This helper avoids that.
+/// The array is 4 * 4 * 4096 * 8 = 512 KiB, which is fine to allocate safely
+/// via `Box::new` without resorting to raw allocation.
 fn zero_motif_weights() -> MotifWeights {
-    let total = (MAX_MOTIF_LEN - MIN_MOTIF_LEN + 1) * NUM_SPACERS * MAX_MOTIF_INDEX;
-    let layout = std::alloc::Layout::array::<f64>(total).unwrap();
-    let ptr = unsafe { std::alloc::alloc_zeroed(layout) };
-    if ptr.is_null() {
-        std::alloc::handle_alloc_error(layout);
-    }
-    let ptr =
-        ptr as *mut [[[f64; MAX_MOTIF_INDEX]; NUM_SPACERS]; MAX_MOTIF_LEN - MIN_MOTIF_LEN + 1];
-    unsafe { Box::from_raw(ptr) }
+    Box::new([[[0.0f64; MAX_MOTIF_INDEX]; NUM_SPACERS]; MAX_MOTIF_LEN - MIN_MOTIF_LEN + 1])
 }
 
 /// 2-bit encode a single base: A=0, C=1, G=2, T=3.
@@ -95,13 +87,15 @@ pub struct MotifHit {
 }
 
 /// Classify a spacer (distance from motif start to coding start) into a group.
-fn spacer_group(spacer: usize) -> usize {
+///
+/// Returns `None` for distances outside the supported 3–18 bp window.
+fn spacer_group(spacer: usize) -> Option<usize> {
     match spacer {
-        3 | 4 => 1,
-        5..=10 => 0,
-        11 | 12 => 2,
-        13..=18 => 3,
-        _ => panic!("spacer out of range: {}", spacer),
+        3 | 4 => Some(1),
+        5..=10 => Some(0),
+        11 | 12 => Some(2),
+        13..=18 => Some(3),
+        _ => None,
     }
 }
 
@@ -126,7 +120,9 @@ pub fn find_best_motif(mot_wt: &MotifWeights, seq: &[u8], start: usize, no_mot: 
             }
             if let Some(ndx) = kmer_encode(seq, pos, len) {
                 let spacer = start - pos - len;
-                let spacendx = spacer_group(spacer);
+                let Some(spacendx) = spacer_group(spacer) else {
+                    continue;
+                };
                 let score = mot_wt[len_idx][spacendx][ndx];
                 if score > best.score {
                     best = MotifHit {
@@ -559,7 +555,9 @@ fn update_motif_counts(
                     }
                     if let Some(ndx) = kmer_encode(seq, pos, sub_len) {
                         let spacer = start - pos - sub_len;
-                        let sp = spacer_group(spacer);
+                        let Some(sp) = spacer_group(spacer) else {
+                            continue;
+                        };
                         mcnt[sub_len_idx][sp][ndx] += 1.0;
                     }
                 }
@@ -735,7 +733,7 @@ mod tests {
         let seq = b"ccccccccccccaaaaaacccatg";
         let mut weights = zero_motif_weights();
         let ndx = kmer_encode(b"aaaaaa", 0, 6).unwrap();
-        let sp = spacer_group(3);
+        let sp = spacer_group(3).unwrap();
         weights[3][sp][ndx] = 5.0;
 
         let hit = find_best_motif(&weights, seq, 21, 0.0);

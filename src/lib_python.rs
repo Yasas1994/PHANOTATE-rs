@@ -270,8 +270,8 @@ impl PyTableScore {
 ///     If True, force non-Shine-Dalgarno motif discovery for start-codon
 ///     scoring. Default is False.
 /// sd : bool, optional
-///     If True, force Shine-Dalgarno scoring (default behavior). Default is
-///     False. `non_sd` and `sd` are mutually exclusive.
+///     If True, force Shine-Dalgarno scoring (skip non-SD auto-detection).
+///     Default is False. `non_sd` and `sd` are mutually exclusive.
 /// min_orf_len : int, optional
 ///     Minimum ORF length in nucleotides. Default is 90.
 ///
@@ -284,6 +284,8 @@ impl PyTableScore {
 ///     - "nucleotide" : str  — nucleotide FASTA of predicted genes
 ///     - "genes"      : list[Gene] — structured gene objects
 ///     - "table_used" : int  — the translation table that was actually used
+///     - "uses_sd"    : bool — True when Shine-Dalgarno scoring was used,
+///                       False when non-SD motif discovery was used
 ///
 /// Examples
 /// --------
@@ -365,7 +367,7 @@ fn phanotate(
     let rc_dna = genome::rev_comp(&dna);
 
     // --- Run the pipeline ---
-    let (primary, protein, nucleotide, genes) = process_single_genome(
+    let (primary, protein, nucleotide, genes, uses_sd) = process_single_genome(
         &genome_id,
         &dna,
         &rc_dna,
@@ -390,6 +392,7 @@ fn phanotate(
         let py_genes: Vec<PyObject> = genes.into_iter().map(|g| g.into_py(py)).collect();
         dict.set_item("genes", py_genes)?;
         dict.set_item("table_used", effective_table)?;
+        dict.set_item("uses_sd", uses_sd)?;
         Ok(dict.into())
     })
 }
@@ -411,7 +414,7 @@ fn process_single_genome(
     min_orf_len: usize,
     force_non_sd: bool,
     force_sd: bool,
-) -> (String, String, String, Vec<PyGene>) {
+) -> (String, String, String, Vec<PyGene>, bool) {
     let contig_length = dna.len();
 
     // --- Nucleotide frequencies and background RBS ---
@@ -484,7 +487,13 @@ fn process_single_genome(
 
     if orfs.is_empty() {
         let no_orfs = format!("#id:\t{} NO ORFS FOUND\n", id);
-        return (no_orfs.clone(), no_orfs.clone(), no_orfs, Vec::new());
+        return (
+            no_orfs.clone(),
+            no_orfs.clone(),
+            no_orfs,
+            Vec::new(),
+            force_non_sd,
+        );
     }
 
     // --- Training RBS ---
@@ -754,7 +763,7 @@ fn process_single_genome(
     // --- Nucleotide output ---
     let nucleotide = output::write_nucleotide_fasta(id, &path_edges, &orfs);
 
-    (primary, protein, nucleotide, genes)
+    (primary, protein, nucleotide, genes, !use_non_sd)
 }
 
 // ---------------------------------------------------------------------------

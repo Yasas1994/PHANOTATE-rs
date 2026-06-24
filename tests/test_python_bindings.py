@@ -329,6 +329,22 @@ class TestPhanotatePipeline:
         with pytest.raises(ValueError):
             phanotate_rs.phanotate("", seq_id="test")
 
+    def test_phanotate_non_sd_returns_uses_sd_false(self):
+        result = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", non_sd=True)
+        assert isinstance(result, dict)
+        assert "uses_sd" in result
+        assert result["uses_sd"] is False
+
+    def test_phanotate_sd_returns_uses_sd_true(self):
+        result = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", sd=True)
+        assert isinstance(result, dict)
+        assert "uses_sd" in result
+        assert result["uses_sd"] is True
+
+    def test_phanotate_non_sd_and_sd_mutually_exclusive(self):
+        with pytest.raises(ValueError):
+            phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", non_sd=True, sd=True)
+
 
 # ---------------------------------------------------------------------------
 # 5. Integration tests with real data
@@ -361,6 +377,8 @@ class TestIntegration:
         primary = result["primary"]
         if primary.strip():
             for line in primary.strip().split("\n"):
+                if line.startswith("#"):
+                    continue
                 cols = line.split("\t")
                 assert len(cols) == 4
 

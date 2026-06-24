@@ -99,7 +99,7 @@ struct Cli {
     #[arg(long = "non-sd")]
     force_non_sd: bool,
 
-    /// Force Shine-Dalgarno scoring (default behavior).
+    /// Force Shine-Dalgarno scoring (skip non-SD auto-detection).
     #[arg(long = "sd")]
     force_sd: bool,
 }
