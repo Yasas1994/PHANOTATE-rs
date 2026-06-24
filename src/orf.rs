@@ -173,6 +173,7 @@ pub fn find_orfs_with_rc(
                     }
                     let rbs = get_rbs(dna, start, true);
                     let rbs_score = score_rbs(&rbs);
+                    let rbs_motif = detect_rbs_motif(&rbs);
                     let pstop = Orf::compute_pstop(&seq);
                     orfs.push(Orf {
                         start,
@@ -183,7 +184,7 @@ pub fn find_orfs_with_rc(
                         pstop,
                         weight_rbs: 1.0,
                         motif_score: 1.0,
-                        rbs_motif: None,
+                        rbs_motif,
                         hold: 1.0,
                         weight: 1.0,
                     });
@@ -221,6 +222,7 @@ pub fn find_orfs_with_rc(
                     let rbs_end = dna.len() - start;
                     let rbs = &rc_dna[rbs_start..rbs_end];
                     let rbs_score = score_rbs(rbs);
+                    let rbs_motif = detect_rbs_motif(rbs);
                     let pstop = Orf::compute_pstop(&seq);
                     orfs.push(Orf {
                         start: start - 2,
@@ -231,7 +233,7 @@ pub fn find_orfs_with_rc(
                         pstop,
                         weight_rbs: 1.0,
                         motif_score: 1.0,
-                        rbs_motif: None,
+                        rbs_motif,
                         hold: 1.0,
                         weight: 1.0,
                     });
@@ -256,6 +258,7 @@ pub fn find_orfs_with_rc(
                     }
                     let rbs = get_rbs(dna, start, true);
                     let rbs_score = score_rbs(&rbs);
+                    let rbs_motif = detect_rbs_motif(&rbs);
                     let pstop = Orf::compute_pstop(&seq);
                     orfs.push(Orf {
                         start,
@@ -266,7 +269,7 @@ pub fn find_orfs_with_rc(
                         pstop,
                         weight_rbs: 1.0,
                         motif_score: 1.0,
-                        rbs_motif: None,
+                        rbs_motif,
                         hold: 1.0,
                         weight: 1.0,
                     });
@@ -298,6 +301,7 @@ pub fn find_orfs_with_rc(
                     let rbs_end = dna.len() - start;
                     let rbs = &rc_dna[rbs_start..rbs_end];
                     let rbs_score = score_rbs(rbs);
+                    let rbs_motif = detect_rbs_motif(rbs);
                     let pstop = Orf::compute_pstop(&seq);
                     orfs.push(Orf {
                         start: start - 2,
@@ -308,7 +312,7 @@ pub fn find_orfs_with_rc(
                         pstop,
                         weight_rbs: 1.0,
                         motif_score: 1.0,
-                        rbs_motif: None,
+                        rbs_motif,
                         hold: 1.0,
                         weight: 1.0,
                     });
@@ -763,6 +767,58 @@ pub fn score_rbs(seq: &[u8]) -> usize {
     0
 }
 
+/// Detect the matching Shine-Dalgarno motif in the upstream window.
+/// Mirrors the priority order of `score_rbs` and returns the first
+/// matching motif as an uppercase string, or `None` if no motif matches.
+pub fn detect_rbs_motif(seq: &[u8]) -> Option<String> {
+    let s: Vec<u8> = seq.iter().rev().copied().collect();
+
+    let in_range = |pat: &[u8], start: usize, end: usize| -> bool {
+        if end > s.len() || start >= s.len() {
+            return false;
+        }
+        let window = &s[start..end];
+        if pat.len() > window.len() {
+            return false;
+        }
+        window.windows(pat.len()).any(|w| w == pat)
+    };
+
+    let patterns: &[(&[u8], &str)] = &[
+        (b"ggagga", "AGGAGG"),
+        (b"ggagg", "GGAGG"),
+        (b"gagga", "GAGGA"),
+        (b"ggacga", "GGACGA"),
+        (b"ggatga", "GGATGA"),
+        (b"ggaaga", "GGAAGA"),
+        (b"ggcgga", "GGCGGA"),
+        (b"ggggga", "GGGGGA"),
+        (b"ggtgga", "GGTGGA"),
+        (b"ggag", "GGAG"),
+        (b"gagg", "GAGG"),
+        (b"agga", "AGGA"),
+        (b"ggcg", "GGCG"),
+        (b"gacga", "GACGA"),
+        (b"gatga", "GATGA"),
+        (b"gaaga", "GAAGA"),
+        (b"agcga", "AGCGA"),
+        (b"aggcga", "AGGCGA"),
+        (b"gggagg", "GGGAGG"),
+        (b"gaggtg", "GAGGTG"),
+        (b"ggtg", "GGTG"),
+        (b"gctggt", "GCTGGT"),
+        (b"gcccat", "GCCCAT"),
+    ];
+
+    for (pat, name) in patterns {
+        if in_range(pat, 3, s.len()) {
+            return Some(name.to_string());
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -795,6 +851,18 @@ mod tests {
         // Sequence with no match -> score 0
         let seq = b"accctg";
         assert_eq!(score_rbs(seq), 0);
+    }
+
+    #[test]
+    fn test_detect_rbs_motif_aggagg() {
+        let seq = b"aaggaggtgagtaacaaaacc";
+        assert_eq!(detect_rbs_motif(seq), Some("AGGAGG".to_string()));
+    }
+
+    #[test]
+    fn test_detect_rbs_motif_none() {
+        let seq = b"aaaaaaaaaaaaaaaaaaaaa";
+        assert_eq!(detect_rbs_motif(seq), None);
     }
 
     #[test]
