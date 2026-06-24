@@ -94,6 +94,14 @@ struct Cli {
     /// Useful for generating training data for the ML model.
     #[arg(long = "export-features", value_name = "FILE")]
     export_features: Option<PathBuf>,
+
+    /// Force non-Shine-Dalgarno motif discovery for start-codon scoring.
+    #[arg(long = "non-sd")]
+    force_non_sd: bool,
+
+    /// Force Shine-Dalgarno scoring (default behavior).
+    #[arg(long = "sd")]
+    force_sd: bool,
 }
 
 /// Build start-codon weights from a list of codons.
@@ -155,6 +163,14 @@ fn load_genomes(input: &Option<PathBuf>) -> Result<Vec<Genome>> {
     }
 }
 
+/// Decide whether the genome uses Shine–Dalgarno RBS signalling by comparing
+/// the high-score tail of the training distribution to the background.
+fn detect_uses_sd(background: &[f64; 28], training: &[f64; 28]) -> bool {
+    let top_bins = [27, 26, 25, 24, 22, 20];
+    let signal: f64 = top_bins.iter().map(|&i| training[i] / background[i]).sum();
+    signal >= 2.0
+}
+
 /// Process a single genome through the full PHANOTATE pipeline.
 #[allow(clippy::too_many_arguments)]
 fn process_genome(
@@ -166,6 +182,8 @@ fn process_genome(
     closed_ends: bool,
     mask_n: bool,
     table: u8,
+    force_non_sd: bool,
+    force_sd: bool,
     #[cfg(feature = "ml")] ml_scorer: &Option<phanotate_rs::ml_scorer::MlScorer>,
     #[cfg(not(feature = "ml"))] _ml_scorer: &Option<()>,
 ) -> (String, String, String) {
@@ -174,7 +192,7 @@ fn process_genome(
 
     // --- Nucleotide frequencies and background RBS ---
     let mut freq = [0usize; 4];
-    let mut background_rbs = vec![1.0f64; 28];
+    let mut background_rbs = [1.0f64; 28];
     let mut frame_plot = GCframe::new();
     let rc_dna = &genome.rc_seq;
     let len = dna.len();
@@ -248,7 +266,7 @@ fn process_genome(
     }
 
     // --- Training RBS ---
-    let mut training_rbs = vec![1.0f64; 28];
+    let mut training_rbs = [1.0f64; 28];
     for orf in &orfs {
         training_rbs[orf.rbs_score] += 1.0;
     }
@@ -258,6 +276,23 @@ fn process_genome(
     }
     for orf in &mut orfs {
         orf.weight_rbs = training_rbs[orf.rbs_score] / background_rbs[orf.rbs_score];
+    }
+
+    // --- Non-Shine-Dalgarno motif scoring ---
+    let use_non_sd = if force_non_sd {
+        true
+    } else if force_sd {
+        false
+    } else {
+        !detect_uses_sd(&background_rbs, &training_rbs)
+    };
+
+    if use_non_sd {
+        let model =
+            phanotate_rs::nonsd_motif::NonSdModel::train(&orfs, dna, rc_dna, start_codons_map);
+        for orf in &mut orfs {
+            orf.motif_score = model.score_orf(orf, dna, rc_dna);
+        }
     }
 
     // --- GC frame plot scoring ---
@@ -471,6 +506,10 @@ fn process_genome(
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    if cli.force_non_sd && cli.force_sd {
+        anyhow::bail!("--non-sd and --sd are mutually exclusive");
+    }
+
     // Validate format
     let format = match cli.format.to_lowercase().as_str() {
         "gbk" | "genbank" => Format::Gbk,
@@ -543,12 +582,8 @@ fn main() -> Result<()> {
                 cli.closed_ends,
                 cli.mask_n,
             );
-            phanotate_rs::ml_features::write_features_tsv(
-                &mut file,
-                &orfs,
-                !header_written,
-            )
-            .context("Failed to write features")?;
+            phanotate_rs::ml_features::write_features_tsv(&mut file, &orfs, !header_written)
+                .context("Failed to write features")?;
             header_written = true;
         }
         eprintln!("Exported features to {:?}", features_path);
@@ -675,6 +710,8 @@ fn main() -> Result<()> {
                     cli.closed_ends,
                     cli.mask_n,
                     effective_table,
+                    cli.force_non_sd,
+                    cli.force_sd,
                     &ml_scorer,
                 )
             })
@@ -692,6 +729,8 @@ fn main() -> Result<()> {
                     cli.closed_ends,
                     cli.mask_n,
                     effective_table,
+                    cli.force_non_sd,
+                    cli.force_sd,
                     &ml_scorer,
                 )
             })
