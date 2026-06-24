@@ -93,14 +93,13 @@ fn test_flag_f_gff() {
 fn test_flag_f_sco() {
     let (stdout, _stderr, code) = run(&["-i", PHIX174, "-f", "sco"], None);
     assert_eq!(code, 0);
-    let first_data_line = stdout.lines().find(|l| !l.starts_with('#')).unwrap();
-    let cols: Vec<&str> = first_data_line.split('\t').collect();
-    assert_eq!(
-        cols.len(),
-        5,
-        "SCO line should have 5 columns: {}",
-        first_data_line
-    );
+    for line in stdout.lines() {
+        if line.starts_with('#') {
+            continue;
+        }
+        let cols: Vec<&str> = line.split('\t').collect();
+        assert_eq!(cols.len(), 5, "SCO line should have 5 columns: {}", line);
+    }
 }
 
 #[test]
@@ -355,6 +354,7 @@ fn non_sd_sco_includes_motif_column() {
     let data_line = stdout.lines().find(|l| !l.starts_with('#')).unwrap();
     let cols: Vec<&str> = data_line.split('\t').collect();
     assert_eq!(cols.len(), 5);
+    assert!(!cols[4].is_empty(), "motif column should not be empty");
 }
 
 #[test]
