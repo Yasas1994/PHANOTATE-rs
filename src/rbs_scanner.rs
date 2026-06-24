@@ -6,6 +6,19 @@
 /// Number of RBS score bins (0 = no motif, 1-27 = increasing SD signal).
 pub const NUM_RBS_BINS: usize = 28;
 
+/// Extract the 21-nt upstream window of a start codon.
+/// `start` is 1-based and points to the first base of the start codon.
+/// The returned window is in original (5'→3') orientation.
+pub fn get_rbs(dna: &[u8], start: usize) -> Vec<u8> {
+    if start >= 21 {
+        dna[start - 21..start].to_vec()
+    } else {
+        let mut pad = vec![b'a'; 21 - start];
+        pad.extend_from_slice(&dna[..start]);
+        pad
+    }
+}
+
 /// Legacy PHANOTATE Shine-Dalgarno likelihood score.
 /// Replicates the Python reference implementation exactly.
 /// `seq` is the 21-nt upstream window (original orientation).  The function

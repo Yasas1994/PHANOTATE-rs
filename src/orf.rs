@@ -181,7 +181,7 @@ pub fn find_orfs_with_rc(
                     if mask_n && spans_masked(start, stop, &masked_regions) {
                         continue;
                     }
-                    let rbs = get_rbs(dna, start, true);
+                    let rbs = crate::rbs_scanner::get_rbs(dna, start);
                     let rbs_score = score_rbs(&rbs);
                     let rbs_motif = detect_rbs_motif(&rbs);
                     let pstop = Orf::compute_pstop(&seq);
@@ -270,7 +270,7 @@ pub fn find_orfs_with_rc(
                     if mask_n && spans_masked(start, stop, &masked_regions) {
                         continue;
                     }
-                    let rbs = get_rbs(dna, start, true);
+                    let rbs = crate::rbs_scanner::get_rbs(dna, start);
                     let rbs_score = score_rbs(&rbs);
                     let rbs_motif = detect_rbs_motif(&rbs);
                     let pstop = Orf::compute_pstop(&seq);
@@ -373,17 +373,6 @@ fn spans_masked(start: usize, stop: usize, masked: &[(usize, usize)]) -> bool {
         }
     }
     false
-}
-
-/// Get the 21 nt upstream of a start codon.
-fn get_rbs(dna: &[u8], start: usize, _forward: bool) -> Vec<u8> {
-    if start >= 21 {
-        dna[start - 21..start].to_vec()
-    } else {
-        let mut pad = vec![b'a'; 21 - start];
-        pad.extend_from_slice(&dna[..start]);
-        pad
-    }
 }
 
 #[cfg(test)]
