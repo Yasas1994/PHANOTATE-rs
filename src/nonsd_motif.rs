@@ -298,6 +298,16 @@ impl NonSdModel {
         log_score.exp().clamp(0.25, 4.0)
     }
 
+    /// Return the best non-SD motif label for an ORF, if one exists.
+    pub fn best_motif_label(&self, orf: &Orf, dna: &[u8], rc_dna: &[u8]) -> Option<String> {
+        let (wseq, start) = upstream_context(dna, rc_dna, orf);
+        if start < 18 + MIN_MOTIF_LEN {
+            return None;
+        }
+        let hit = find_best_motif(&self.mot_wt, wseq, start, self.no_mot);
+        format_motif_hit(&hit)
+    }
+
     /// Train a non-SD motif model from ORFs using a 20-iteration 3-stage EM loop.
     pub fn train(
         orfs: &[Orf],

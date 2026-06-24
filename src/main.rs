@@ -20,7 +20,7 @@ use codon_table::is_supported_table;
 use gcfp::{max_idx, min_idx, GCframe};
 use genome::{read_fasta_data, read_genbank, Genome};
 use graph::{Graph, Node};
-use orf::{find_orfs_with_rc, score_rbs, Orf};
+use orf::{find_orfs_with_rc, Orf};
 use output::Format;
 
 #[derive(Parser, Debug)]
@@ -192,7 +192,6 @@ fn process_genome(
     #[cfg(not(feature = "ml"))] _ml_scorer: &Option<()>,
     prodigal_rbs: bool,
 ) -> (String, String, String) {
-    let _prodigal_rbs = prodigal_rbs;
     let contig_length = genome.seq.len();
     let dna = &genome.seq;
 
@@ -230,13 +229,21 @@ fn process_genome(
         } else {
             &dna[i..]
         };
-        let score = score_rbs(window);
+        let score = if prodigal_rbs {
+            phanotate_rs::rbs_scanner::score_rbs_prodigal(window)
+        } else {
+            phanotate_rs::rbs_scanner::score_rbs_legacy(window)
+        };
         background_rbs[score] += 1.0;
 
         // Reverse-strand window from pre-computed RC genome
         let rc_start = len.saturating_sub(i + 21);
         let rc_window = &rc_dna[rc_start..len - i];
-        let rc_score = score_rbs(rc_window);
+        let rc_score = if prodigal_rbs {
+            phanotate_rs::rbs_scanner::score_rbs_prodigal(rc_window)
+        } else {
+            phanotate_rs::rbs_scanner::score_rbs_legacy(rc_window)
+        };
         background_rbs[rc_score] += 1.0;
 
         frame_plot.add_base(base);
@@ -272,44 +279,100 @@ fn process_genome(
     }
 
     // --- Training RBS ---
-    let mut training_rbs = [1.0f64; 28];
-    for orf in &orfs {
-        training_rbs[orf.rbs_score] += 1.0;
-    }
-    let tr_sum: f64 = training_rbs.iter().sum();
-    for v in &mut training_rbs {
-        *v /= tr_sum;
-    }
-    for orf in &mut orfs {
-        orf.weight_rbs = training_rbs[orf.rbs_score] / background_rbs[orf.rbs_score];
-    }
+    let use_non_sd;
+    if prodigal_rbs {
+        use_non_sd = false;
 
-    // --- Non-Shine-Dalgarno motif scoring ---
-    let use_non_sd = if force_non_sd {
-        true
-    } else if force_sd {
-        false
-    } else {
-        !detect_uses_sd(&background_rbs, &training_rbs)
-    };
-
-    if use_non_sd {
-        // Neutralize the SD-based RBS weight so the path is scored purely by
-        // the non-SD motif model and start-codon type weights.
-        for orf in &mut orfs {
-            orf.weight_rbs = 1.0;
-        }
-        let model =
+        // Train non-SD model once for the genome.
+        let non_sd_model =
             phanotate_rs::nonsd_motif::NonSdModel::train(&orfs, dna, rc_dna, start_codons_map);
-        for orf in &mut orfs {
-            orf.motif_score = model.score_orf(orf, dna, rc_dna);
-            let (wseq, start) = phanotate_rs::nonsd_motif::upstream_context(dna, rc_dna, orf);
-            let hit = if start >= 18 + phanotate_rs::nonsd_motif::MIN_MOTIF_LEN {
-                phanotate_rs::nonsd_motif::find_best_motif(&model.mot_wt, wseq, start, model.no_mot)
+
+        // Training distribution from actual ORF upstream windows (Prodigal bins).
+        let mut training_rbs = [1.0f64; phanotate_rs::rbs_scanner::NUM_RBS_BINS];
+        for orf in &orfs {
+            let upstream = if orf.frame > 0 {
+                phanotate_rs::rbs_scanner::get_rbs(dna, orf.start)
             } else {
-                phanotate_rs::nonsd_motif::MotifHit::default()
+                let rbs_start = dna.len().saturating_sub(orf.start + 21);
+                let rbs_end = dna.len() - orf.start;
+                rc_dna[rbs_start..rbs_end].to_vec()
             };
-            orf.rbs_motif = phanotate_rs::nonsd_motif::format_motif_hit(&hit);
+            training_rbs[phanotate_rs::rbs_scanner::score_rbs_prodigal(&upstream)] += 1.0;
+        }
+        let tr_sum: f64 = training_rbs.iter().sum();
+        for v in &mut training_rbs {
+            *v /= tr_sum;
+        }
+
+        for orf in &mut orfs {
+            let upstream = if orf.frame > 0 {
+                phanotate_rs::rbs_scanner::get_rbs(dna, orf.start)
+            } else {
+                let rbs_start = dna.len().saturating_sub(orf.start + 21);
+                let rbs_end = dna.len() - orf.start;
+                rc_dna[rbs_start..rbs_end].to_vec()
+            };
+            let bin = phanotate_rs::rbs_scanner::score_rbs_prodigal(&upstream);
+            if bin > 0 {
+                orf.rbs_score = bin;
+                orf.weight_rbs = training_rbs[bin] / background_rbs[bin];
+                orf.motif_score = 1.0;
+                orf.rbs_motif = phanotate_rs::rbs_scanner::format_prodigal_rbs_motif(bin);
+            } else {
+                orf.rbs_score = 0;
+                orf.weight_rbs = 1.0;
+                orf.motif_score = non_sd_model.score_orf(orf, dna, rc_dna);
+                orf.rbs_motif = non_sd_model
+                    .best_motif_label(orf, dna, rc_dna)
+                    .map(|m| format!("nonSD:{m}"));
+            }
+        }
+    } else {
+        // --- Existing legacy RBS training block ---
+        let mut training_rbs = [1.0f64; 28];
+        for orf in &orfs {
+            training_rbs[orf.rbs_score] += 1.0;
+        }
+        let tr_sum: f64 = training_rbs.iter().sum();
+        for v in &mut training_rbs {
+            *v /= tr_sum;
+        }
+        for orf in &mut orfs {
+            orf.weight_rbs = training_rbs[orf.rbs_score] / background_rbs[orf.rbs_score];
+        }
+
+        // --- Existing non-SD auto-detect block ---
+        use_non_sd = if force_non_sd {
+            true
+        } else if force_sd {
+            false
+        } else {
+            !detect_uses_sd(&background_rbs, &training_rbs)
+        };
+
+        if use_non_sd {
+            // Neutralize the SD-based RBS weight so the path is scored purely by
+            // the non-SD motif model and start-codon type weights.
+            for orf in &mut orfs {
+                orf.weight_rbs = 1.0;
+            }
+            let model =
+                phanotate_rs::nonsd_motif::NonSdModel::train(&orfs, dna, rc_dna, start_codons_map);
+            for orf in &mut orfs {
+                orf.motif_score = model.score_orf(orf, dna, rc_dna);
+                let (wseq, start) = phanotate_rs::nonsd_motif::upstream_context(dna, rc_dna, orf);
+                let hit = if start >= 18 + phanotate_rs::nonsd_motif::MIN_MOTIF_LEN {
+                    phanotate_rs::nonsd_motif::find_best_motif(
+                        &model.mot_wt,
+                        wseq,
+                        start,
+                        model.no_mot,
+                    )
+                } else {
+                    phanotate_rs::nonsd_motif::MotifHit::default()
+                };
+                orf.rbs_motif = phanotate_rs::nonsd_motif::format_motif_hit(&hit);
+            }
         }
     }
 
