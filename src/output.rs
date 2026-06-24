@@ -64,11 +64,12 @@ pub fn write_primary(
     orfs: &[Orf],
     last_position: usize,
     format: Format,
+    uses_sd: bool,
 ) -> String {
     match format {
-        Format::Gbk => write_gbk(id, seq, path, orfs, last_position),
-        Format::Gff => write_gff(id, path, orfs),
-        Format::Sco => write_sco(id, path, orfs),
+        Format::Gbk => write_gbk(id, seq, path, orfs, last_position, uses_sd),
+        Format::Gff => write_gff(id, path, orfs, uses_sd),
+        Format::Sco => write_sco(id, path, orfs, uses_sd),
     }
 }
 
@@ -81,6 +82,7 @@ fn write_gbk(
     path: &[(Node, Node, f64)],
     orfs: &[Orf],
     last_position: usize,
+    uses_sd: bool,
 ) -> String {
     let mut out = String::new();
     out.push_str(&format!(
@@ -89,6 +91,10 @@ fn write_gbk(
         last_position
     ));
     out.push_str(&format!("DEFINITION  {}\n", id.trim_start_matches('>')));
+    out.push_str(&format!(
+        "COMMENT     uses_sd: {}\n",
+        if uses_sd { 1 } else { 0 }
+    ));
     out.push_str("FEATURES             Location/Qualifiers\n");
     out.push_str(&format!("     source          1..{}\n", last_position));
 
@@ -125,9 +131,10 @@ fn write_gbk(
 // ---------------------------------------------------------------------------
 // GFF (GFF3)
 // ---------------------------------------------------------------------------
-fn write_gff(id: &str, path: &[(Node, Node, f64)], orfs: &[Orf]) -> String {
+fn write_gff(id: &str, path: &[(Node, Node, f64)], orfs: &[Orf], uses_sd: bool) -> String {
     let mut out = String::new();
     out.push_str("##gff-version 3\n");
+    out.push_str(&format!("# uses_sd: {}\n", if uses_sd { 1 } else { 0 }));
 
     for (start, stop, strand, weight, _orf) in collect_orf_edges(path, orfs) {
         out.push_str(&format!(
@@ -149,8 +156,9 @@ fn write_gff(id: &str, path: &[(Node, Node, f64)], orfs: &[Orf]) -> String {
 // ---------------------------------------------------------------------------
 // SCO (Simple Coordinate Output)
 // ---------------------------------------------------------------------------
-fn write_sco(_id: &str, path: &[(Node, Node, f64)], orfs: &[Orf]) -> String {
+fn write_sco(_id: &str, path: &[(Node, Node, f64)], orfs: &[Orf], uses_sd: bool) -> String {
     let mut out = String::new();
+    out.push_str(&format!("# uses_sd: {}\n", if uses_sd { 1 } else { 0 }));
     for (start, stop, strand, weight, _orf) in collect_orf_edges(path, orfs) {
         out.push_str(&format!(
             "{}\t{}\t{}\t{:.2E}\n",
@@ -356,9 +364,10 @@ mod tests {
         let seq = b"atgcatgcatgc";
         let orfs = vec![make_orf(1, 12, 1, b"atgcatgcatgc".to_vec())];
         let path = vec![fwd_path(1, 12)];
-        let out = write_gbk(">test", seq, &path, &orfs, seq.len());
+        let out = write_gbk(">test", seq, &path, &orfs, seq.len(), true);
         assert!(out.contains("LOCUS       test"));
         assert!(out.contains("DEFINITION  test"));
+        assert!(out.contains("COMMENT     uses_sd: 1"));
         assert!(out.contains("FEATURES"));
         assert!(out.contains("source          1..12"));
         assert!(out.contains("CDS             1..14"));
@@ -372,7 +381,7 @@ mod tests {
         let seq = b"atgcatgcatgc";
         let orfs = vec![make_orf(1, 12, -1, b"atgcatgcatgc".to_vec())];
         let path = vec![rev_path(1, 12)];
-        let out = write_gbk(">test", seq, &path, &orfs, seq.len());
+        let out = write_gbk(">test", seq, &path, &orfs, seq.len(), true);
         // For rev_path(1, 12): left=stop@-1@12, right=start@-1@1
         // display: start=right.position+2=3, stop=left.position=12
         assert!(out.contains("complement(3..12)"));
@@ -381,7 +390,7 @@ mod tests {
     #[test]
     fn test_write_gbk_no_orfs() {
         let seq = b"atgcatgcatgc";
-        let out = write_gbk(">test", seq, &[], &[], seq.len());
+        let out = write_gbk(">test", seq, &[], &[], seq.len(), true);
         assert!(out.contains("LOCUS       test"));
         assert!(!out.contains("CDS"));
     }
@@ -389,7 +398,7 @@ mod tests {
     #[test]
     fn test_write_gbk_sequence_formatting() {
         let seq = b"atgc";
-        let out = write_gbk(">test", seq, &[], &[], seq.len());
+        let out = write_gbk(">test", seq, &[], &[], seq.len(), true);
         // Should have position number and sequence
         assert!(out.contains("        1 atgc"));
     }
@@ -401,8 +410,8 @@ mod tests {
     fn test_write_gff_basic() {
         let orfs = vec![make_orf(10, 30, 1, b"atg".to_vec())];
         let path = vec![fwd_path(10, 30)];
-        let out = write_gff(">test", &path, &orfs);
-        assert!(out.starts_with("##gff-version 3\n"));
+        let out = write_gff(">test", &path, &orfs, true);
+        assert!(out.starts_with("##gff-version 3\n# uses_sd: 1\n"));
         assert!(out.contains("test\tphanotate\tCDS\t10\t32\t"));
         assert!(out.contains("\t+\t0\tID=CDS_10_32"));
     }
@@ -411,14 +420,14 @@ mod tests {
     fn test_write_gff_reverse() {
         let orfs = vec![make_orf(10, 30, -1, b"atg".to_vec())];
         let path = vec![rev_path(10, 30)];
-        let out = write_gff(">test", &path, &orfs);
+        let out = write_gff(">test", &path, &orfs, true);
         assert!(out.contains("\t-\t0\t"));
     }
 
     #[test]
     fn test_write_gff_empty() {
-        let out = write_gff(">test", &[], &[]);
-        assert_eq!(out, "##gff-version 3\n");
+        let out = write_gff(">test", &[], &[], true);
+        assert_eq!(out, "##gff-version 3\n# uses_sd: 1\n");
     }
 
     // -----------------------------------------------------------------------
@@ -428,10 +437,11 @@ mod tests {
     fn test_write_sco_basic() {
         let orfs = vec![make_orf(10, 30, 1, b"atg".to_vec())];
         let path = vec![fwd_path(10, 30)];
-        let out = write_sco(">test", &path, &orfs);
+        let out = write_sco(">test", &path, &orfs, true);
         let lines: Vec<&str> = out.lines().collect();
-        assert_eq!(lines.len(), 1);
-        let cols: Vec<&str> = lines[0].split('\t').collect();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0], "# uses_sd: 1");
+        let cols: Vec<&str> = lines[1].split('\t').collect();
         assert_eq!(cols.len(), 4);
         assert_eq!(cols[0], "10");
         assert_eq!(cols[1], "32");
@@ -440,8 +450,8 @@ mod tests {
 
     #[test]
     fn test_write_sco_empty() {
-        let out = write_sco(">test", &[], &[]);
-        assert!(out.is_empty());
+        let out = write_sco(">test", &[], &[], true);
+        assert_eq!(out, "# uses_sd: 1\n");
     }
 
     // -----------------------------------------------------------------------
@@ -510,20 +520,20 @@ mod tests {
     #[test]
     fn test_write_primary_gbk() {
         let seq = b"atgc";
-        let out = write_primary(">test", seq, &[], &[], 4, Format::Gbk);
+        let out = write_primary(">test", seq, &[], &[], 4, Format::Gbk, true);
         assert!(out.contains("LOCUS"));
     }
 
     #[test]
     fn test_write_primary_gff() {
-        let out = write_primary(">test", b"atgc", &[], &[], 4, Format::Gff);
-        assert!(out.starts_with("##gff-version 3"));
+        let out = write_primary(">test", b"atgc", &[], &[], 4, Format::Gff, true);
+        assert!(out.starts_with("##gff-version 3\n# uses_sd: 1"));
     }
 
     #[test]
     fn test_write_primary_sco() {
-        let out = write_primary(">test", b"atgc", &[], &[], 4, Format::Sco);
-        assert!(out.is_empty());
+        let out = write_primary(">test", b"atgc", &[], &[], 4, Format::Sco, true);
+        assert_eq!(out, "# uses_sd: 1\n");
     }
 
     // -----------------------------------------------------------------------

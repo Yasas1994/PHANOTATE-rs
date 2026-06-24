@@ -78,7 +78,10 @@ fn test_flag_f_gff() {
     let (stdout, _stderr, code) = run(&["-i", PHIX174, "-f", "gff"], None);
     assert_eq!(code, 0);
     assert!(stdout.starts_with("##gff-version 3\n"));
-    for line in stdout.lines().skip(1) {
+    for line in stdout.lines().skip(2) {
+        if line.starts_with('#') {
+            continue;
+        }
         let cols: Vec<&str> = line.split('\t').collect();
         assert_eq!(cols.len(), 9, "GFF line should have 9 columns: {}", line);
         assert_eq!(cols[1], "phanotate");
@@ -91,6 +94,9 @@ fn test_flag_f_sco() {
     let (stdout, _stderr, code) = run(&["-i", PHIX174, "-f", "sco"], None);
     assert_eq!(code, 0);
     for line in stdout.lines() {
+        if line.starts_with('#') {
+            continue;
+        }
         let cols: Vec<&str> = line.split('\t').collect();
         assert_eq!(cols.len(), 4, "SCO line should have 4 columns: {}", line);
     }
@@ -251,8 +257,8 @@ fn test_flag_m_mask_n() {
     // The N-run is at positions 61..122 (after normalization preserves Ns).
     // No gene should span this region.
     for line in stdout.lines() {
-        if line.starts_with("#id:") {
-            continue; // "NO ORFS FOUND" line
+        if line.starts_with("#id:") || line.starts_with("# uses_sd:") {
+            continue; // header / "NO ORFS FOUND" line
         }
         let cols: Vec<&str> = line.split('\t').collect();
         assert_eq!(cols.len(), 4, "SCO line should have 4 columns: {}", line);
@@ -276,7 +282,7 @@ fn test_flag_combo_c_m() {
     let (stdout, _stderr, code) = run(&["-c", "-m", "-f", "sco"], Some(MASKED_FASTA));
     assert_eq!(code, 0);
     for line in stdout.lines() {
-        if line.starts_with("#id:") {
+        if line.starts_with("#id:") || line.starts_with("# uses_sd:") {
             continue;
         }
         let cols: Vec<&str> = line.split('\t').collect();
@@ -308,7 +314,7 @@ fn test_phix174_sco_matches_golden() {
 
     let golden = std::fs::read_to_string("tests/golden/phiX174.tabular").unwrap();
     let golden_lines: Vec<&str> = golden.lines().skip(2).collect();
-    let output_lines: Vec<&str> = stdout.lines().collect();
+    let output_lines: Vec<&str> = stdout.lines().skip(1).collect();
 
     assert_eq!(
         output_lines.len(),
