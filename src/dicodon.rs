@@ -160,6 +160,7 @@ mod tests {
             hold: 100.0,
             motif_score: 1.0,
             dicodon_score: 1.0,
+            start_score: 1.0,
             weight: 1.0,
         }];
         let model = DicodonModel::train(&orfs, &seq, &rc);
@@ -189,6 +190,7 @@ mod tests {
             hold: 100.0,
             motif_score: 1.0,
             dicodon_score: 1.0,
+            start_score: 1.0,
             weight: 1.0,
         }];
         let model = DicodonModel::train(&orfs, &seq, &rc);

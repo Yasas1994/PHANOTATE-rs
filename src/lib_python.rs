@@ -1348,6 +1348,7 @@ mod tests {
             rbs_motif: None,
             hold,
             dicodon_score: 1.0 / hold,
+            start_score: 1.0,
             weight: -1.0,
         };
         let py_orf = PyOrf::from(&orf);
