@@ -938,4 +938,74 @@ mod prodigal_tests {
         seq[motif_start..motif_start + 6].copy_from_slice(b"AGTAGG");
         assert_eq!(score_rbs_prodigal(&seq), 19);
     }
+
+    #[test]
+    fn format_prodigal_bin_27() {
+        assert_eq!(
+            format_prodigal_rbs_motif(27),
+            Some("AGGAGG (5-10bp)".to_string())
+        );
+    }
+
+    #[test]
+    fn format_prodigal_bin_0_is_none() {
+        assert_eq!(format_prodigal_rbs_motif(0), None);
+    }
+
+    #[test]
+    fn detect_rbs_motif_prodigal_none_for_no_motif() {
+        assert_eq!(detect_rbs_motif_prodigal(b"aaaaaaaaaaaaaaaaaaaaa"), None);
+    }
+}
+
+const PRODIGAL_SD_STRING: [&str; NUM_RBS_BINS] = [
+    "None",
+    "GGA/GAG/AGG",
+    "3Base/5BMM",
+    "4Base/6BMM",
+    "AGxAG",
+    "AGxAG",
+    "GGA/GAG/AGG",
+    "GGxGG",
+    "GGxGG",
+    "AGxAG",
+    "AGGAG(G)/GGAGG",
+    "AGGA/GGAG/GAGG",
+    "AGGA/GGAG/GAGG",
+    "GGA/GAG/AGG",
+    "GGxGG",
+    "AGGA",
+    "GGAG/GAGG",
+    "AGxAGG/AGGxGG",
+    "AGxAGG/AGGxGG",
+    "AGxAGG/AGGxGG",
+    "AGGAG/GGAGG",
+    "AGGAG",
+    "AGGAG",
+    "GGAGG",
+    "GGAGG",
+    "AGGAGG",
+    "AGGAGG",
+    "AGGAGG",
+];
+
+const PRODIGAL_SD_SPACER: [&str; NUM_RBS_BINS] = [
+    "None", "3-4bp", "13-15bp", "13-15bp", "11-12bp", "3-4bp", "11-12bp", "11-12bp", "3-4bp",
+    "5-10bp", "13-15bp", "3-4bp", "11-12bp", "5-10bp", "5-10bp", "5-10bp", "5-10bp", "11-12bp",
+    "3-4bp", "5-10bp", "11-12bp", "3-4bp", "5-10bp", "3-4bp", "5-10bp", "11-12bp", "3-4bp",
+    "5-10bp",
+];
+
+pub fn format_prodigal_rbs_motif(bin: usize) -> Option<String> {
+    if bin == 0 || bin >= NUM_RBS_BINS {
+        return None;
+    }
+    Some(format!(
+        "{} ({})",
+        PRODIGAL_SD_STRING[bin], PRODIGAL_SD_SPACER[bin]
+    ))
+}
+
+pub fn detect_rbs_motif_prodigal(seq: &[u8]) -> Option<String> {
+    format_prodigal_rbs_motif(score_rbs_prodigal(seq))
 }
