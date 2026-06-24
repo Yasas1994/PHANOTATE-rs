@@ -777,12 +777,118 @@ fn exact_bin(cur_ctr: f64, dis_flag: usize) -> usize {
     }
 }
 
-/// Initial version: exact matches only. Will be extended in Task 3.
+/// Mismatch-aware consensus score for a single base.
+fn consensus_match_value_mm(pos: usize, b: u8) -> f64 {
+    if pos % 3 == 0 {
+        if is_base(b, b'A') {
+            2.0
+        } else {
+            -3.0
+        }
+    } else if is_base(b, b'G') {
+        3.0
+    } else {
+        -2.0
+    }
+}
+
+/// Convert spacer distance to Prodigal's dis_flag for mismatch matches.
+fn mm_dis_flag(rdis: usize) -> usize {
+    if rdis < 5 {
+        1
+    } else if rdis > 10 && rdis <= 12 {
+        2
+    } else if rdis >= 13 {
+        3
+    } else {
+        0
+    }
+}
+
+/// Port of Prodigal's shine_dalgarno_mm.
+/// Scans for AGGAGG-like motifs allowing exactly one mismatch.
+fn shine_dalgarno_mm(seq: &[u8], pos: usize, start: usize) -> usize {
+    let limit = (6usize).min(start.saturating_sub(4).saturating_sub(pos));
+    if limit < 5 {
+        return 0;
+    }
+
+    let mut match_values = [-10.0f64; 6];
+    for i in 0..limit {
+        match_values[i] = consensus_match_value_mm(i, seq[pos + i]);
+    }
+
+    let mut max_val = 0usize;
+    for len in (5..=limit).rev() {
+        for offset in 0..=limit - len {
+            let mut cur_ctr = -2.0;
+            let mut mism = 0;
+            for (k, &mv) in match_values.iter().enumerate().skip(offset).take(len) {
+                cur_ctr += mv;
+                if mv < 0.0 {
+                    mism += 1;
+                    if k <= offset + 1 || k >= offset + len - 2 {
+                        cur_ctr -= 10.0;
+                    }
+                }
+            }
+            if mism != 1 {
+                continue;
+            }
+            let rdis = start.saturating_sub(pos + offset + len);
+            if rdis > 15 || cur_ctr < 6.0 {
+                continue;
+            }
+            let dis_flag = mm_dis_flag(rdis);
+
+            let cur_val = mm_bin(cur_ctr, dis_flag);
+            if cur_val > max_val {
+                max_val = cur_val;
+            }
+        }
+    }
+    max_val
+}
+
+/// Prodigal's mismatch-bin mapping.
+fn mm_bin(cur_ctr: f64, dis_flag: usize) -> usize {
+    if ((cur_ctr - 6.0).abs() < f64::EPSILON || (cur_ctr - 7.0).abs() < f64::EPSILON)
+        && dis_flag == 3
+    {
+        2
+    } else if (cur_ctr - 9.0).abs() < f64::EPSILON && dis_flag == 3 {
+        3
+    } else if (cur_ctr - 6.0).abs() < f64::EPSILON && dis_flag == 2 {
+        4
+    } else if (cur_ctr - 6.0).abs() < f64::EPSILON && dis_flag == 1 {
+        5
+    } else if (cur_ctr - 6.0).abs() < f64::EPSILON && dis_flag == 0 {
+        9
+    } else if (cur_ctr - 7.0).abs() < f64::EPSILON && dis_flag == 2 {
+        7
+    } else if (cur_ctr - 7.0).abs() < f64::EPSILON && dis_flag == 1 {
+        8
+    } else if (cur_ctr - 7.0).abs() < f64::EPSILON && dis_flag == 0 {
+        14
+    } else if (cur_ctr - 9.0).abs() < f64::EPSILON && dis_flag == 2 {
+        17
+    } else if (cur_ctr - 9.0).abs() < f64::EPSILON && dis_flag == 1 {
+        18
+    } else if (cur_ctr - 9.0).abs() < f64::EPSILON && dis_flag == 0 {
+        19
+    } else {
+        0
+    }
+}
+
+/// Prodigal-style Shine-Dalgarno scorer: exact + one-mismatch matches.
 pub fn score_rbs_prodigal(seq: &[u8]) -> usize {
     let start = seq.len();
     let mut best = 0usize;
     for pos in 0..=start.saturating_sub(4) {
-        best = best.max(shine_dalgarno_exact(seq, pos, start));
+        let exact = shine_dalgarno_exact(seq, pos, start);
+        let mm = shine_dalgarno_mm(seq, pos, start);
+        best = best.max(exact).max(mm);
     }
     best
 }
@@ -820,5 +926,16 @@ mod prodigal_tests {
     fn exact_aggagg_13_15bp_is_bin_10() {
         let seq = upstream_with_motif(b"AGGAGG", 14);
         assert_eq!(score_rbs_prodigal(&seq), 10);
+    }
+
+    #[test]
+    fn single_mismatch_6mer_5_10bp_is_bin_19() {
+        // AGGAGG with one internal mismatch (G->T at position 2) -> 6-base 1-mm.
+        // This avoids shorter exact sub-motifs scoring higher than the mismatch.
+        let mut seq = vec![b'a'; 21];
+        let spacer = 6;
+        let motif_start = 21 - spacer - 6;
+        seq[motif_start..motif_start + 6].copy_from_slice(b"AGTAGG");
+        assert_eq!(score_rbs_prodigal(&seq), 19);
     }
 }
