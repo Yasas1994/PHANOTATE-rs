@@ -830,6 +830,8 @@ dependencies = [
  "pretty_assertions",
  "pyo3",
  "rayon",
+ "serde",
+ "serde_json",
  "tempfile",
 ]
 
