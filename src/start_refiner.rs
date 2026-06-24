@@ -12,25 +12,23 @@ pub const NUM_START_FEATURES: usize = 11;
 pub struct StartSiteFeatures(pub [f64; NUM_START_FEATURES]);
 
 impl StartSiteFeatures {
-    /// Build features from an ORF. This must stay in sync with the training
-    /// script in `scripts/train_start_model.py`.
+    /// Build features from an ORF. This must stay in sync with the Python
+    /// training script that produces the JSON model consumed by `StartModel`.
     pub fn new(orf: &Orf) -> Self {
         let mut f = [0.0; NUM_START_FEATURES];
         let codon = orf.start_codon();
-        if codon == b"atg" {
+        if codon.eq_ignore_ascii_case(b"atg") {
             f[0] = 1.0;
-        } else if codon == b"gtg" {
+        } else if codon.eq_ignore_ascii_case(b"gtg") {
             f[1] = 1.0;
-        } else if codon == b"ttg" {
+        } else if codon.eq_ignore_ascii_case(b"ttg") {
             f[2] = 1.0;
         } else {
             f[3] = 1.0;
         }
-        // NUM_RBS_BINS is 28 in the current rbs_scanner.
-        const NUM_RBS_BINS: f64 = 28.0;
-        f[4] = (orf.rbs_score as f64 / NUM_RBS_BINS).clamp(0.0, 1.0);
+        f[4] = (orf.rbs_score as f64 / crate::rbs_scanner::NUM_RBS_BINS as f64).clamp(0.0, 1.0);
         f[5] = orf.motif_score.clamp(0.0, 10.0);
-        f[6] = (orf.seq.len() as f64).ln();
+        f[6] = (orf.seq.len() as f64).max(1.0).ln();
         f[7] = orf.dicodon_score.clamp(0.001, 1000.0);
         match orf.frame.abs() {
             1 => f[8] = 1.0,
