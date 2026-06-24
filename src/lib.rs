@@ -6,6 +6,7 @@
 pub mod bellman_ford;
 pub mod codon_table;
 pub mod detect_table;
+pub mod dicodon;
 pub mod gcfp;
 pub mod genome;
 pub mod graph;
