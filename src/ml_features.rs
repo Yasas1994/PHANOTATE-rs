@@ -6,7 +6,7 @@
 use crate::orf::Orf;
 
 /// Number of features extracted per ORF.
-pub const NUM_FEATURES: usize = 13;
+pub const NUM_FEATURES: usize = 14;
 
 /// Fixed-length feature vector for ML inference.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -39,6 +39,7 @@ pub const FEATURE_NAMES: [&str; NUM_FEATURES] = [
     "frame_1",
     "frame_2",
     "frame_3",
+    "motif_score",
 ];
 
 impl Orf {
@@ -91,6 +92,9 @@ impl Orf {
         features[10] = if abs_frame == 1 { 1.0 } else { 0.0 };
         features[11] = if abs_frame == 2 { 1.0 } else { 0.0 };
         features[12] = if abs_frame == 3 { 1.0 } else { 0.0 };
+
+        // 13. log(motif_score)
+        features[13] = self.motif_score.ln() as f32;
 
         OrfFeatures(features)
     }
@@ -205,6 +209,24 @@ mod tests {
         assert_eq!(f.0[10], 0.0); // not frame 1
         assert_eq!(f.0[11], 1.0); // frame 2
         assert_eq!(f.0[12], 0.0); // not frame 3
+    }
+
+    #[test]
+    fn test_motif_score_feature() {
+        let mut orf = test_orf();
+        orf.motif_score = 2.0;
+        let f = orf.extract_features();
+        assert_eq!(f.0.len(), 14);
+        assert!((f.0[13] - 2.0f32.ln()).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_tsv_header_includes_motif_score() {
+        let orfs = vec![test_orf()];
+        let mut buf = Vec::new();
+        write_features_tsv(&mut buf, &orfs, true).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(s.starts_with("log_length\trbs_score_norm\tlog_hold\tpstop\tweight_rbs_log\tstart_codon_atg\tstart_codon_gtg\tstart_codon_ttg\tgc_content\tframe_fwd\tframe_1\tframe_2\tframe_3\tmotif_score"));
     }
 
     #[test]
