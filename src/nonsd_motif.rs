@@ -769,6 +769,7 @@ mod tests {
             seq.extend_from_slice(b"atg"); // filler
             seq.extend_from_slice(b"taa"); // stop
             seq.extend_from_slice(b"ccc"); // inter-ORF spacer
+            let hold = 1.0;
             orfs.push(Orf {
                 start: i * 33 + 22,
                 stop: i * 33 + 30,
@@ -777,7 +778,8 @@ mod tests {
                 rbs_score: 0,
                 pstop: 0.01,
                 weight_rbs: 1.0,
-                hold: 1.0,
+                hold,
+                dicodon_score: 1.0 / hold,
                 motif_score: 1.0,
                 rbs_motif: None,
                 weight: 1.0,
@@ -794,6 +796,7 @@ mod tests {
             seq.extend_from_slice(b"atg");
             seq.extend_from_slice(b"taa");
             seq.extend_from_slice(b"ccc");
+            let hold = 1.0;
             orfs.push(Orf {
                 start: i * 33 + 22,
                 stop: i * 33 + 30,
@@ -802,7 +805,8 @@ mod tests {
                 rbs_score: 0,
                 pstop: 0.01,
                 weight_rbs: 1.0,
-                hold: 1.0,
+                hold,
+                dicodon_score: 1.0 / hold,
                 motif_score: 1.0,
                 rbs_motif: None,
                 weight: 1.0,
@@ -860,6 +864,7 @@ mod tests {
                 block_start + motif.len() + gap.len() + start_codon.len() + filler.len() + 1;
             let orf_seq_start = start_1based - 1;
             let orf_seq_end = stop_1based - 1 + stop.len();
+            let hold = 1.0;
             orfs.push(Orf {
                 start: start_1based,
                 stop: stop_1based,
@@ -868,7 +873,8 @@ mod tests {
                 rbs_score: 0,
                 pstop: 0.01,
                 weight_rbs: 1.0,
-                hold: 1.0,
+                hold,
+                dicodon_score: 1.0 / hold,
                 motif_score: 1.0,
                 rbs_motif: None,
                 weight: 1.0,
@@ -890,6 +896,7 @@ mod tests {
     #[test]
     fn score_orf_returns_reasonable_multiplier() {
         let model = NonSdModel::default();
+        let hold = 100.0;
         let orf = Orf {
             start: 25,
             stop: 60,
@@ -898,7 +905,8 @@ mod tests {
             rbs_score: 0,
             pstop: 0.01,
             weight_rbs: 1.0,
-            hold: 100.0,
+            hold,
+            dicodon_score: 1.0 / hold,
             motif_score: 1.0,
             rbs_motif: None,
             weight: 1.0,

@@ -126,6 +126,7 @@ mod tests {
     use super::*;
 
     fn test_orf() -> Orf {
+        let hold = 0.8;
         Orf {
             start: 100,
             stop: 300,
@@ -136,7 +137,8 @@ mod tests {
             weight_rbs: 2.5,
             motif_score: 1.0,
             rbs_motif: None,
-            hold: 0.8,
+            hold,
+            dicodon_score: 1.0 / hold,
             weight: -1.0,
         }
     }

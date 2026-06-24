@@ -501,6 +501,7 @@ mod tests {
 
     #[test]
     fn test_graph_from_orfs_single() {
+        let hold = 1.0;
         let orfs = vec![Orf {
             start: 1,
             stop: 30,
@@ -511,7 +512,8 @@ mod tests {
             weight_rbs: 1.0,
             motif_score: 1.0,
             rbs_motif: None,
-            hold: 1.0,
+            hold,
+            dicodon_score: 1.0 / hold,
             weight: -1.0,
         }];
         let (graph, endpoints) = Graph::from_orfs(&orfs, 100, 0.05);

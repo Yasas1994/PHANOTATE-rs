@@ -10,6 +10,7 @@ pub struct Orf {
     pub motif_score: f64,          // non-Shine-Dalgarno motif score multiplier
     pub rbs_motif: Option<String>, // detected RBS / non-SD motif sequence
     pub hold: f64,                 // product of adjusted P(not_stop) per codon
+    pub dicodon_score: f64,        // Prodigal-style dicodon score multiplier
     pub weight: f64,               // final ORF edge weight (negative)
 }
 
@@ -40,7 +41,7 @@ impl Orf {
     }
 
     pub fn score(&mut self, start_codons: &std::collections::HashMap<Vec<u8>, f64>) {
-        let mut s = 1.0 / self.hold;
+        let mut s = self.dicodon_score;
         let sc = self.start_codon().to_vec();
         if let Some(&w) = start_codons.get(&sc) {
             s *= w;
@@ -175,6 +176,7 @@ pub fn find_orfs_with_rc(
                     let rbs_score = score_rbs(&rbs);
                     let rbs_motif = detect_rbs_motif(&rbs);
                     let pstop = Orf::compute_pstop(&seq);
+                    let hold = 1.0;
                     orfs.push(Orf {
                         start,
                         stop: stop - 2,
@@ -185,7 +187,8 @@ pub fn find_orfs_with_rc(
                         weight_rbs: 1.0,
                         motif_score: 1.0,
                         rbs_motif,
-                        hold: 1.0,
+                        hold,
+                        dicodon_score: 1.0 / hold,
                         weight: 1.0,
                     });
                 }
@@ -224,6 +227,7 @@ pub fn find_orfs_with_rc(
                     let rbs_score = score_rbs(rbs);
                     let rbs_motif = detect_rbs_motif(rbs);
                     let pstop = Orf::compute_pstop(&seq);
+                    let hold = 1.0;
                     orfs.push(Orf {
                         start: start - 2,
                         stop,
@@ -234,7 +238,8 @@ pub fn find_orfs_with_rc(
                         weight_rbs: 1.0,
                         motif_score: 1.0,
                         rbs_motif,
-                        hold: 1.0,
+                        hold,
+                        dicodon_score: 1.0 / hold,
                         weight: 1.0,
                     });
                 }
@@ -260,6 +265,7 @@ pub fn find_orfs_with_rc(
                     let rbs_score = score_rbs(&rbs);
                     let rbs_motif = detect_rbs_motif(&rbs);
                     let pstop = Orf::compute_pstop(&seq);
+                    let hold = 1.0;
                     orfs.push(Orf {
                         start,
                         stop: stop - 2,
@@ -270,7 +276,8 @@ pub fn find_orfs_with_rc(
                         weight_rbs: 1.0,
                         motif_score: 1.0,
                         rbs_motif,
-                        hold: 1.0,
+                        hold,
+                        dicodon_score: 1.0 / hold,
                         weight: 1.0,
                     });
                 }
@@ -303,6 +310,7 @@ pub fn find_orfs_with_rc(
                     let rbs_score = score_rbs(rbs);
                     let rbs_motif = detect_rbs_motif(rbs);
                     let pstop = Orf::compute_pstop(&seq);
+                    let hold = 1.0;
                     orfs.push(Orf {
                         start: start - 2,
                         stop,
@@ -313,7 +321,8 @@ pub fn find_orfs_with_rc(
                         weight_rbs: 1.0,
                         motif_score: 1.0,
                         rbs_motif,
-                        hold: 1.0,
+                        hold,
+                        dicodon_score: 1.0 / hold,
                         weight: 1.0,
                     });
                 }
@@ -1202,6 +1211,7 @@ mod tests {
 
     #[test]
     fn motif_score_scales_weight() {
+        let hold = 2.0;
         let mut orf = Orf {
             start: 100,
             stop: 200,
@@ -1210,7 +1220,8 @@ mod tests {
             rbs_score: 10,
             pstop: 0.05,
             weight_rbs: 1.0,
-            hold: 2.0,
+            hold,
+            dicodon_score: 1.0 / hold,
             motif_score: 1.0,
             rbs_motif: None,
             weight: 1.0,

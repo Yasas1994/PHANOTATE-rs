@@ -231,6 +231,7 @@ mod tests {
 
     /// Helper: create a minimal Orf for testing output formats.
     fn make_orf(start: usize, stop: usize, frame: i8, seq: Vec<u8>) -> Orf {
+        let hold = 1.0;
         Orf {
             start,
             stop,
@@ -241,7 +242,8 @@ mod tests {
             weight_rbs: 1.0,
             motif_score: 1.0,
             rbs_motif: None,
-            hold: 1.0,
+            hold,
+            dicodon_score: 1.0 / hold,
             weight: -1.0,
         }
     }
