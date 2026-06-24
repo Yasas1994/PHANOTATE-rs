@@ -144,7 +144,7 @@ impl MlScorer {
 
         let mut adjustments = Vec::with_capacity(n);
         for i in 0..n {
-            let val = output_data.iter().nth(i).copied().unwrap_or(0.0f32) as f64;
+            let val = output_data.get(i).copied().unwrap_or(0.0f32) as f64;
             let clamped = clamp_adjustment(val);
             adjustments.push(clamped.exp());
         }
