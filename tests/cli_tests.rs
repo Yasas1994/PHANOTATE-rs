@@ -365,6 +365,61 @@ fn default_run_emits_uses_sd_header() {
 }
 
 // ---------------------------------------------------------------------------
+// Prodigal-style RBS scanner (--prodigal-rbs)
+// ---------------------------------------------------------------------------
+#[test]
+fn prodigal_rbs_produces_sco_with_mixed_motifs() {
+    let tmpdir = tempfile::tempdir().unwrap();
+    let input = tmpdir.path().join("input.fa");
+    let output = tmpdir.path().join("out.sco");
+
+    // Synthetic genome with three forward ORFs. The first ORF has a planted
+    // AGGAGG Shine-Dalgarno motif; the remaining ORFs fall back to the non-SD
+    // motif model under --prodigal-rbs. Spacers contain reverse-complement stop
+    // codons so the long reverse-strand ORF does not dominate the path.
+    let orf = "ATG".to_string() + &"AAACGC".repeat(20) + "TAA";
+    let seq =
+        "aaaaaaaaaaggaggaaaaa".to_string() + &orf + "TTACTA" + &orf + "TTATGA" + &orf + "TTATAG";
+    let fasta = format!(">test\n{}\n", seq);
+    std::fs::write(&input, fasta).unwrap();
+
+    let (_stdout, _stderr, code) = run(
+        &[
+            "-i",
+            input.to_str().unwrap(),
+            "-o",
+            output.to_str().unwrap(),
+            "-f",
+            "sco",
+            "--prodigal-rbs",
+        ],
+        None,
+    );
+    assert_eq!(code, 0, "--prodigal-rbs should succeed");
+
+    let text = std::fs::read_to_string(&output).unwrap();
+    assert!(text.starts_with("# uses_sd: 1"));
+    assert!(
+        text.contains("AGGAGG") || text.contains("nonSD:"),
+        "SCO should contain an SD or non-SD motif annotation"
+    );
+}
+
+#[test]
+fn prodigal_rbs_conflicts_with_non_sd() {
+    let (_stdout, stderr, code) = run(
+        &["-i", "tests/data/small.fasta", "--prodigal-rbs", "--non-sd"],
+        None,
+    );
+    assert_ne!(code, 0, "--prodigal-rbs with --non-sd should fail");
+    assert!(
+        stderr.contains("mutually exclusive"),
+        "error should mention mutual exclusion: {}",
+        stderr
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Regression test for internal stop codons with non-standard genetic codes
 // ---------------------------------------------------------------------------
 #[test]
