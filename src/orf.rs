@@ -768,11 +768,15 @@ pub fn score_rbs(seq: &[u8]) -> usize {
 }
 
 /// Detect the matching Shine-Dalgarno motif in the upstream window.
-/// Mirrors the priority order of `score_rbs` and returns the first
-/// matching motif as an uppercase string, or `None` if no motif matches.
+///
+/// Mirrors the priority order and position ranges of `score_rbs`. The returned
+/// name is the motif as it appears in the original upstream window (i.e. the
+/// reverse of the pattern checked in the reversed window `s`).
 pub fn detect_rbs_motif(seq: &[u8]) -> Option<String> {
+    // The reference takes the 21 nt upstream, then reverses it
     let s: Vec<u8> = seq.iter().rev().copied().collect();
 
+    // Helper: check if pattern (as bytes) appears in s[start..end]
     let in_range = |pat: &[u8], start: usize, end: usize| -> bool {
         if end > s.len() || start >= s.len() {
             return false;
@@ -784,37 +788,202 @@ pub fn detect_rbs_motif(seq: &[u8]) -> Option<String> {
         window.windows(pat.len()).any(|w| w == pat)
     };
 
-    let patterns: &[(&[u8], &str)] = &[
-        (b"ggagga", "AGGAGG"),
-        (b"ggagg", "GGAGG"),
-        (b"gagga", "GAGGA"),
-        (b"ggacga", "GGACGA"),
-        (b"ggatga", "GGATGA"),
-        (b"ggaaga", "GGAAGA"),
-        (b"ggcgga", "GGCGGA"),
-        (b"ggggga", "GGGGGA"),
-        (b"ggtgga", "GGTGGA"),
-        (b"ggag", "GGAG"),
-        (b"gagg", "GAGG"),
-        (b"agga", "AGGA"),
-        (b"ggcg", "GGCG"),
-        (b"gacga", "GACGA"),
-        (b"gatga", "GATGA"),
-        (b"gaaga", "GAAGA"),
-        (b"agcga", "AGCGA"),
-        (b"aggcga", "AGGCGA"),
-        (b"gggagg", "GGGAGG"),
-        (b"gaggtg", "GAGGTG"),
-        (b"ggtg", "GGTG"),
-        (b"gctggt", "GCTGGT"),
-        (b"gcccat", "GCCCAT"),
-    ];
-
-    for (pat, name) in patterns {
-        if in_range(pat, 3, s.len()) {
-            return Some(name.to_string());
-        }
+    // Check a pattern against one or more ranges and return its motif name.
+    macro_rules! detect {
+        ($pat:expr, $name:expr, $ranges:expr) => {
+            if $ranges
+                .iter()
+                .any(|&(start, end)| in_range($pat, start, end))
+            {
+                return Some($name.to_string());
+            }
+        };
     }
+
+    // Tiers are listed in the same priority order as `score_rbs`.
+    detect!(
+        b"ggagga",
+        "AGGAGG",
+        &[(5, 11), (6, 12), (7, 13), (8, 14), (9, 15), (10, 16)]
+    );
+    detect!(b"ggagga", "AGGAGG", &[(3, 9), (4, 10)]);
+    detect!(b"ggagga", "AGGAGG", &[(11, 17), (12, 18)]);
+
+    detect!(
+        b"ggagg",
+        "GGAGG",
+        &[(5, 10), (6, 11), (7, 12), (8, 13), (9, 14), (10, 15)]
+    );
+    detect!(b"ggagg", "GGAGG", &[(3, 8), (4, 9)]);
+
+    detect!(
+        b"gagga",
+        "AGGAG",
+        &[(5, 10), (6, 11), (7, 12), (8, 13), (9, 14), (10, 15)]
+    );
+    detect!(b"gagga", "AGGAG", &[(3, 8), (4, 9)]);
+    detect!(b"gagga", "AGGAG", &[(11, 16), (12, 17)]);
+    detect!(b"ggagg", "GGAGG", &[(11, 16), (12, 17)]);
+
+    detect!(
+        b"ggacga",
+        "AGCAGG",
+        &[(5, 11), (6, 12), (7, 13), (8, 14), (9, 15), (10, 16)]
+    );
+    detect!(
+        b"ggatga",
+        "AGTAGG",
+        &[(5, 11), (6, 12), (7, 13), (8, 14), (9, 15), (10, 16)]
+    );
+    detect!(
+        b"ggaaga",
+        "AGAAGG",
+        &[(5, 11), (6, 12), (7, 13), (8, 14), (9, 15), (10, 16)]
+    );
+    detect!(
+        b"ggcgga",
+        "AGGCGG",
+        &[(5, 11), (6, 12), (7, 13), (8, 14), (9, 15), (10, 16)]
+    );
+    detect!(
+        b"ggggga",
+        "AGGGGG",
+        &[(5, 11), (6, 12), (7, 13), (8, 14), (9, 15), (10, 16)]
+    );
+    detect!(
+        b"ggtgga",
+        "AGGTGG",
+        &[(5, 11), (6, 12), (7, 13), (8, 14), (9, 15), (10, 16)]
+    );
+
+    detect!(b"ggaaga", "AGAAGG", &[(3, 9), (4, 10)]);
+    detect!(b"ggatga", "AGTAGG", &[(3, 9), (4, 10)]);
+    detect!(b"ggacga", "AGCAGG", &[(3, 9), (4, 10)]);
+    detect!(b"ggtgga", "AGGTGG", &[(3, 9), (4, 10)]);
+    detect!(b"ggggga", "AGGGGG", &[(3, 9), (4, 10)]);
+    detect!(b"ggcgga", "AGGCGG", &[(3, 9), (4, 10)]);
+
+    detect!(b"ggaaga", "AGAAGG", &[(11, 17), (12, 18)]);
+    detect!(b"ggatga", "AGTAGG", &[(11, 17), (12, 18)]);
+    detect!(b"ggacga", "AGCAGG", &[(11, 17), (12, 18)]);
+    detect!(b"ggtgga", "AGGTGG", &[(11, 17), (12, 18)]);
+    detect!(b"ggggga", "AGGGGG", &[(11, 17), (12, 18)]);
+    detect!(b"ggcgga", "AGGCGG", &[(11, 17), (12, 18)]);
+
+    detect!(
+        b"ggag",
+        "GAGG",
+        &[(5, 9), (6, 10), (7, 11), (8, 12), (9, 13), (10, 14)]
+    );
+    detect!(
+        b"gagg",
+        "GGAG",
+        &[(5, 9), (6, 10), (7, 11), (8, 12), (9, 13), (10, 14)]
+    );
+
+    detect!(
+        b"agga",
+        "AGGA",
+        &[(5, 9), (6, 10), (7, 11), (8, 12), (9, 13), (10, 14)]
+    );
+
+    detect!(
+        b"ggtgg",
+        "GGTGG",
+        &[(5, 10), (6, 11), (7, 12), (8, 13), (9, 14), (10, 15)]
+    );
+    detect!(
+        b"ggggg",
+        "GGGGG",
+        &[(5, 10), (6, 11), (7, 12), (8, 13), (9, 14), (10, 15)]
+    );
+    detect!(
+        b"ggcgg",
+        "GGCGG",
+        &[(5, 10), (6, 11), (7, 12), (8, 13), (9, 14), (10, 15)]
+    );
+
+    detect!(
+        b"agg",
+        "GGA",
+        &[(5, 8), (6, 9), (7, 10), (8, 11), (9, 12), (10, 13)]
+    );
+    detect!(
+        b"gag",
+        "GAG",
+        &[(5, 8), (6, 9), (7, 10), (8, 11), (9, 12), (10, 13)]
+    );
+    detect!(
+        b"gga",
+        "AGG",
+        &[(5, 8), (6, 9), (7, 10), (8, 11), (9, 12), (10, 13)]
+    );
+
+    detect!(b"agga", "AGGA", &[(11, 15), (12, 16)]);
+    detect!(b"gagg", "GGAG", &[(11, 15), (12, 16)]);
+    detect!(b"ggag", "GAGG", &[(11, 15), (12, 16)]);
+
+    detect!(b"agga", "AGGA", &[(3, 7), (4, 8)]);
+    detect!(b"gagg", "GGAG", &[(3, 7), (4, 8)]);
+    detect!(b"ggag", "GAGG", &[(3, 7), (4, 8)]);
+
+    detect!(b"gagga", "AGGAG", &[(13, 18), (14, 19), (15, 20)]);
+    detect!(b"ggagg", "GGAGG", &[(13, 18), (14, 19), (15, 20)]);
+    detect!(b"ggagga", "AGGAGG", &[(13, 19), (14, 20), (15, 21)]);
+
+    detect!(
+        b"gaaga",
+        "AGAAG",
+        &[(5, 10), (6, 11), (7, 12), (8, 13), (9, 14), (10, 15)]
+    );
+    detect!(
+        b"gatga",
+        "AGTAG",
+        &[(5, 10), (6, 11), (7, 12), (8, 13), (9, 14), (10, 15)]
+    );
+    detect!(
+        b"gacga",
+        "AGCAG",
+        &[(5, 10), (6, 11), (7, 12), (8, 13), (9, 14), (10, 15)]
+    );
+
+    detect!(b"ggtgg", "GGTGG", &[(3, 8), (4, 9)]);
+    detect!(b"ggggg", "GGGGG", &[(3, 8), (4, 9)]);
+    detect!(b"ggcgg", "GGCGG", &[(3, 8), (4, 9)]);
+
+    detect!(b"ggtgg", "GGTGG", &[(11, 16), (12, 17)]);
+    detect!(b"ggggg", "GGGGG", &[(11, 16), (12, 17)]);
+    detect!(b"ggcgg", "GGCGG", &[(11, 16), (12, 17)]);
+
+    detect!(b"agg", "GGA", &[(11, 14), (12, 15)]);
+    detect!(b"gag", "GAG", &[(11, 14), (12, 15)]);
+    detect!(b"gga", "AGG", &[(11, 14), (12, 15)]);
+
+    detect!(b"gaaga", "AGAAG", &[(3, 8), (4, 9)]);
+    detect!(b"gatga", "AGTAG", &[(3, 8), (4, 9)]);
+    detect!(b"gacga", "AGCAG", &[(3, 8), (4, 9)]);
+
+    detect!(b"gaaga", "AGAAG", &[(11, 16), (12, 17)]);
+    detect!(b"gatga", "AGTAG", &[(11, 16), (12, 17)]);
+    detect!(b"gacga", "AGCAG", &[(11, 16), (12, 17)]);
+
+    detect!(b"agga", "AGGA", &[(13, 17), (14, 18), (15, 19)]);
+    detect!(b"gagg", "GGAG", &[(13, 17), (14, 18), (15, 19)]);
+    detect!(b"ggag", "GAGG", &[(13, 17), (14, 18), (15, 19)]);
+
+    detect!(b"agg", "GGA", &[(13, 16), (14, 17), (15, 18)]);
+    detect!(b"gag", "GAG", &[(13, 16), (14, 17), (15, 18)]);
+    detect!(b"gga", "AGG", &[(13, 16), (14, 17), (15, 18)]);
+    detect!(b"ggaaga", "AGAAGG", &[(13, 19), (14, 20), (15, 21)]);
+    detect!(b"ggatga", "AGTAGG", &[(13, 19), (14, 20), (15, 21)]);
+    detect!(b"ggacga", "AGCAGG", &[(13, 19), (14, 20), (15, 21)]);
+    detect!(b"ggtgg", "GGTGG", &[(13, 18), (14, 19), (15, 20)]);
+    detect!(b"ggggg", "GGGGG", &[(13, 18), (14, 19), (15, 20)]);
+    detect!(b"ggcgg", "GGCGG", &[(13, 18), (14, 19), (15, 20)]);
+
+    detect!(b"agg", "GGA", &[(3, 6), (4, 7)]);
+    detect!(b"gag", "GAG", &[(3, 6), (4, 7)]);
+    detect!(b"gga", "AGG", &[(3, 6), (4, 7)]);
 
     None
 }
@@ -855,14 +1024,71 @@ mod tests {
 
     #[test]
     fn test_detect_rbs_motif_aggagg() {
+        // The highest-scoring match here is "gag" (score 13), not the distal
+        // "ggagga" (score 10), so the reported motif is GAG.
         let seq = b"aaggaggtgagtaacaaaacc";
-        assert_eq!(detect_rbs_motif(seq), Some("AGGAGG".to_string()));
+        assert_eq!(detect_rbs_motif(seq), Some("GAG".to_string()));
     }
 
     #[test]
     fn test_detect_rbs_motif_none() {
         let seq = b"aaaaaaaaaaaaaaaaaaaaa";
         assert_eq!(detect_rbs_motif(seq), None);
+    }
+
+    #[test]
+    fn test_detect_rbs_motif_ggagga_canonical() {
+        // AGGAGG placed so the reversed window contains ggagga at score-27 ranges.
+        let seq = b"aaaaaaaaaaaggaggaaaaa";
+        assert_eq!(detect_rbs_motif(seq), Some("AGGAGG".to_string()));
+    }
+
+    #[test]
+    fn test_detect_rbs_motif_ggagg_canonical() {
+        // GGAGG placed so the reversed window contains ggagg at score-24 ranges.
+        // A 'c' is placed immediately upstream so the window does not also
+        // contain the higher-scoring ggagga motif.
+        let seq = b"aaaaaaaaaacggaggaaaaa";
+        assert_eq!(detect_rbs_motif(seq), Some("GGAGG".to_string()));
+    }
+
+    #[test]
+    fn test_detect_rbs_motif_agga_canonical() {
+        // AGGA placed so the reversed window contains agga at score-15 ranges.
+        let seq = b"aaaaaaaaaaaggaaaaaaaa";
+        assert_eq!(detect_rbs_motif(seq), Some("AGGA".to_string()));
+    }
+
+    #[test]
+    fn test_detect_rbs_motif_zero_score_returns_none() {
+        let seq = b"aaaaaaaaaaaaaaaaaaaaa";
+        assert_eq!(score_rbs(seq), 0);
+        assert_eq!(detect_rbs_motif(seq), None);
+    }
+
+    #[test]
+    fn test_detect_rbs_motif_consistency_with_score() {
+        let cases: &[(&[u8], Option<&str>)] = &[
+            (b"aaaaaaaaaaaggaggaaaaa", Some("AGGAGG")),
+            (b"aaaaaaaaaacggaggaaaaa", Some("GGAGG")),
+            (b"aaaaaaaaaaaggaaaaaaaa", Some("AGGA")),
+            (b"aaggaggtgagtaacaaaacc", Some("GAG")),
+            (b"aaaaaaaaaaaaaaaaaaaaa", None),
+            (b"accctg", None),
+        ];
+        for &(seq, expected) in cases {
+            let score = score_rbs(seq);
+            let motif = detect_rbs_motif(seq);
+            assert_eq!(
+                motif.is_some(),
+                score > 0,
+                "score_rbs={} but detect_rbs_motif={:?} for seq {:?}",
+                score,
+                motif,
+                std::str::from_utf8(seq)
+            );
+            assert_eq!(motif.as_deref(), expected);
+        }
     }
 
     #[test]
