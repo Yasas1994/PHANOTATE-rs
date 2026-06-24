@@ -37,8 +37,7 @@ impl MlScorer {
     /// (batch size × features) and produce a single output tensor of
     /// shape `[N, 1]` containing log-scale adjustment values.
     pub fn from_file(path: &str) -> Result<Self> {
-        let mut builder = Session::builder()
-            .context("Failed to create ONNX session builder")?;
+        let mut builder = Session::builder().context("Failed to create ONNX session builder")?;
         let session = builder
             .commit_from_file(path)
             .with_context(|| format!("Failed to load ONNX model from {}", path))?;
@@ -56,7 +55,10 @@ impl MlScorer {
         match self.predict_adjustment_inner(features) {
             Ok(adj) => adj,
             Err(e) => {
-                eprintln!("Warning: ML inference failed ({}), using neutral adjustment 1.0", e);
+                eprintln!(
+                    "Warning: ML inference failed ({}), using neutral adjustment 1.0",
+                    e
+                );
                 1.0
             }
         }
@@ -69,8 +71,8 @@ impl MlScorer {
             .context("Failed to create input tensor")?;
 
         // Create Tensor value from ndarray
-        let input_tensor = Tensor::from_array(input_array)
-            .context("Failed to convert ndarray to ONNX tensor")?;
+        let input_tensor =
+            Tensor::from_array(input_array).context("Failed to convert ndarray to ONNX tensor")?;
 
         // Run inference (lock the session for mutable access)
         let mut session = self.session.lock().unwrap();
@@ -84,11 +86,7 @@ impl MlScorer {
             .try_extract_tensor::<f32>()
             .context("Failed to extract output tensor")?;
 
-        let output_val = output_data
-            .iter()
-            .next()
-            .copied()
-            .unwrap_or(0.0f32) as f64;
+        let output_val = output_data.iter().next().copied().unwrap_or(0.0f32) as f64;
 
         // Clamp to safe range and convert from log-space
         let clamped = clamp_adjustment(output_val);
@@ -146,11 +144,7 @@ impl MlScorer {
 
         let mut adjustments = Vec::with_capacity(n);
         for i in 0..n {
-            let val = output_data
-                .iter()
-                .nth(i)
-                .copied()
-                .unwrap_or(0.0f32) as f64;
+            let val = output_data.iter().nth(i).copied().unwrap_or(0.0f32) as f64;
             let clamped = clamp_adjustment(val);
             adjustments.push(clamped.exp());
         }
