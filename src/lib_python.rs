@@ -738,7 +738,15 @@ fn process_single_genome(
     }
 
     // --- Primary output ---
-    let primary = output::write_primary(id, dna, &path_edges, &orfs, contig_length, format);
+    let primary = output::write_primary(
+        id,
+        dna,
+        &path_edges,
+        &orfs,
+        contig_length,
+        format,
+        !use_non_sd,
+    );
 
     // --- Protein output ---
     let protein = output::write_protein_fasta(id, &path_edges, &orfs, table);
