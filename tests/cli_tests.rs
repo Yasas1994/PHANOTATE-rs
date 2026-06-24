@@ -421,6 +421,62 @@ fn prodigal_rbs_conflicts_with_non_sd() {
 }
 
 #[test]
+fn prodigal_rbs_preserves_gene_count_on_spv4() {
+    // Regression test: the non-SD fallback must not inflate the number of
+    // predicted genes.  The Prodigal SD scanner changes motif labels and
+    // weights, but the overall gene set should remain comparable.
+    let tmpdir = tempfile::tempdir().unwrap();
+    let default_out = tmpdir.path().join("default.sco");
+    let prodigal_out = tmpdir.path().join("prodigal.sco");
+
+    let (_stdout, _stderr, code) = run(
+        &[
+            "-i",
+            "tests/golden/spv4_NC003438.fa",
+            "-o",
+            default_out.to_str().unwrap(),
+            "-f",
+            "sco",
+            "-g",
+            "4",
+        ],
+        None,
+    );
+    assert_eq!(code, 0, "default run should succeed");
+
+    let (_stdout, _stderr, code) = run(
+        &[
+            "-i",
+            "tests/golden/spv4_NC003438.fa",
+            "-o",
+            prodigal_out.to_str().unwrap(),
+            "-f",
+            "sco",
+            "-g",
+            "4",
+            "--prodigal-rbs",
+        ],
+        None,
+    );
+    assert_eq!(code, 0, "--prodigal-rbs run should succeed");
+
+    let default_lines = std::fs::read_to_string(&default_out)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.starts_with('#'))
+        .count();
+    let prodigal_lines = std::fs::read_to_string(&prodigal_out)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.starts_with('#'))
+        .count();
+    assert_eq!(
+        default_lines, prodigal_lines,
+        "--prodigal-rbs should predict the same number of genes as default mode on SpV4"
+    );
+}
+
+#[test]
 fn prodigal_rbs_conflicts_with_sd() {
     let tmpdir = tempfile::tempdir().unwrap();
     let input = tmpdir.path().join("input.fa");

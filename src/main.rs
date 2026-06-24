@@ -320,7 +320,12 @@ fn process_genome(
             } else {
                 orf.rbs_score = 0;
                 orf.weight_rbs = 1.0;
-                orf.motif_score = non_sd_model.score_orf(orf, dna, rc_dna);
+                orf.motif_score = 1.0;
+                // Keep the best non-SD motif label for display, but do not let
+                // the non-SD score influence the graph path.  The non-SD model
+                // is trained globally and its absolute scale is not comparable
+                // to the per-bin SD weight, so using it as a fallback multiplier
+                // produces many false positives.
                 orf.rbs_motif = non_sd_model
                     .best_motif_label(orf, dna, rc_dna)
                     .map(|m| format!("nonSD:{m}"));
