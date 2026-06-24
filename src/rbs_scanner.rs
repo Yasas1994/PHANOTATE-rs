@@ -645,3 +645,180 @@ mod tests {
         assert_eq!(detect_rbs_motif_legacy(seq), Some("AGGAGG".to_string()));
     }
 }
+
+/// Helper: 2-bit-like base check.  Only A/C/G/T are valid.
+fn is_base(b: u8, target: u8) -> bool {
+    b.eq_ignore_ascii_case(&target)
+}
+
+/// Score a single position against the AGGAGG consensus.
+/// Position indices are 0-based from the 5' end of the motif.
+fn consensus_match_value(pos: usize, b: u8) -> f64 {
+    if pos % 3 == 0 && is_base(b, b'A') {
+        2.0
+    } else if pos % 3 != 0 && is_base(b, b'G') {
+        3.0
+    } else {
+        -10.0
+    }
+}
+
+/// Convert spacer distance to Prodigal's dis_flag for exact matches.
+fn exact_dis_flag(rdis: usize, motif_len: usize) -> usize {
+    if rdis < 5 && motif_len < 5 {
+        2
+    } else if (rdis < 5 && motif_len >= 5) || (rdis > 10 && rdis <= 12 && motif_len < 5) {
+        1
+    } else if rdis > 10 && rdis <= 12 && motif_len >= 5 {
+        2
+    } else if rdis >= 13 {
+        3
+    } else {
+        0
+    }
+}
+
+/// Port of Prodigal's shine_dalgarno_exact.
+/// `seq` is the upstream window in original orientation.
+/// `pos` is the candidate motif start within `seq`.
+/// `start` is the index one past the upstream window (start codon position).
+fn shine_dalgarno_exact(seq: &[u8], pos: usize, start: usize) -> usize {
+    let limit = (6usize).min(start.saturating_sub(4).saturating_sub(pos));
+    if limit < 3 {
+        return 0;
+    }
+
+    let mut match_values = [-10.0f64; 6];
+    for i in 0..limit {
+        match_values[i] = consensus_match_value(i, seq[pos + i]);
+    }
+
+    let mut max_val = 0usize;
+    for len in (3..=limit).rev() {
+        for offset in 0..=limit - len {
+            let mut cur_ctr = -2.0;
+            let mut mism = 0;
+            for &mv in match_values.iter().skip(offset).take(len) {
+                cur_ctr += mv;
+                if mv < 0.0 {
+                    mism += 1;
+                }
+            }
+            if mism > 0 {
+                continue;
+            }
+            let rdis = start.saturating_sub(pos + offset + len);
+            if rdis > 15 || cur_ctr < 6.0 {
+                continue;
+            }
+            let dis_flag = exact_dis_flag(rdis, len);
+
+            let cur_val = exact_bin(cur_ctr, dis_flag);
+            if cur_val > max_val {
+                max_val = cur_val;
+            }
+        }
+    }
+    max_val
+}
+
+fn exact_bin(cur_ctr: f64, dis_flag: usize) -> usize {
+    // Matches Prodigal's exact-bin mapping.
+    if (cur_ctr - 6.0).abs() < f64::EPSILON && dis_flag == 2 {
+        1
+    } else if (cur_ctr - 6.0).abs() < f64::EPSILON && dis_flag == 3 {
+        2
+    } else if ((cur_ctr - 8.0).abs() < f64::EPSILON || (cur_ctr - 9.0).abs() < f64::EPSILON)
+        && dis_flag == 3
+    {
+        3
+    } else if (cur_ctr - 6.0).abs() < f64::EPSILON && dis_flag == 1 {
+        6
+    } else if ((cur_ctr - 11.0).abs() < f64::EPSILON
+        || (cur_ctr - 12.0).abs() < f64::EPSILON
+        || (cur_ctr - 14.0).abs() < f64::EPSILON)
+        && dis_flag == 3
+    {
+        10
+    } else if ((cur_ctr - 8.0).abs() < f64::EPSILON || (cur_ctr - 9.0).abs() < f64::EPSILON)
+        && dis_flag == 2
+    {
+        11
+    } else if ((cur_ctr - 8.0).abs() < f64::EPSILON || (cur_ctr - 9.0).abs() < f64::EPSILON)
+        && dis_flag == 1
+    {
+        12
+    } else if (cur_ctr - 6.0).abs() < f64::EPSILON && dis_flag == 0 {
+        13
+    } else if (cur_ctr - 8.0).abs() < f64::EPSILON && dis_flag == 0 {
+        15
+    } else if (cur_ctr - 9.0).abs() < f64::EPSILON && dis_flag == 0 {
+        16
+    } else if (cur_ctr - 11.0).abs() < f64::EPSILON && dis_flag == 2 {
+        20
+    } else if (cur_ctr - 11.0).abs() < f64::EPSILON && dis_flag == 1 {
+        21
+    } else if (cur_ctr - 11.0).abs() < f64::EPSILON && dis_flag == 0 {
+        22
+    } else if (cur_ctr - 12.0).abs() < f64::EPSILON && dis_flag == 2 {
+        20
+    } else if (cur_ctr - 12.0).abs() < f64::EPSILON && dis_flag == 1 {
+        23
+    } else if (cur_ctr - 12.0).abs() < f64::EPSILON && dis_flag == 0 {
+        24
+    } else if (cur_ctr - 14.0).abs() < f64::EPSILON && dis_flag == 2 {
+        25
+    } else if (cur_ctr - 14.0).abs() < f64::EPSILON && dis_flag == 1 {
+        26
+    } else if (cur_ctr - 14.0).abs() < f64::EPSILON && dis_flag == 0 {
+        27
+    } else {
+        0
+    }
+}
+
+/// Initial version: exact matches only. Will be extended in Task 3.
+pub fn score_rbs_prodigal(seq: &[u8]) -> usize {
+    let start = seq.len();
+    let mut best = 0usize;
+    for pos in 0..=start.saturating_sub(4) {
+        best = best.max(shine_dalgarno_exact(seq, pos, start));
+    }
+    best
+}
+
+#[cfg(test)]
+mod prodigal_tests {
+    use super::*;
+
+    fn upstream_with_motif(motif: &[u8], spacer: usize) -> Vec<u8> {
+        let mut seq = vec![b'a'; 21];
+        let motif_start = 21 - spacer - motif.len();
+        seq[motif_start..motif_start + motif.len()].copy_from_slice(motif);
+        seq
+    }
+
+    #[test]
+    fn exact_aggagg_5_10bp_is_bin_27() {
+        let seq = upstream_with_motif(b"AGGAGG", 6);
+        assert_eq!(score_rbs_prodigal(&seq), 27);
+    }
+
+    #[test]
+    fn exact_aggagg_11_12bp_is_bin_25() {
+        let seq = upstream_with_motif(b"AGGAGG", 11);
+        assert_eq!(score_rbs_prodigal(&seq), 25);
+    }
+
+    #[test]
+    fn exact_aggagg_3_4bp_is_bin_26() {
+        let seq = upstream_with_motif(b"AGGAGG", 4);
+        assert_eq!(score_rbs_prodigal(&seq), 26);
+    }
+
+    #[test]
+    fn exact_aggagg_13_15bp_is_bin_10() {
+        let seq = upstream_with_motif(b"AGGAGG", 14);
+        assert_eq!(score_rbs_prodigal(&seq), 10);
+    }
+}
