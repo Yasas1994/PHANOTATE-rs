@@ -93,13 +93,14 @@ fn test_flag_f_gff() {
 fn test_flag_f_sco() {
     let (stdout, _stderr, code) = run(&["-i", PHIX174, "-f", "sco"], None);
     assert_eq!(code, 0);
-    for line in stdout.lines() {
-        if line.starts_with('#') {
-            continue;
-        }
-        let cols: Vec<&str> = line.split('\t').collect();
-        assert_eq!(cols.len(), 4, "SCO line should have 4 columns: {}", line);
-    }
+    let first_data_line = stdout.lines().find(|l| !l.starts_with('#')).unwrap();
+    let cols: Vec<&str> = first_data_line.split('\t').collect();
+    assert_eq!(
+        cols.len(),
+        5,
+        "SCO line should have 5 columns: {}",
+        first_data_line
+    );
 }
 
 #[test]
@@ -261,7 +262,7 @@ fn test_flag_m_mask_n() {
             continue; // header / "NO ORFS FOUND" line
         }
         let cols: Vec<&str> = line.split('\t').collect();
-        assert_eq!(cols.len(), 4, "SCO line should have 4 columns: {}", line);
+        assert_eq!(cols.len(), 5, "SCO line should have 5 columns: {}", line);
         let start: usize = cols[0].parse().unwrap();
         let stop: usize = cols[1].parse().unwrap();
         let (lo, hi) = (start.min(stop), start.max(stop));
@@ -286,7 +287,7 @@ fn test_flag_combo_c_m() {
             continue;
         }
         let cols: Vec<&str> = line.split('\t').collect();
-        assert_eq!(cols.len(), 4, "SCO line should have 4 columns: {}", line);
+        assert_eq!(cols.len(), 5, "SCO line should have 5 columns: {}", line);
     }
 }
 
@@ -342,6 +343,18 @@ fn non_sd_flag_runs_without_error() {
     );
     assert_eq!(code, 0);
     assert!(stdout.contains("uses_sd: 0"));
+}
+
+#[test]
+fn non_sd_sco_includes_motif_column() {
+    let (stdout, _stderr, code) = run(
+        &["-i", "tests/data/small.fasta", "--non-sd", "-f", "sco"],
+        None,
+    );
+    assert_eq!(code, 0);
+    let data_line = stdout.lines().find(|l| !l.starts_with('#')).unwrap();
+    let cols: Vec<&str> = data_line.split('\t').collect();
+    assert_eq!(cols.len(), 5);
 }
 
 #[test]

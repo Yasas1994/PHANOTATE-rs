@@ -380,7 +380,7 @@ class TestIntegration:
                 if line.startswith("#"):
                     continue
                 cols = line.split("\t")
-                assert len(cols) == 4
+                assert len(cols) == 5
 
     def test_table4_genome(self):
         """A TGA-rich sequence should favor table 4 when detect_table is on."""
