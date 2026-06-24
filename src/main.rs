@@ -102,6 +102,10 @@ struct Cli {
     /// Force Shine-Dalgarno scoring (skip non-SD auto-detection).
     #[arg(long = "sd")]
     force_sd: bool,
+
+    /// Use Prodigal-style SD scanner with non-SD fallback.
+    #[arg(long = "prodigal-rbs")]
+    prodigal_rbs: bool,
 }
 
 /// Build start-codon weights from a list of codons.
@@ -186,7 +190,9 @@ fn process_genome(
     force_sd: bool,
     #[cfg(feature = "ml")] ml_scorer: &Option<phanotate_rs::ml_scorer::MlScorer>,
     #[cfg(not(feature = "ml"))] _ml_scorer: &Option<()>,
+    prodigal_rbs: bool,
 ) -> (String, String, String) {
+    let _prodigal_rbs = prodigal_rbs;
     let contig_length = genome.seq.len();
     let dna = &genome.seq;
 
@@ -529,6 +535,9 @@ fn main() -> Result<()> {
     if cli.force_non_sd && cli.force_sd {
         anyhow::bail!("--non-sd and --sd are mutually exclusive");
     }
+    if cli.prodigal_rbs && (cli.force_sd || cli.force_non_sd) {
+        anyhow::bail!("--prodigal-rbs is mutually exclusive with --sd and --non-sd");
+    }
 
     // Validate format
     let format = match cli.format.to_lowercase().as_str() {
@@ -733,6 +742,7 @@ fn main() -> Result<()> {
                     cli.force_non_sd,
                     cli.force_sd,
                     &ml_scorer,
+                    cli.prodigal_rbs,
                 )
             })
             .collect()
@@ -752,6 +762,7 @@ fn main() -> Result<()> {
                     cli.force_non_sd,
                     cli.force_sd,
                     &ml_scorer,
+                    cli.prodigal_rbs,
                 )
             })
             .collect()
