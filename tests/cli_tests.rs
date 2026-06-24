@@ -332,6 +332,26 @@ fn test_phix174_sco_matches_golden() {
 }
 
 // ---------------------------------------------------------------------------
+// Non-Shine-Dalgarno mode (--non-sd)
+// ---------------------------------------------------------------------------
+#[test]
+fn non_sd_flag_runs_without_error() {
+    let (stdout, _stderr, code) = run(
+        &["-i", "tests/data/small.fasta", "--non-sd", "-f", "sco"],
+        None,
+    );
+    assert_eq!(code, 0);
+    assert!(stdout.contains("uses_sd: 0"));
+}
+
+#[test]
+fn default_run_emits_uses_sd_header() {
+    let (stdout, _stderr, code) = run(&["-i", "tests/data/small.fasta", "-f", "sco"], None);
+    assert_eq!(code, 0);
+    assert!(stdout.contains("uses_sd:"));
+}
+
+// ---------------------------------------------------------------------------
 // Regression test for internal stop codons with non-standard genetic codes
 // ---------------------------------------------------------------------------
 #[test]
