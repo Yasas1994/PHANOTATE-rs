@@ -623,3 +623,69 @@ fn test_no_internal_stops_table4() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Dicodon filter tests
+// ---------------------------------------------------------------------------
+#[test]
+fn dicodon_filter_runs_on_genbank() {
+    let (stdout, _stderr, code) = run(
+        &[
+            "-i",
+            "tests/golden/NC_001365.gb",
+            "-g",
+            "4",
+            "--dicodon-filter",
+            "--dicodon-filter-threshold",
+            "0.5",
+            "-f",
+            "sco",
+        ],
+        None,
+    );
+    assert_eq!(code, 0, "should exit successfully");
+    let data_line = stdout.lines().find(|l| !l.starts_with('#')).unwrap();
+    assert_eq!(
+        data_line.split('\t').count(),
+        5,
+        "SCO line should have 5 columns"
+    );
+}
+
+#[test]
+fn dicodon_filter_changes_fasta_output() {
+    let (default_out, _stderr, default_code) =
+        run(&["-i", "tests/data/small.fasta", "-f", "sco"], None);
+    let (filter_out, _stderr, filter_code) = run(
+        &[
+            "-i",
+            "tests/data/small.fasta",
+            "--dicodon-filter",
+            "-f",
+            "sco",
+        ],
+        None,
+    );
+    assert_eq!(default_code, 0);
+    assert_eq!(filter_code, 0);
+    assert_ne!(
+        default_out, filter_out,
+        "--dicodon-filter should change output"
+    );
+}
+
+#[test]
+fn dicodon_and_dicodon_filter_are_mutually_exclusive() {
+    let (_stdout, _stderr, code) = run(
+        &[
+            "-i",
+            "tests/data/small.fasta",
+            "--dicodon",
+            "--dicodon-filter",
+            "-f",
+            "sco",
+        ],
+        None,
+    );
+    assert_ne!(code, 0, "mutually exclusive flags should error");
+}

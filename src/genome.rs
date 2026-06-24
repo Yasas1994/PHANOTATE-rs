@@ -6,6 +6,9 @@ pub struct Genome {
     pub id: String,
     pub seq: Vec<u8>,    // lowercase ASCII nucleotides
     pub rc_seq: Vec<u8>, // reverse complement, pre-computed
+    /// Annotated CDS coordinates from GenBank input: (start, end, strand).
+    /// Strand is 1 for forward, -1 for reverse. Empty for FASTA input.
+    pub cds: Vec<(usize, usize, i8)>,
 }
 
 /// Read a FASTA file, returning one or more Genome records.
@@ -36,6 +39,7 @@ pub fn read_fasta_data(data: &str) -> anyhow::Result<Vec<Genome>> {
                     id: current_id.clone(),
                     seq,
                     rc_seq,
+                    cds: Vec::new(),
                 });
             }
             current_id = line.split_whitespace().next().unwrap_or("").to_string();
@@ -52,6 +56,7 @@ pub fn read_fasta_data(data: &str) -> anyhow::Result<Vec<Genome>> {
             id: current_id,
             seq,
             rc_seq,
+            cds: Vec::new(),
         });
     }
 
@@ -63,7 +68,9 @@ pub fn read_genbank(data: &str) -> anyhow::Result<Vec<Genome>> {
     let mut genomes = Vec::new();
     let mut current_id = String::new();
     let mut current_seq = String::new();
+    let mut current_cds: Vec<(usize, usize, i8)> = Vec::new();
     let mut in_origin = false;
+    let mut in_features = false;
 
     for line in data.lines() {
         let trimmed = line.trim();
@@ -78,12 +85,17 @@ pub fn read_genbank(data: &str) -> anyhow::Result<Vec<Genome>> {
                     id: current_id.clone(),
                     seq,
                     rc_seq,
+                    cds: std::mem::take(&mut current_cds),
                 });
             }
             current_id = trimmed.split_whitespace().nth(1).unwrap_or("").to_string();
             current_seq.clear();
             in_origin = false;
+            in_features = false;
+        } else if trimmed.starts_with("FEATURES") {
+            in_features = true;
         } else if trimmed.starts_with("ORIGIN") {
+            in_features = false;
             in_origin = true;
         } else if trimmed.starts_with("//") {
             in_origin = false;
@@ -93,6 +105,12 @@ pub fn read_genbank(data: &str) -> anyhow::Result<Vec<Genome>> {
             let parts: Vec<&str> = trimmed.split_whitespace().collect();
             for part in parts.iter().skip(1) {
                 current_seq.push_str(part);
+            }
+        } else if in_features && trimmed.starts_with("CDS") {
+            if let Some(loc) = trimmed.strip_prefix("CDS") {
+                if let Some(cds) = parse_cds_location(loc) {
+                    current_cds.push(cds);
+                }
             }
         }
     }
@@ -104,10 +122,30 @@ pub fn read_genbank(data: &str) -> anyhow::Result<Vec<Genome>> {
             id: current_id,
             seq,
             rc_seq,
+            cds: current_cds,
         });
     }
 
     Ok(genomes)
+}
+
+/// Parse a simple GenBank CDS location.
+///
+/// Handles `start..end`, `<start..end`, `start..>end`, and
+/// `complement(start..end)`. Returns `(start, end, strand)` with strand `1`
+/// for forward and `-1` for reverse. Joins and complex locations return None.
+fn parse_cds_location(loc: &str) -> Option<(usize, usize, i8)> {
+    let loc = loc.trim();
+    let (strand, inner) = if loc.starts_with("complement(") {
+        let inner = loc.strip_prefix("complement(")?.strip_suffix(")")?;
+        (-1i8, inner)
+    } else {
+        (1i8, loc)
+    };
+    let (start_str, end_str) = inner.split_once("..")?;
+    let start: usize = start_str.trim_start_matches('<').parse().ok()?;
+    let end: usize = end_str.trim_start_matches('>').parse().ok()?;
+    Some((start, end, strand))
 }
 
 /// Convert to lowercase, then map ambiguous bases.
@@ -166,6 +204,27 @@ mod tests {
             normalize_seq("ATGCSBVX"),
             vec![b'a', b't', b'g', b'c', b'g', b'g', b'g', b'a']
         );
+    }
+
+    #[test]
+    fn test_parse_cds_location_forward() {
+        assert_eq!(parse_cds_location("1..100"), Some((1, 100, 1)));
+    }
+
+    #[test]
+    fn test_parse_cds_location_complement() {
+        assert_eq!(parse_cds_location("complement(1..100)"), Some((1, 100, -1)));
+    }
+
+    #[test]
+    fn test_parse_cds_location_partial() {
+        assert_eq!(parse_cds_location("<1..100"), Some((1, 100, 1)));
+        assert_eq!(parse_cds_location("1..>100"), Some((1, 100, 1)));
+    }
+
+    #[test]
+    fn test_parse_cds_location_join_skipped() {
+        assert_eq!(parse_cds_location("join(1..50,60..100)"), None);
     }
 }
 

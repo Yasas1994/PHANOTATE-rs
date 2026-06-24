@@ -111,9 +111,25 @@ struct Cli {
     #[arg(long = "dicodon")]
     dicodon: bool,
 
+    /// Train a dicodon model from annotated CDS and drop low-scoring ORFs.
+    #[arg(long = "dicodon-filter")]
+    dicodon_filter: bool,
+
+    /// Minimum dicodon score to keep an ORF when --dicodon-filter is enabled.
+    #[arg(
+        long = "dicodon-filter-threshold",
+        value_name = "FLOAT",
+        default_value_t = 0.5
+    )]
+    dicodon_filter_threshold: f64,
+
     /// Path to a learned start-site scoring model (JSON).
     #[arg(long = "start-model", value_name = "FILE")]
     start_model: Option<PathBuf>,
+
+    /// Drop ORFs whose start-model score is below this threshold.
+    #[arg(long = "start-model-filter-threshold", value_name = "FLOAT")]
+    start_model_filter_threshold: Option<f64>,
 }
 
 /// Build start-codon weights from a list of codons.
@@ -211,6 +227,8 @@ fn process_genome(
     #[cfg(not(feature = "ml"))] _ml_scorer: &Option<()>,
     prodigal_rbs: bool,
     dicodon: bool,
+    dicodon_filter: bool,
+    dicodon_filter_threshold: f64,
     start_model: Option<&phanotate_rs::start_refiner::StartModel>,
 ) -> Result<(String, String, String)> {
     let contig_length = genome.seq.len();
@@ -543,6 +561,42 @@ fn process_genome(
         }
     }
 
+    if dicodon_filter {
+        let annotated: Vec<&Orf> = if genome.cds.is_empty() {
+            Vec::new()
+        } else {
+            orfs.iter()
+                .filter(|o| {
+                    genome.cds.iter().any(|(s, e, strand)| {
+                        if *strand > 0 {
+                            // Forward: ORF start == CDS start, stop codon ends at CDS end.
+                            o.frame > 0 && o.start == *s && o.stop + 2 == *e
+                        } else {
+                            // Reverse: ORF stop == CDS start, start codon ends at CDS end.
+                            o.frame < 0 && o.stop == *s && o.start + 2 == *e
+                        }
+                    })
+                })
+                .collect()
+        };
+
+        let model = if annotated.is_empty() {
+            eprintln!(
+                "Warning: --dicodon-filter enabled for '{}' but no annotated CDS found; \
+                 falling back to heuristic seed training.",
+                genome.id
+            );
+            phanotate_rs::dicodon::DicodonModel::train(&orfs, dna, rc_dna)
+        } else {
+            phanotate_rs::dicodon::DicodonModel::from_annotated_orfs(&annotated, dna, rc_dna)
+        };
+
+        for orf in &mut orfs {
+            orf.dicodon_score = model.score_orf(orf);
+        }
+        orfs.retain(|o| o.dicodon_score >= dicodon_filter_threshold);
+    }
+
     // --- Score ORFs ---
     #[cfg(feature = "ml")]
     if let Some(ref ml) = ml_scorer {
@@ -632,6 +686,9 @@ fn main() -> Result<()> {
     }
     if cli.prodigal_rbs && (cli.force_sd || cli.force_non_sd) {
         anyhow::bail!("--prodigal-rbs is mutually exclusive with --sd and --non-sd");
+    }
+    if cli.dicodon && cli.dicodon_filter {
+        anyhow::bail!("--dicodon and --dicodon-filter are mutually exclusive");
     }
 
     // Validate format
@@ -849,6 +906,8 @@ fn main() -> Result<()> {
                     &ml_scorer,
                     cli.prodigal_rbs,
                     cli.dicodon,
+                    cli.dicodon_filter,
+                    cli.dicodon_filter_threshold,
                     start_model.as_ref(),
                 )
             })
@@ -871,6 +930,8 @@ fn main() -> Result<()> {
                     &ml_scorer,
                     cli.prodigal_rbs,
                     cli.dicodon,
+                    cli.dicodon_filter,
+                    cli.dicodon_filter_threshold,
                     start_model.as_ref(),
                 )
             })

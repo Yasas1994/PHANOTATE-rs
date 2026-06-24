@@ -98,6 +98,50 @@ impl DicodonModel {
         model
     }
 
+    /// Train a dicodon model from a supplied set of trusted ORFs (e.g. annotated
+    /// CDS). Gene dicodon counts are taken from the ORF sequences in frame;
+    /// background counts are collected from both genome strands in all frames.
+    pub fn from_annotated_orfs(orfs: &[&Orf], dna: &[u8], rc_dna: &[u8]) -> Self {
+        let mut model = Self {
+            scores: [0.0; NUM_DICODONS],
+        };
+
+        let mut gene_counts = [0.0f64; NUM_DICODONS];
+        let mut bg_counts = [0.0f64; NUM_DICODONS];
+        let mut total_gene = 0.0;
+        let mut total_bg = 0.0;
+
+        // Background counts on both strands.
+        for seq in [dna, rc_dna] {
+            for i in 0..seq.len().saturating_sub(5) {
+                if let Some(ndx) = kmer_encode(seq, i, 6) {
+                    bg_counts[ndx] += 1.0;
+                    total_bg += 1.0;
+                }
+            }
+        }
+
+        // Gene counts from annotated ORFs.
+        for orf in orfs {
+            let seq = orf.sequence();
+            for i in (0..seq.len().saturating_sub(5)).step_by(3) {
+                if let Some(ndx) = kmer_encode(seq, i, 6) {
+                    gene_counts[ndx] += 1.0;
+                    total_gene += 1.0;
+                }
+            }
+        }
+
+        // Smooth and convert to log-likelihoods.
+        for ndx in 0..NUM_DICODONS {
+            let g = (gene_counts[ndx] + 1.0) / (total_gene + NUM_DICODONS as f64);
+            let b = (bg_counts[ndx] + 1.0) / (total_bg + NUM_DICODONS as f64);
+            model.scores[ndx] = (g / b).ln().clamp(-4.0, 4.0);
+        }
+
+        model
+    }
+
     /// Score an ORF by summing per-dicodon log-likelihoods in its translational
     /// frame and converting the average to a positive multiplier.
     pub fn score_orf(&self, orf: &Orf) -> f64 {
@@ -195,6 +239,38 @@ mod tests {
         }];
         let model = DicodonModel::train(&orfs, &seq, &rc);
         let s = model.score_orf(&orfs[0]);
+        assert!(s > 0.0);
+        assert!(s <= 10.0);
+    }
+
+    #[test]
+    fn from_annotated_orfs_produces_scores() {
+        let unit = b"atgaaaaaaaatgaaaaaaatgaaaaaaa";
+        let seq = unit
+            .iter()
+            .cycle()
+            .take(unit.len() * 20)
+            .copied()
+            .collect::<Vec<u8>>();
+        let rc = crate::genome::rev_comp(&seq);
+        let orf = Orf {
+            start: 1,
+            stop: seq.len() - 2,
+            frame: 1,
+            seq: seq.clone(),
+            rbs_score: 0,
+            rbs_motif: None,
+            pstop: 0.01,
+            weight_rbs: 2.0,
+            hold: 100.0,
+            motif_score: 1.0,
+            dicodon_score: 1.0,
+            start_score: 1.0,
+            weight: 1.0,
+        };
+        let model = DicodonModel::from_annotated_orfs(&[&orf], &seq, &rc);
+        assert!(model.scores.iter().all(|&s| s.is_finite()));
+        let s = model.score_orf(&orf);
         assert!(s > 0.0);
         assert!(s <= 10.0);
     }
