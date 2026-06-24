@@ -175,6 +175,15 @@ class TestOrfFinder:
         # Longer minimum should give fewer ORFs
         assert len(orfs_long) <= len(orfs_default)
 
+    def test_find_orfs_prodigal_rbs(self):
+        # Plant a canonical AGGAGG SD motif 6 bp upstream of the start codon.
+        seq = "A" * 9 + "AGGAGG" + "A" * 6 + "ATG" + "A" * 300 + "TAA"
+        orfs = phanotate_rs.find_orfs(seq, prodigal_rbs=True)
+        assert len(orfs) > 0
+        # At least one forward ORF should carry a Prodigal RBS motif.
+        motifs = [o.rbs_motif for o in orfs if o.frame > 0]
+        assert any(m is not None for m in motifs)
+
 
 # ---------------------------------------------------------------------------
 # 3. Table detection
@@ -344,6 +353,23 @@ class TestPhanotatePipeline:
     def test_phanotate_non_sd_and_sd_mutually_exclusive(self):
         with pytest.raises(ValueError):
             phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", non_sd=True, sd=True)
+
+    def test_phanotate_prodigal_rbs(self):
+        # Plant a canonical AGGAGG SD motif 6 bp upstream of the start codon.
+        seq = "A" * 9 + "AGGAGG" + "A" * 6 + "ATG" + "A" * 300 + "TAA"
+        result = phanotate_rs.phanotate(seq, seq_id="test", prodigal_rbs=True)
+        assert result["uses_sd"] is True
+        # At least one gene should have an RBS motif string.
+        motifs = [g.get("rbs_motif") for g in result["genes"]]
+        assert any(m is not None for m in motifs)
+
+    def test_phanotate_prodigal_rbs_conflicts_with_non_sd(self):
+        with pytest.raises(ValueError):
+            phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", prodigal_rbs=True, non_sd=True)
+
+    def test_phanotate_prodigal_rbs_conflicts_with_sd(self):
+        with pytest.raises(ValueError):
+            phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", prodigal_rbs=True, sd=True)
 
 
 # ---------------------------------------------------------------------------

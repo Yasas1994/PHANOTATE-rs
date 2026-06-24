@@ -33,6 +33,20 @@ fn detect_uses_sd(background: &[f64; 28], training: &[f64; 28]) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// Helper: extract the 21-bp upstream window of an ORF used for RBS scoring.
+// Mirrors main.rs.
+// ---------------------------------------------------------------------------
+fn upstream_window(dna: &[u8], rc_dna: &[u8], orf: &Orf) -> Vec<u8> {
+    if orf.frame > 0 {
+        crate::rbs_scanner::get_rbs(dna, orf.start)
+    } else {
+        let rbs_start = dna.len().saturating_sub(orf.start + 21);
+        let rbs_end = dna.len().saturating_sub(orf.start);
+        rc_dna[rbs_start..rbs_end].to_vec()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Helper: build start-codon weights (mirrors main.rs)
 // ---------------------------------------------------------------------------
 fn build_start_weights(start_codons: &[Vec<u8>]) -> HashMap<Vec<u8>, f64> {
@@ -132,6 +146,8 @@ pub struct PyOrf {
     #[pyo3(get)]
     pub motif_score: f64,
     #[pyo3(get)]
+    pub rbs_motif: Option<String>,
+    #[pyo3(get)]
     pub hold: f64,
     #[pyo3(get)]
     pub weight: f64,
@@ -151,6 +167,7 @@ impl From<&Orf> for PyOrf {
             pstop: orf.pstop,
             weight_rbs: orf.weight_rbs,
             motif_score: orf.motif_score,
+            rbs_motif: orf.rbs_motif.clone(),
             hold: orf.hold,
             weight: orf.weight,
             start_codon: String::from_utf8_lossy(orf.start_codon()).to_string(),
@@ -189,6 +206,8 @@ pub struct PyGene {
     pub score: f64,
     #[pyo3(get)]
     pub start_codon: String,
+    #[pyo3(get)]
+    pub rbs_motif: Option<String>,
 }
 
 #[pymethods]
@@ -202,6 +221,19 @@ impl PyGene {
 
     fn __str__(&self) -> String {
         self.__repr__()
+    }
+
+    /// Return an attribute by name, mirroring dict.get for the test suite.
+    fn get(&self, key: &str) -> Option<String> {
+        match key {
+            "start" => Some(self.start.to_string()),
+            "stop" => Some(self.stop.to_string()),
+            "strand" => Some(self.strand.to_string()),
+            "score" => Some(self.score.to_string()),
+            "start_codon" => Some(self.start_codon.clone()),
+            "rbs_motif" => self.rbs_motif.clone(),
+            _ => None,
+        }
     }
 }
 
@@ -272,6 +304,10 @@ impl PyTableScore {
 /// sd : bool, optional
 ///     If True, force Shine-Dalgarno scoring (skip non-SD auto-detection).
 ///     Default is False. `non_sd` and `sd` are mutually exclusive.
+/// prodigal_rbs : bool, optional
+///     If True, use Prodigal-style SD scanning with non-SD fallback.
+///     Default is False. `prodigal_rbs` is mutually exclusive with `sd`
+///     and `non_sd`.
 /// min_orf_len : int, optional
 ///     Minimum ORF length in nucleotides. Default is 90.
 ///
@@ -305,6 +341,7 @@ impl PyTableScore {
     detect_table = false,
     non_sd = false,
     sd = false,
+    prodigal_rbs = false,
     min_orf_len = 90,
 ))]
 fn phanotate(
@@ -317,11 +354,17 @@ fn phanotate(
     detect_table: bool,
     non_sd: bool,
     sd: bool,
+    prodigal_rbs: bool,
     min_orf_len: usize,
 ) -> PyResult<PyObject> {
     if non_sd && sd {
         return Err(PyValueError::new_err(
             "non_sd and sd are mutually exclusive",
+        ));
+    }
+    if prodigal_rbs && (sd || non_sd) {
+        return Err(PyValueError::new_err(
+            "prodigal_rbs is mutually exclusive with sd and non_sd",
         ));
     }
     // Parse format
@@ -381,6 +424,7 @@ fn phanotate(
         min_orf_len,
         non_sd,
         sd,
+        prodigal_rbs,
     );
 
     // Build Python dict return
@@ -414,6 +458,7 @@ fn process_single_genome(
     min_orf_len: usize,
     force_non_sd: bool,
     force_sd: bool,
+    prodigal_rbs: bool,
 ) -> (String, String, String, Vec<PyGene>, bool) {
     let contig_length = dna.len();
 
@@ -450,12 +495,20 @@ fn process_single_genome(
         } else {
             &dna[i..]
         };
-        let score = orf::score_rbs(window);
+        let score = if prodigal_rbs {
+            crate::rbs_scanner::score_rbs_prodigal(window)
+        } else {
+            orf::score_rbs(window)
+        };
         background_rbs[score] += 1.0;
 
         let rc_start = len.saturating_sub(i + 21);
         let rc_window = &rc_dna[rc_start..len - i];
-        let rc_score = orf::score_rbs(rc_window);
+        let rc_score = if prodigal_rbs {
+            crate::rbs_scanner::score_rbs_prodigal(rc_window)
+        } else {
+            orf::score_rbs(rc_window)
+        };
         background_rbs[rc_score] += 1.0;
 
         frame_plot.add_base(base);
@@ -497,43 +550,82 @@ fn process_single_genome(
     }
 
     // --- Training RBS ---
-    let mut training_rbs = [1.0f64; 28];
-    for orf in &orfs {
-        training_rbs[orf.rbs_score] += 1.0;
-    }
-    let tr_sum: f64 = training_rbs.iter().sum();
-    for v in &mut training_rbs {
-        *v /= tr_sum;
-    }
-    for orf in &mut orfs {
-        orf.weight_rbs = training_rbs[orf.rbs_score] / background_rbs[orf.rbs_score];
-    }
+    let use_non_sd;
+    if prodigal_rbs {
+        use_non_sd = false;
 
-    // --- Non-Shine-Dalgarno motif scoring ---
-    let use_non_sd = if force_non_sd {
-        true
-    } else if force_sd {
-        false
-    } else {
-        !detect_uses_sd(&background_rbs, &training_rbs)
-    };
+        // Train non-SD model once for the genome.
+        let non_sd_model =
+            crate::nonsd_motif::NonSdModel::train(&orfs, dna, rc_dna, start_codons_map);
 
-    if use_non_sd {
-        // Neutralize the SD-based RBS weight so the path is scored purely by
-        // the non-SD motif model and start-codon type weights.
-        for orf in &mut orfs {
-            orf.weight_rbs = 1.0;
+        // Training distribution from actual ORF upstream windows (Prodigal bins).
+        let mut training_rbs = [1.0f64; crate::rbs_scanner::NUM_RBS_BINS];
+        for orf in &orfs {
+            let upstream = upstream_window(dna, rc_dna, orf);
+            training_rbs[crate::rbs_scanner::score_rbs_prodigal(&upstream)] += 1.0;
         }
-        let model = crate::nonsd_motif::NonSdModel::train(&orfs, dna, rc_dna, start_codons_map);
+        let tr_sum: f64 = training_rbs.iter().sum();
+        for v in &mut training_rbs {
+            *v /= tr_sum;
+        }
+
         for orf in &mut orfs {
-            orf.motif_score = model.score_orf(orf, dna, rc_dna);
-            let (wseq, start) = crate::nonsd_motif::upstream_context(dna, rc_dna, orf);
-            let hit = if start >= 18 + crate::nonsd_motif::MIN_MOTIF_LEN {
-                crate::nonsd_motif::find_best_motif(&model.mot_wt, wseq, start, model.no_mot)
+            let upstream = upstream_window(dna, rc_dna, orf);
+            let bin = crate::rbs_scanner::score_rbs_prodigal(&upstream);
+            if bin > 0 {
+                orf.rbs_score = bin;
+                orf.weight_rbs = training_rbs[bin] / background_rbs[bin];
+                orf.motif_score = 1.0;
+                orf.rbs_motif = crate::rbs_scanner::format_prodigal_rbs_motif(bin);
             } else {
-                crate::nonsd_motif::MotifHit::default()
-            };
-            orf.rbs_motif = crate::nonsd_motif::format_motif_hit(&hit);
+                orf.rbs_score = 0;
+                orf.weight_rbs = 1.0;
+                orf.motif_score = non_sd_model.score_orf(orf, dna, rc_dna);
+                orf.rbs_motif = non_sd_model
+                    .best_motif_label(orf, dna, rc_dna)
+                    .map(|m| format!("nonSD:{m}"));
+            }
+        }
+    } else {
+        // --- Existing legacy RBS training block ---
+        let mut training_rbs = [1.0f64; 28];
+        for orf in &orfs {
+            training_rbs[orf.rbs_score] += 1.0;
+        }
+        let tr_sum: f64 = training_rbs.iter().sum();
+        for v in &mut training_rbs {
+            *v /= tr_sum;
+        }
+        for orf in &mut orfs {
+            orf.weight_rbs = training_rbs[orf.rbs_score] / background_rbs[orf.rbs_score];
+        }
+
+        // --- Existing non-SD auto-detect block ---
+        use_non_sd = if force_non_sd {
+            true
+        } else if force_sd {
+            false
+        } else {
+            !detect_uses_sd(&background_rbs, &training_rbs)
+        };
+
+        if use_non_sd {
+            // Neutralize the SD-based RBS weight so the path is scored purely by
+            // the non-SD motif model and start-codon type weights.
+            for orf in &mut orfs {
+                orf.weight_rbs = 1.0;
+            }
+            let model = crate::nonsd_motif::NonSdModel::train(&orfs, dna, rc_dna, start_codons_map);
+            for orf in &mut orfs {
+                orf.motif_score = model.score_orf(orf, dna, rc_dna);
+                let (wseq, start) = crate::nonsd_motif::upstream_context(dna, rc_dna, orf);
+                let hit = if start >= 18 + crate::nonsd_motif::MIN_MOTIF_LEN {
+                    crate::nonsd_motif::find_best_motif(&model.mot_wt, wseq, start, model.no_mot)
+                } else {
+                    crate::nonsd_motif::MotifHit::default()
+                };
+                orf.rbs_motif = crate::nonsd_motif::format_motif_hit(&hit);
+            }
         }
     }
 
@@ -732,15 +824,25 @@ fn process_single_genome(
             continue;
         };
 
-        let start_codon = if strand == '+' {
+        let (start_codon, rbs_motif) = if strand == '+' {
             orfs.iter()
                 .find(|o| o.start == left.position && o.stop == right.position && o.frame > 0)
-                .map(|o| String::from_utf8_lossy(o.start_codon()).to_string())
+                .map(|o| {
+                    (
+                        String::from_utf8_lossy(o.start_codon()).to_string(),
+                        o.rbs_motif.clone(),
+                    )
+                })
                 .unwrap_or_default()
         } else {
             orfs.iter()
                 .find(|o| o.stop == left.position && o.start == right.position && o.frame < 0)
-                .map(|o| String::from_utf8_lossy(o.start_codon()).to_string())
+                .map(|o| {
+                    (
+                        String::from_utf8_lossy(o.start_codon()).to_string(),
+                        o.rbs_motif.clone(),
+                    )
+                })
                 .unwrap_or_default()
         };
 
@@ -750,6 +852,7 @@ fn process_single_genome(
             strand,
             score: *weight,
             start_codon,
+            rbs_motif,
         });
     }
 
@@ -793,13 +896,17 @@ fn process_single_genome(
 ///     Default is False.
 /// min_orf_len : int, optional
 ///     Minimum ORF length in nucleotides. Default is 90.
+/// prodigal_rbs : bool, optional
+///     If True, score upstream RBS motifs with Prodigal-style SD scanning
+///     and fall back to non-SD motifs for ORFs without a strong SD signal.
+///     Default is False.
 ///
 /// Returns
 /// -------
 /// list[Orf]
 ///     A list of Orf objects, each with attributes:
-///     start, stop, frame, rbs_score, pstop, weight_rbs, motif_score, hold,
-///     weight, start_codon, sequence.
+///     start, stop, frame, rbs_score, pstop, weight_rbs, motif_score,
+///     rbs_motif, hold, weight, start_codon, sequence.
 ///
 /// Examples
 /// --------
@@ -813,6 +920,7 @@ fn process_single_genome(
     closed_ends = false,
     mask_n = false,
     min_orf_len = 90,
+    prodigal_rbs = false,
 ))]
 fn find_orfs(
     sequence: &str,
@@ -820,6 +928,7 @@ fn find_orfs(
     closed_ends: bool,
     mask_n: bool,
     min_orf_len: usize,
+    prodigal_rbs: bool,
 ) -> PyResult<Vec<PyOrf>> {
     validate_table(table)?;
 
@@ -836,9 +945,10 @@ fn find_orfs(
         .iter()
         .map(|&c| c.to_vec())
         .collect();
+    let start_codons_map = build_start_weights(&start_codons);
 
     let rc_dna = genome::rev_comp(&dna);
-    let orfs = orf::find_orfs_with_rc(
+    let mut orfs = orf::find_orfs_with_rc(
         &dna,
         &rc_dna,
         &start_codons,
@@ -847,6 +957,61 @@ fn find_orfs(
         closed_ends,
         mask_n,
     );
+
+    if prodigal_rbs {
+        // Background distribution over all 21-nt windows.
+        let mut background_rbs = [1.0f64; crate::rbs_scanner::NUM_RBS_BINS];
+        let len = dna.len();
+        for i in 0..len {
+            let window = if i + 21 <= len {
+                &dna[i..i + 21]
+            } else {
+                &dna[i..]
+            };
+            background_rbs[crate::rbs_scanner::score_rbs_prodigal(window)] += 1.0;
+
+            let rc_start = len.saturating_sub(i + 21);
+            let rc_window = &rc_dna[rc_start..len - i];
+            background_rbs[crate::rbs_scanner::score_rbs_prodigal(rc_window)] += 1.0;
+        }
+        let bg_sum: f64 = background_rbs.iter().sum();
+        for v in &mut background_rbs {
+            *v /= bg_sum;
+        }
+
+        // Train non-SD model for the fallback branch.
+        let non_sd_model =
+            crate::nonsd_motif::NonSdModel::train(&orfs, &dna, &rc_dna, &start_codons_map);
+
+        // Training distribution from actual ORF upstream windows.
+        let mut training_rbs = [1.0f64; crate::rbs_scanner::NUM_RBS_BINS];
+        for orf in &orfs {
+            let upstream = upstream_window(&dna, &rc_dna, orf);
+            training_rbs[crate::rbs_scanner::score_rbs_prodigal(&upstream)] += 1.0;
+        }
+        let tr_sum: f64 = training_rbs.iter().sum();
+        for v in &mut training_rbs {
+            *v /= tr_sum;
+        }
+
+        for orf in &mut orfs {
+            let upstream = upstream_window(&dna, &rc_dna, orf);
+            let bin = crate::rbs_scanner::score_rbs_prodigal(&upstream);
+            if bin > 0 {
+                orf.rbs_score = bin;
+                orf.weight_rbs = training_rbs[bin] / background_rbs[bin];
+                orf.motif_score = 1.0;
+                orf.rbs_motif = crate::rbs_scanner::format_prodigal_rbs_motif(bin);
+            } else {
+                orf.rbs_score = 0;
+                orf.weight_rbs = 1.0;
+                orf.motif_score = non_sd_model.score_orf(orf, &dna, &rc_dna);
+                orf.rbs_motif = non_sd_model
+                    .best_motif_label(orf, &dna, &rc_dna)
+                    .map(|m| format!("nonSD:{m}"));
+            }
+        }
+    }
 
     Ok(orfs.iter().map(|o| PyOrf::from(o)).collect())
 }
