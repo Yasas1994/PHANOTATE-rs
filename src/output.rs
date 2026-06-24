@@ -159,10 +159,11 @@ fn write_gff(id: &str, path: &[(Node, Node, f64)], orfs: &[Orf], uses_sd: bool) 
 fn write_sco(_id: &str, path: &[(Node, Node, f64)], orfs: &[Orf], uses_sd: bool) -> String {
     let mut out = String::new();
     out.push_str(&format!("# uses_sd: {}\n", if uses_sd { 1 } else { 0 }));
-    for (start, stop, strand, weight, _orf) in collect_orf_edges(path, orfs) {
+    for (start, stop, strand, weight, orf) in collect_orf_edges(path, orfs) {
+        let motif = orf.rbs_motif.as_deref().unwrap_or("not detected");
         out.push_str(&format!(
-            "{}\t{}\t{}\t{:.2E}\n",
-            start, stop, strand, weight
+            "{}\t{}\t{}\t{:.2E}\t{}\n",
+            start, stop, strand, weight, motif
         ));
     }
     out
@@ -443,10 +444,11 @@ mod tests {
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0], "# uses_sd: 1");
         let cols: Vec<&str> = lines[1].split('\t').collect();
-        assert_eq!(cols.len(), 4);
+        assert_eq!(cols.len(), 5);
         assert_eq!(cols[0], "10");
         assert_eq!(cols[1], "32");
         assert_eq!(cols[2], "+");
+        assert_eq!(cols[4], "not detected");
     }
 
     #[test]
