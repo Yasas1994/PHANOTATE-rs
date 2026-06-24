@@ -110,6 +110,10 @@ struct Cli {
     /// Use a Prodigal-style 6-mer dicodon coding-potential model.
     #[arg(long = "dicodon")]
     dicodon: bool,
+
+    /// Path to a learned start-site scoring model (JSON).
+    #[arg(long = "start-model", value_name = "FILE")]
+    start_model: Option<PathBuf>,
 }
 
 /// Build start-codon weights from a list of codons.
@@ -207,7 +211,8 @@ fn process_genome(
     #[cfg(not(feature = "ml"))] _ml_scorer: &Option<()>,
     prodigal_rbs: bool,
     dicodon: bool,
-) -> (String, String, String) {
+    start_model: Option<&std::path::Path>,
+) -> Result<(String, String, String)> {
     let contig_length = genome.seq.len();
     let dna = &genome.seq;
 
@@ -291,7 +296,7 @@ fn process_genome(
 
     if orfs.is_empty() {
         let no_orfs = format!("#id:\t{} NO ORFS FOUND\n", genome.id);
-        return (no_orfs.clone(), no_orfs.clone(), no_orfs);
+        return Ok((no_orfs.clone(), no_orfs.clone(), no_orfs));
     }
 
     // --- Training RBS ---
@@ -531,6 +536,15 @@ fn process_genome(
         }
     }
 
+    if let Some(path) = start_model {
+        let model = phanotate_rs::start_refiner::StartModel::from_json(path)
+            .with_context(|| format!("Failed to load start model from {:?}", path))?;
+        for orf in &mut orfs {
+            let features = phanotate_rs::start_refiner::StartSiteFeatures::new(orf);
+            orf.start_score = model.score(&features);
+        }
+    }
+
     // --- Score ORFs ---
     #[cfg(feature = "ml")]
     if let Some(ref ml) = ml_scorer {
@@ -609,7 +623,7 @@ fn process_genome(
     // --- Nucleotide output ---
     let nucleotide = output::write_nucleotide_fasta(&genome.id, &path_edges, &orfs);
 
-    (primary, protein, nucleotide)
+    Ok((primary, protein, nucleotide))
 }
 
 fn main() -> Result<()> {
@@ -827,9 +841,10 @@ fn main() -> Result<()> {
                     &ml_scorer,
                     cli.prodigal_rbs,
                     cli.dicodon,
+                    cli.start_model.as_deref(),
                 )
             })
-            .collect()
+            .collect::<Result<Vec<_>>>()?
     } else {
         genomes
             .into_par_iter()
@@ -848,9 +863,10 @@ fn main() -> Result<()> {
                     &ml_scorer,
                     cli.prodigal_rbs,
                     cli.dicodon,
+                    cli.start_model.as_deref(),
                 )
             })
-            .collect()
+            .collect::<Result<Vec<_>>>()?
     };
 
     let primary_output = results
