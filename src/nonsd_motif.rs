@@ -114,7 +114,9 @@ pub fn find_best_motif(mot_wt: &MotifWeights, seq: &[u8], start: usize, no_mot: 
         score: no_mot,
         ..Default::default()
     };
-    for len_idx in 0..=(MAX_MOTIF_LEN - MIN_MOTIF_LEN) {
+    // Iterate from longest to shortest so that equally-scored longer motifs are
+    // preferred, and use `>` so the earliest equally-scored hit wins.
+    for len_idx in (0..=(MAX_MOTIF_LEN - MIN_MOTIF_LEN)).rev() {
         let len = MIN_MOTIF_LEN + len_idx;
         let earliest = start.saturating_sub(18 + len);
         let latest = start.saturating_sub(3 + len);
@@ -220,6 +222,43 @@ pub fn build_coverage_map(real: &MotifWeights, ngenes: f64) -> CoverageMap {
     good
 }
 
+/// Compute a 0-order Markov background for all motif lengths.
+///
+/// Uses the genome-wide single-base frequencies (both strands) to estimate the
+/// expected probability of every length-3..6 word, then spreads that
+/// probability evenly across spacer groups.  This is more stable than an
+/// ORF-upstream background when coding_score == 0, because it does not treat
+/// the planted motif as background merely because it is common in the genome.
+#[allow(clippy::needless_range_loop)]
+fn markov_motif_background(dna: &[u8], rc_dna: &[u8]) -> MotifWeights {
+    let mut base_counts = [0.0; 4];
+    let mut total = 0.0;
+    for seq in [dna, rc_dna] {
+        for &b in seq {
+            if let Some(idx) = encode_base(b) {
+                base_counts[idx] += 1.0;
+                total += 1.0;
+            }
+        }
+    }
+    let freqs: [f64; 4] = base_counts.map(|c| if total > 0.0 { c / total } else { 0.25 });
+
+    let mut bg = zero_motif_weights();
+    for len_idx in 0..=MAX_MOTIF_LEN - MIN_MOTIF_LEN {
+        let len = MIN_MOTIF_LEN + len_idx;
+        for mi in 0..(1 << (2 * len)) {
+            let mut prob = 1.0;
+            for i in 0..len {
+                prob *= freqs[(mi >> (2 * i)) & 0x3];
+            }
+            for sp in 0..NUM_SPACERS {
+                bg[len_idx][sp][mi] = prob / NUM_SPACERS as f64;
+            }
+        }
+    }
+    bg
+}
+
 /// Trained non-SD motif model.
 pub struct NonSdModel {
     pub mot_wt: MotifWeights,
@@ -289,7 +328,12 @@ impl NonSdModel {
             }
         }
 
-        let mut sthresh = 35.0;
+        // Markov background.  Unlike the previous ORF-upstream background, this
+        // stays stable when coding_score == 0 and lets the EM bootstrap from a
+        // shared upstream motif even when that motif is repeated in the genome.
+        let genome_bg = markov_motif_background(dna, rc_dna);
+
+        let mut sthresh = 10.0;
 
         for iter in 0..20 {
             let stage = if iter < 4 {
@@ -300,33 +344,9 @@ impl NonSdModel {
                 2
             };
 
-            // Background motif counts.
-            let mut mbg = zero_motif_weights();
-            let mut zbg = 0.0;
-            for orf in orfs {
-                let (wseq, start) = upstream_context(dna, rc_dna, orf);
-                if start < 18 + MIN_MOTIF_LEN {
-                    continue;
-                }
-                let hit = find_best_motif(&model.mot_wt, wseq, start, model.no_mot);
-                update_motif_counts(&mut mbg, &mut zbg, wseq, start, &hit, stage);
-            }
-            let mbg_sum = mbg
-                .iter()
-                .flat_map(|a| a.iter())
-                .flat_map(|b| b.iter())
-                .sum::<f64>()
-                + zbg;
-            if mbg_sum > 0.0 {
-                for a in mbg.iter_mut() {
-                    for b in a.iter_mut() {
-                        for v in b.iter_mut() {
-                            *v /= mbg_sum;
-                        }
-                    }
-                }
-                zbg /= mbg_sum;
-            }
+            // Background motif counts: use the genomic distribution.
+            let mbg = &genome_bg;
+            let zbg = 0.0;
 
             // Real counts: group ORFs by (stop, frame), pick best start per group.
             let mut mreal = zero_motif_weights();
@@ -352,7 +372,10 @@ impl NonSdModel {
                     .max_by(|a, b| a.4.partial_cmp(&b.4).unwrap());
 
                 if let Some((_orf, wseq, start, hit, score, type_idx)) = best {
-                    if score >= sthresh {
+                    // In stage 0, seed the model with every ORF that has enough
+                    // upstream context.  Without this, the EM cannot bootstrap
+                    // when the coding signal has been neutralised (coding_score=0).
+                    if stage == 0 || score >= sthresh {
                         ngenes += 1.0;
                         treal[type_idx] += 1.0;
                         update_motif_counts(&mut mreal, &mut zreal, wseq, start, &hit, stage);
@@ -387,7 +410,25 @@ impl NonSdModel {
                 + zreal;
             if mreal_sum == 0.0 {
                 model.mot_wt = zero_motif_weights();
-                model.no_mot = 0.0;
+                model.no_mot = -4.0;
+            } else if stage == 0 {
+                // Stage 0 seeds the model using per-gene occurrence frequency
+                // scaled by motif length.  This lets the EM bootstrap from a
+                // shared upstream motif even when coding_score == 0.
+                for li in 0..=MAX_MOTIF_LEN - MIN_MOTIF_LEN {
+                    let len = MIN_MOTIF_LEN + li;
+                    let len_bonus = (len * len) as f64;
+                    for si in 0..NUM_SPACERS {
+                        for mi in 0..MAX_MOTIF_INDEX {
+                            let per_gene = mreal[li][si][mi] / ngenes;
+                            model.mot_wt[li][si][mi] = (per_gene * len_bonus)
+                                .max(f64::MIN_POSITIVE)
+                                .ln()
+                                .clamp(-4.0, 4.0);
+                        }
+                    }
+                }
+                model.no_mot = -4.0;
             } else {
                 for li in 0..=MAX_MOTIF_LEN - MIN_MOTIF_LEN {
                     for si in 0..NUM_SPACERS {
@@ -506,7 +547,11 @@ fn update_motif_counts(
             mcnt[hit.len - MIN_MOTIF_LEN][hit.spacendx][hit.ndx] += 1.0;
             for sub_len_idx in 0..hit.len - MIN_MOTIF_LEN {
                 let sub_len = MIN_MOTIF_LEN + sub_len_idx;
-                let earliest = start.saturating_sub(hit.spacer + hit.len);
+                // Sub-motifs must stay inside the 18 bp upstream window, so
+                // clamp the earliest position to keep spacer <= 18.
+                let earliest = start
+                    .saturating_sub(hit.spacer + hit.len)
+                    .max(start.saturating_sub(18 + sub_len));
                 let latest = start.saturating_sub(hit.spacer + sub_len);
                 for pos in earliest..=latest {
                     if pos + sub_len > seq.len() {
@@ -776,6 +821,60 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn training_finds_planted_motif_without_hold_signal() {
+        let motif = b"aaaaaa";
+        let prefix = vec![b'c'; 600];
+        let gap = vec![b'c'; 6];
+        let start_codon = b"ttg";
+        let filler = b"atg";
+        let stop = b"taa";
+        let unit_len = motif.len() + gap.len() + start_codon.len() + filler.len() + stop.len();
+
+        let mut seq: Vec<u8> = prefix.clone();
+        let n = 100;
+        for _ in 0..n {
+            seq.extend_from_slice(motif);
+            seq.extend_from_slice(&gap);
+            seq.extend_from_slice(start_codon);
+            seq.extend_from_slice(filler);
+            seq.extend_from_slice(stop);
+        }
+
+        let mut orfs = Vec::new();
+        for i in 0..n {
+            let block_start = prefix.len() + i * unit_len;
+            let start_1based = block_start + motif.len() + gap.len() + 1;
+            let stop_1based =
+                block_start + motif.len() + gap.len() + start_codon.len() + filler.len() + 1;
+            let orf_seq_start = start_1based - 1;
+            let orf_seq_end = stop_1based - 1 + stop.len();
+            orfs.push(Orf {
+                start: start_1based,
+                stop: stop_1based,
+                frame: 1,
+                seq: seq[orf_seq_start..orf_seq_end].to_vec(),
+                rbs_score: 0,
+                pstop: 0.01,
+                weight_rbs: 1.0,
+                hold: 1.0,
+                motif_score: 1.0,
+                weight: 1.0,
+            });
+        }
+
+        let rc = crate::genome::rev_comp(&seq);
+        let mut weights = HashMap::new();
+        weights.insert(b"ttg".to_vec(), 1.0);
+        let model = NonSdModel::train(&orfs, &seq, &rc, &weights);
+
+        // Query the best motif at the first ORF start with enough upstream context.
+        let query_start = prefix.len() + motif.len() + gap.len();
+        let hit = find_best_motif(&model.mot_wt, &seq, query_start, model.no_mot);
+        assert_eq!(hit.len, 6);
+        assert_eq!(kmer_decode(hit.ndx, 6), b"AAAAAA".to_vec());
     }
 
     #[test]
