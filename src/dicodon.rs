@@ -79,9 +79,9 @@ impl DicodonModel {
             if orf.weight_rbs <= 1.0 && orf.motif_score <= 1.0 {
                 continue;
             }
-            let seq = orf.sequence(dna, rc_dna);
+            let seq = orf.sequence();
             for i in (0..seq.len().saturating_sub(5)).step_by(3) {
-                if let Some(ndx) = kmer_encode(&seq, i, 6) {
+                if let Some(ndx) = kmer_encode(seq, i, 6) {
                     gene_counts[ndx] += 1.0;
                     total_gene += 1.0;
                 }

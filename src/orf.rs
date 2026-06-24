@@ -19,9 +19,9 @@ impl Orf {
         &self.seq[..3]
     }
 
-    /// Return the full ORF nucleotide sequence in the forward direction.
-    pub fn sequence(&self, _dna: &[u8], _rc_dna: &[u8]) -> Vec<u8> {
-        self.seq.clone()
+    /// Return the full ORF nucleotide sequence as a slice.
+    pub fn sequence(&self) -> &[u8] {
+        &self.seq
     }
 
     /// Compute P(stop) = P(TAA) + P(TAG) + P(TGA) from per-base frequencies in this ORF.
