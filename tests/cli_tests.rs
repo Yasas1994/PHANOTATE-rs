@@ -399,9 +399,10 @@ fn prodigal_rbs_produces_sco_with_mixed_motifs() {
 
     let text = std::fs::read_to_string(&output).unwrap();
     assert!(text.starts_with("# uses_sd: 1"));
+    assert!(text.contains("AGGAGG"), "expected at least one SD motif");
     assert!(
-        text.contains("AGGAGG") || text.contains("nonSD:"),
-        "SCO should contain an SD or non-SD motif annotation"
+        text.contains("nonSD:"),
+        "expected at least one non-SD fallback motif"
     );
 }
 
@@ -412,6 +413,32 @@ fn prodigal_rbs_conflicts_with_non_sd() {
         None,
     );
     assert_ne!(code, 0, "--prodigal-rbs with --non-sd should fail");
+    assert!(
+        stderr.contains("mutually exclusive"),
+        "error should mention mutual exclusion: {}",
+        stderr
+    );
+}
+
+#[test]
+fn prodigal_rbs_conflicts_with_sd() {
+    let tmpdir = tempfile::tempdir().unwrap();
+    let input = tmpdir.path().join("input.fa");
+    std::fs::write(&input, ">t\nATGCATGCATGCATGCATGCATGC\n").unwrap();
+
+    let output = tmpdir.path().join("out.sco");
+    let (_stdout, stderr, code) = run(
+        &[
+            "-i",
+            input.to_str().unwrap(),
+            "-o",
+            output.to_str().unwrap(),
+            "--prodigal-rbs",
+            "--sd",
+        ],
+        None,
+    );
+    assert_ne!(code, 0, "--prodigal-rbs with --sd should fail");
     assert!(
         stderr.contains("mutually exclusive"),
         "error should mention mutual exclusion: {}",
