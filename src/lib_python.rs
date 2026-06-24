@@ -762,6 +762,7 @@ fn process_single_genome(
             }
         }
         orf.hold = log_hold.exp();
+        orf.dicodon_score = 1.0 / orf.hold;
     }
 
     for orf in &mut orfs {

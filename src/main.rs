@@ -513,6 +513,9 @@ fn process_genome(
             }
         }
         orf.hold = log_hold.exp();
+        // Keep dicodon_score in sync with the recomputed hold in default mode.
+        // When the optional dicodon model is active it will overwrite this.
+        orf.dicodon_score = 1.0 / orf.hold;
     }
 
     // --- Score ORFs ---
