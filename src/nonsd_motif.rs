@@ -72,6 +72,15 @@ pub fn kmer_decode(index: usize, len: usize) -> Vec<u8> {
     seq
 }
 
+/// Format a discovered non-SD motif hit as an uppercase DNA string.
+pub fn format_motif_hit(hit: &MotifHit) -> Option<String> {
+    if hit.len == 0 {
+        None
+    } else {
+        Some(String::from_utf8(kmer_decode(hit.ndx, hit.len)).unwrap())
+    }
+}
+
 /// A single non-Shine-Dalgarno motif occurrence upstream of a start codon.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MotifHit {
@@ -485,7 +494,7 @@ pub fn start_codon_index(codon: &[u8]) -> Option<usize> {
 }
 
 /// Return the sequence and 0-based start-codon index to scan upstream of `orf`.
-fn upstream_context<'a>(dna: &'a [u8], rc_dna: &'a [u8], orf: &Orf) -> (&'a [u8], usize) {
+pub fn upstream_context<'a>(dna: &'a [u8], rc_dna: &'a [u8], orf: &Orf) -> (&'a [u8], usize) {
     if orf.frame > 0 {
         (dna, orf.start - 1)
     } else {

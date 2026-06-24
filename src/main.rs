@@ -297,6 +297,13 @@ fn process_genome(
             phanotate_rs::nonsd_motif::NonSdModel::train(&orfs, dna, rc_dna, start_codons_map);
         for orf in &mut orfs {
             orf.motif_score = model.score_orf(orf, dna, rc_dna);
+            let (wseq, start) = phanotate_rs::nonsd_motif::upstream_context(dna, rc_dna, orf);
+            let hit = if start >= 18 + phanotate_rs::nonsd_motif::MIN_MOTIF_LEN {
+                phanotate_rs::nonsd_motif::find_best_motif(&model.mot_wt, wseq, start, model.no_mot)
+            } else {
+                phanotate_rs::nonsd_motif::MotifHit::default()
+            };
+            orf.rbs_motif = phanotate_rs::nonsd_motif::format_motif_hit(&hit);
         }
     }
 
