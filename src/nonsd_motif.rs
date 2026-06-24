@@ -927,4 +927,75 @@ mod tests {
         assert!(s > 0.0);
         assert!(s <= 4.0);
     }
+
+    #[test]
+    fn best_motif_label_finds_planted_motif_with_enough_context() {
+        let mut model = NonSdModel::default();
+        let motif = b"AAAAAA";
+        let len_idx = 6 - MIN_MOTIF_LEN;
+        let spacer = 6;
+        let sp = spacer_group(spacer).unwrap();
+        let ndx = kmer_encode(motif, 0, 6).unwrap();
+        model.mot_wt[len_idx][sp][ndx] = 5.0;
+        model.no_mot = -4.0;
+
+        // Build: 21 bp prefix + motif + 6 bp gap + ATG, placing the start codon
+        // 1-based so there is enough upstream context.
+        let prefix = vec![b'c'; 21];
+        let gap = vec![b'c'; spacer];
+        let mut seq = prefix;
+        seq.extend_from_slice(motif);
+        seq.extend_from_slice(&gap);
+        seq.extend_from_slice(b"ATGAAA");
+
+        let orf = Orf {
+            start: 34,
+            stop: 39,
+            frame: 1,
+            seq: seq[33..39].to_vec(),
+            rbs_score: 0,
+            pstop: 0.01,
+            weight_rbs: 1.0,
+            hold: 100.0,
+            dicodon_score: 0.01,
+            motif_score: 1.0,
+            rbs_motif: None,
+            weight: 1.0,
+        };
+        let rc = crate::genome::rev_comp(&seq);
+
+        let label = model.best_motif_label(&orf, &seq, &rc);
+        assert!(label.is_some());
+        assert_eq!(label.unwrap(), "AAAAAA");
+    }
+
+    #[test]
+    fn best_motif_label_returns_none_without_upstream_context() {
+        let mut model = NonSdModel::default();
+        let motif = b"AAAAAA";
+        let len_idx = 6 - MIN_MOTIF_LEN;
+        let sp = spacer_group(6).unwrap();
+        let ndx = kmer_encode(motif, 0, 6).unwrap();
+        model.mot_wt[len_idx][sp][ndx] = 5.0;
+        model.no_mot = -4.0;
+
+        let seq = b"ATGAAA".to_vec();
+        let orf = Orf {
+            start: 1,
+            stop: 6,
+            frame: 1,
+            seq: seq.clone(),
+            rbs_score: 0,
+            pstop: 0.01,
+            weight_rbs: 1.0,
+            hold: 100.0,
+            dicodon_score: 0.01,
+            motif_score: 1.0,
+            rbs_motif: None,
+            weight: 1.0,
+        };
+        let rc = crate::genome::rev_comp(&seq);
+
+        assert!(model.best_motif_label(&orf, &seq, &rc).is_none());
+    }
 }

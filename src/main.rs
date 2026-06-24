@@ -175,6 +175,17 @@ fn detect_uses_sd(background: &[f64; 28], training: &[f64; 28]) -> bool {
     signal >= 2.0
 }
 
+/// Extract the 21-bp upstream window of an ORF used for RBS scoring.
+fn upstream_window(dna: &[u8], rc_dna: &[u8], orf: &Orf) -> Vec<u8> {
+    if orf.frame > 0 {
+        phanotate_rs::rbs_scanner::get_rbs(dna, orf.start)
+    } else {
+        let rbs_start = dna.len().saturating_sub(orf.start + 21);
+        let rbs_end = dna.len().saturating_sub(orf.start);
+        rc_dna[rbs_start..rbs_end].to_vec()
+    }
+}
+
 /// Process a single genome through the full PHANOTATE pipeline.
 #[allow(clippy::too_many_arguments)]
 fn process_genome(
@@ -197,7 +208,7 @@ fn process_genome(
 
     // --- Nucleotide frequencies and background RBS ---
     let mut freq = [0usize; 4];
-    let mut background_rbs = [1.0f64; 28];
+    let mut background_rbs = [1.0f64; phanotate_rs::rbs_scanner::NUM_RBS_BINS];
     let mut frame_plot = GCframe::new();
     let rc_dna = &genome.rc_seq;
     let len = dna.len();
@@ -290,13 +301,7 @@ fn process_genome(
         // Training distribution from actual ORF upstream windows (Prodigal bins).
         let mut training_rbs = [1.0f64; phanotate_rs::rbs_scanner::NUM_RBS_BINS];
         for orf in &orfs {
-            let upstream = if orf.frame > 0 {
-                phanotate_rs::rbs_scanner::get_rbs(dna, orf.start)
-            } else {
-                let rbs_start = dna.len().saturating_sub(orf.start + 21);
-                let rbs_end = dna.len() - orf.start;
-                rc_dna[rbs_start..rbs_end].to_vec()
-            };
+            let upstream = upstream_window(dna, rc_dna, orf);
             training_rbs[phanotate_rs::rbs_scanner::score_rbs_prodigal(&upstream)] += 1.0;
         }
         let tr_sum: f64 = training_rbs.iter().sum();
@@ -305,13 +310,7 @@ fn process_genome(
         }
 
         for orf in &mut orfs {
-            let upstream = if orf.frame > 0 {
-                phanotate_rs::rbs_scanner::get_rbs(dna, orf.start)
-            } else {
-                let rbs_start = dna.len().saturating_sub(orf.start + 21);
-                let rbs_end = dna.len() - orf.start;
-                rc_dna[rbs_start..rbs_end].to_vec()
-            };
+            let upstream = upstream_window(dna, rc_dna, orf);
             let bin = phanotate_rs::rbs_scanner::score_rbs_prodigal(&upstream);
             if bin > 0 {
                 orf.rbs_score = bin;
@@ -329,7 +328,7 @@ fn process_genome(
         }
     } else {
         // --- Existing legacy RBS training block ---
-        let mut training_rbs = [1.0f64; 28];
+        let mut training_rbs = [1.0f64; phanotate_rs::rbs_scanner::NUM_RBS_BINS];
         for orf in &orfs {
             training_rbs[orf.rbs_score] += 1.0;
         }
