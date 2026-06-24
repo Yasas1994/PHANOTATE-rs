@@ -135,6 +135,7 @@ mod tests {
             pstop: 0.05,
             weight_rbs: 2.5,
             motif_score: 1.0,
+            rbs_motif: None,
             hold: 0.8,
             weight: -1.0,
         }

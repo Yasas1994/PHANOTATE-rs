@@ -770,6 +770,7 @@ mod tests {
                 weight_rbs: 1.0,
                 hold: 1.0,
                 motif_score: 1.0,
+                rbs_motif: None,
                 weight: 1.0,
             });
         }
@@ -794,6 +795,7 @@ mod tests {
                 weight_rbs: 1.0,
                 hold: 1.0,
                 motif_score: 1.0,
+                rbs_motif: None,
                 weight: 1.0,
             });
         }
@@ -859,6 +861,7 @@ mod tests {
                 weight_rbs: 1.0,
                 hold: 1.0,
                 motif_score: 1.0,
+                rbs_motif: None,
                 weight: 1.0,
             });
         }
@@ -888,6 +891,7 @@ mod tests {
             weight_rbs: 1.0,
             hold: 100.0,
             motif_score: 1.0,
+            rbs_motif: None,
             weight: 1.0,
         };
         let dna = vec![b'a'; 100];
