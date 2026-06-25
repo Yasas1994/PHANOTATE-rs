@@ -1,8 +1,11 @@
 # PHANOTATE-rs ML Training Notebooks
 
-This directory contains Jupyter notebooks for training and evaluating machine learning models that predict ORF scores for PHANOTATE-rs.
+This directory contains Jupyter notebooks for experimenting with learned ORF
+scoring models for PHANOTATE-rs.
 
-> **Note:** The runtime ONNX/ML scorer (`--ml-model`) has been removed. The current pipeline uses the lightweight JSON model loaded via `--model`. For a ready-to-use training script, see `scripts/train_orf_score_model.py`.
+> **Note:** The runtime ONNX/ML scorer (`--ml-model`) has been removed. The
+> current pipeline uses the lightweight JSON model loaded via `--model`.
+> For a ready-to-use training script, see `scripts/train_orf_score_model.py`.
 
 ## Quick Start
 
@@ -14,30 +17,25 @@ pip install -r requirements.txt
 cd ..
 cargo build --release
 
-# 3. Train a JSON model directly from annotated GenBank files
-python scripts/train_orf_score_model.py -i annotated_genomes/ -o notebooks/model.json
-
-# 4. Use the model
-./target/release/phanotate-rs -i genome.fasta --model notebooks/model.json -f sco
-
-# 5. Launch Jupyter for exploratory training
+# 3. Launch Jupyter
 jupyter notebook
 
-# 6. Open `01_train_hybrid_scorer.ipynb` and run all cells
+# 4. Open `01_orf_score_model.ipynb` and run all cells
 ```
 
 ## Notebooks
 
-### `01_train_hybrid_scorer.ipynb`
+### `01_orf_score_model.ipynb`
 
-End-to-end exploratory training pipeline:
+End-to-end experimental pipeline:
 
-1. **Load & inspect** ORF features exported from PHANOTATE-rs
-2. **Explore** feature distributions, correlations, and label relationships
-3. **Train** multiple models (Logistic Regression, Random Forest, XGBoost)
-4. **Evaluate** with ROC, PR curves, and calibration plots
-5. **Export** a JSON logistic-regression model compatible with `--model`
-6. **Validate** end-to-end by running PHANOTATE-rs with the trained model
+1. **Load** ORF features and labels from annotated GenBank files.
+2. **Explore** feature distributions, correlations, and label relationships.
+3. **Train** candidate models (Logistic Regression, Random Forest, XGBoost, etc.).
+4. **Evaluate** genome-stratified cross-validation with ROC/PR curves.
+5. **Export** a JSON logistic-regression model compatible with `--model`.
+6. **Validate** end-to-end by running PHANOTATE-rs with the model and comparing
+   predictions to the GenBank annotations.
 
 ## Feature Description
 
@@ -62,83 +60,64 @@ The 14 features extracted per ORF (from `src/ml_features.rs`):
 
 ## Training Data
 
-### Automated Label Generation (Recommended)
+The recommended data source is a directory of annotated GenBank files (one per
+genome). The notebook uses `src/ml_features.rs` (via `--export-features`) to
+extract per-ORF features and derives labels from the `CDS` coordinates in each
+GenBank record.
 
-The easiest way to generate labels is using the provided script, which downloads reviewed phage proteins from UniProt and uses DIAMOND to label ORFs with significant hits:
+## Cross-Validation Workflow
 
-```bash
-# Full pipeline: download UniProt proteins, run DIAMOND, generate labels
-python scripts/generate_training_labels.py -i genome.fasta -o labels.tsv
+The notebook performs **genome-stratified** cross-validation:
 
-# Use existing UniProt download (faster for subsequent runs)
-python scripts/generate_training_labels.py -i genome.fasta -o labels.tsv \
-    --uniprot phage_reviewed.fasta
+1. Split genomes into training and validation folds (not individual ORFs).
+2. Train a model on the training genomes.
+3. Export the model to a JSON file compatible with `--model`.
+4. Run `phanotate-rs --model <json>` on each validation genome.
+5. Compare predicted genes to the GenBank `CDS` annotations using start/stop
+   coordinate overlap.
 
-# Stricter thresholds for higher-confidence labels
-python scripts/generate_training_labels.py -i genome.fasta -o labels.tsv \
-    --evalue 1e-5 --identity 50 --query-cover 60
-```
-
-This script:
-1. Downloads ~1,600 reviewed bacteriophage proteins from UniProt
-2. Builds a DIAMOND database
-3. Finds all ORFs in your genome (matching PHANOTATE-rs logic)
-4. Translates ORFs and runs DIAMOND blastp against phage proteins
-5. Labels ORFs with hits as genes (`1`), others as non-genes (`0`)
-
-### With Manual Labels
-
-If you have annotated genomes (e.g., RefSeq with curated gene predictions):
-
-1. Run PHANOTATE-rs on each genome to get ORF features:
-   ```bash
-   phanotate-rs -i genome.fasta --export-features features.tsv
-   ```
-
-2. Create a label file with matching rows and an `is_gene` column:
-   ```bash
-   # is_gene: 1 = true gene, 0 = false ORF
-   echo -e "is_gene\n1\n0\n1\n..." > labels.tsv
-   ```
-
-3. The notebook will use these labels for supervised training.
-
-### Without Labels (Pseudo-Labels)
-
-If you don't have annotations, the notebook can generate pseudo-labels based on heuristic score quartiles. This is less accurate but lets you experiment with the pipeline.
+This workflow prevents information leakage across genomes and measures the
+model's impact on the full gene-calling pipeline, not just ORF classification.
 
 ## Model Export
 
-The recommended path is to use `scripts/train_orf_score_model.py`, which exports the standardised coefficients, means, and standard deviations as JSON:
+The notebook exports a JSON file with the standardised coefficients, means, and
+standard deviations required by `src/orf_score_model.rs`:
 
-```bash
-python scripts/train_orf_score_model.py -i annotated_genomes/ -o model.json
+```json
+{
+  "version": 1,
+  "num_features": 14,
+  "coeffs": [...],
+  "mean": [...],
+  "std": [...]
+}
 ```
 
-Then use with PHANOTATE-rs:
+Use it with PHANOTATE-rs:
 
 ```bash
 phanotate-rs -i genome.fasta --model model.json -f sco
 ```
 
-The notebook can also produce a JSON logistic-regression model for `--model`; ONNX export is no longer supported by the runtime.
-
 ## Outputs
 
-Each run produces:
+Each run produces under `outputs/`:
 
-- `outputs/feature_distributions.png` — Histogram of each feature
-- `outputs/feature_correlations.png` — Correlation heatmap
-- `outputs/features_by_label.png` — Boxplots by gene/non-gene
-- `outputs/rf_importances.png` — Random Forest feature importance
-- `outputs/xgb_importances.png` — XGBoost feature importance
-- `outputs/model_comparison.png` — ROC and PR curves
-- `outputs/model_*.json` — Exported JSON models compatible with `--model`
-- `outputs/experiment_summary.json` — Metrics and metadata
+- `feature_distributions.png` — Histogram of each feature
+- `feature_correlations.png` — Correlation heatmap
+- `features_by_label.png` — Boxplots by gene/non-gene
+- `model_comparison.png` — ROC and PR curves across candidate models
+- `model_*.json` — Exported JSON models compatible with `--model`
+- `experiment_summary.json` — Metrics and metadata
 
 ## Tips
 
-- **Start small**: Use a single phage genome (~5kb) for initial experiments
-- **Feature engineering**: Try adding codon usage bias, protein length, or amino acid composition
-- **Model selection**: Logistic regression is the format natively consumed by `--model`; the notebook can train and export it
-- **Scoring range**: The Rust scorer clamps the learned log-odds score to [-10, 10]
+- **Start small**: Use a few phage genomes for initial experiments.
+- **Genome-stratified CV is essential**: ORFs from the same genome are highly
+  correlated; splitting by genome gives a realistic estimate.
+- **Model selection**: Only the exported logistic-regression JSON is natively
+  consumed by `--model`, but you can benchmark any classifier/regressor inside
+  the notebook and re-train the best-performing linear model for export.
+- **Scoring range**: The Rust scorer clamps the learned log-odds score to
+  `[-10, 10]`.

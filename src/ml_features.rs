@@ -24,7 +24,10 @@ impl OrfFeatures {
     }
 }
 
-/// Column names for TSV export, in order.
+/// Column names for the coordinate columns prepended to TSV export rows.
+pub const COORD_NAMES: [&str; 2] = ["start", "stop"];
+
+/// Column names for TSV export, in order (after the coordinate columns).
 pub const FEATURE_NAMES: [&str; NUM_FEATURES] = [
     "log_length",
     "rbs_score_norm",
@@ -102,20 +105,24 @@ impl Orf {
 
 /// Write feature vectors for a batch of ORFs as a TSV.
 ///
-/// Each row corresponds to one ORF.  Columns are the feature values in
-/// the order defined by [`FEATURE_NAMES`].  If `include_header` is true,
-/// a header row is written first.
+/// Each row corresponds to one ORF.  The first two columns are the ORF
+/// coordinates (`start`, `stop`), followed by the feature values in the
+/// order defined by [`FEATURE_NAMES`].  If `include_header` is true, a
+/// header row is written first.
 pub fn write_features_tsv<W: std::io::Write>(
     writer: &mut W,
     orfs: &[Orf],
     include_header: bool,
 ) -> std::io::Result<()> {
     if include_header {
-        writeln!(writer, "{}", FEATURE_NAMES.join("\t"))?;
+        let mut headers: Vec<&str> = COORD_NAMES.to_vec();
+        headers.extend(FEATURE_NAMES.iter().copied());
+        writeln!(writer, "{}", headers.join("\t"))?;
     }
     for orf in orfs {
         let f = orf.extract_features();
-        let vals: Vec<String> = f.0.iter().map(|v| format!("{:.6}", v)).collect();
+        let mut vals: Vec<String> = vec![orf.start.to_string(), orf.stop.to_string()];
+        vals.extend(f.0.iter().map(|v| format!("{:.6}", v)));
         writeln!(writer, "{}", vals.join("\t"))?;
     }
     Ok(())
@@ -224,12 +231,13 @@ mod tests {
     }
 
     #[test]
-    fn test_tsv_header_includes_motif_score() {
+    fn test_tsv_header_includes_coordinates_and_features() {
         let orfs = vec![test_orf()];
         let mut buf = Vec::new();
         write_features_tsv(&mut buf, &orfs, true).unwrap();
         let s = String::from_utf8(buf).unwrap();
-        assert!(s.starts_with("log_length\trbs_score_norm\tlog_hold\tpstop\tlog_sd_rbs_score\tstart_codon_atg\tstart_codon_gtg\tstart_codon_ttg\tgc_content\tframe_fwd\tframe_1\tframe_2\tframe_3\tlog_non_sd_rbs_score"));
+        let expected_header = "start\tstop\tlog_length\trbs_score_norm\tlog_hold\tpstop\tlog_sd_rbs_score\tstart_codon_atg\tstart_codon_gtg\tstart_codon_ttg\tgc_content\tframe_fwd\tframe_1\tframe_2\tframe_3\tlog_non_sd_rbs_score";
+        assert!(s.starts_with(expected_header));
     }
 
     #[test]
@@ -238,9 +246,13 @@ mod tests {
         let mut buf = Vec::new();
         write_features_tsv(&mut buf, &orfs, true).unwrap();
         let s = String::from_utf8(buf).unwrap();
-        assert!(s.starts_with("log_length"));
+        assert!(s.starts_with("start\tstop"));
         let lines: Vec<&str> = s.lines().collect();
         assert_eq!(lines.len(), 2); // header + 1 data row
+        let cols: Vec<&str> = lines[1].split('\t').collect();
+        assert_eq!(cols.len(), 2 + NUM_FEATURES); // start, stop + features
+        assert_eq!(cols[0], "100"); // start
+        assert_eq!(cols[1], "300"); // stop
     }
 
     #[test]
