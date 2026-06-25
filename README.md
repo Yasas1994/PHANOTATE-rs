@@ -151,6 +151,9 @@ python scripts/train_orf_score_model.py -i annotated_genomes/ -o model.json
 
 # Use the model for annotation
 phanotate-rs -i genome.fasta --model model.json -f sco
+
+# Compare predictions to the reference annotations
+python scripts/compare_predictions.py -p preds.sco -r ref.gb
 ```
 
 In Python, pass `model=path` to `phanotate_rs.phanotate()` or

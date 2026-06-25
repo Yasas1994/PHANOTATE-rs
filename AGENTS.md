@@ -246,7 +246,9 @@ python scripts/train_orf_score_model.py -i tests/golden/NC_001365.gb -o model.js
 | `.github/workflows/release.yml` | Native binary release building. |
 | `.github/workflows/bioconda.yml.disabled` | Disabled Bioconda recipe automation placeholder. |
 | `tests/golden/` | Golden test files for CLI regression testing. |
-| `notebooks/README.md` | ML training pipeline documentation (historical; current training is via `scripts/train_orf_score_model.py`). |
+| `notebooks/README.md` | ML training pipeline documentation. |
+| `notebooks/01_orf_score_model.ipynb` | Genome-stratified CV notebook for benchmarking learned ORF scoring models. |
+| `scripts/compare_predictions.py` | Compare PHANOTATE SCO output to GenBank CDS annotations (precision/recall/F1). |
 | `memory/progress_2026-06-06.md` | Project progress tracker (feature status, benchmarks). |
 
 ---
@@ -266,8 +268,9 @@ python scripts/train_orf_score_model.py -i tests/golden/NC_001365.gb -o model.js
 | Annotate a genome | `./target/release/phanotate-rs -i genome.fasta -f sco` |
 | Detect genetic code | `./target/release/phanotate-rs -i genome.fasta --detect-table --yes` |
 | Export features | `./target/release/phanotate-rs -i genome.fasta --export-features features.tsv` |
-| Train ORF score model | `python scripts/train_orf_score_model.py -i annotated.gb -o model.json` |
+| Train ORF score model | `python scripts/train_orf_score_model.py -i annotated_genomes/ -o model.json` |
 | Annotate with learned model | `./target/release/phanotate-rs -i genome.fasta --model model.json -f sco` |
+| Compare predictions to reference | `python scripts/compare_predictions.py -p preds.sco -r ref.gb` |
 | Bump version | `./bump-version.sh 0.1.4` |
 
 ---
