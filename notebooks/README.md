@@ -3,9 +3,8 @@
 This directory contains Jupyter notebooks for experimenting with learned ORF
 scoring models for PHANOTATE-rs.
 
-> **Note:** The runtime ONNX/ML scorer (`--ml-model`) has been removed. The
-> current pipeline uses the lightweight JSON model loaded via `--model`.
-> For a ready-to-use training script, see `scripts/train_orf_score_model.py`.
+> **Note:** `--model` accepts ONNX models only. For a ready-to-use training
+> script, see `scripts/train_orf_score_model.py`.
 
 ## Quick Start
 
@@ -31,23 +30,23 @@ End-to-end experimental pipeline:
 
 1. **Load** ORF features and labels from annotated GenBank files.
 2. **Explore** feature distributions, correlations, and label relationships.
-3. **Train** candidate models (Logistic Regression, Random Forest, XGBoost, etc.).
+3. **Train** candidate models (Logistic Regression, XGBoost, etc.).
 4. **Evaluate** genome-stratified cross-validation with ROC/PR curves.
-5. **Export** a JSON logistic-regression model compatible with `--model`.
+5. **Export** the best model to ONNX for use with `--model`.
 6. **Validate** end-to-end by running PHANOTATE-rs with the model and comparing
    predictions to the GenBank annotations.
 
 ## Feature Description
 
-The 14 features extracted per ORF (from `src/ml_features.rs`):
+The 15 features extracted per ORF (from `src/ml_features.rs`):
 
 | Feature | Description | Range |
 |---------|-------------|-------|
 | `log_length` | Natural log of ORF length (nt) | ~4–10 |
-| `rbs_score_norm` | Shine-Dalgarno score / 27 | 0–1 |
+| `rbs_bin` | RBS bin / raw Shine–Dalgarno score (0–27) | varies |
 | `log_hold` | Log of GC frame plot product | varies |
 | `pstop` | Stop codon probability | 0–1 |
-| `log_sd_rbs_score` | Log of SD RBS likelihood ratio | varies |
+| `sd_rbs_score` | SD RBS likelihood ratio | varies |
 | `start_codon_atg` | 1 if start is ATG, else 0 | 0 or 1 |
 | `start_codon_gtg` | 1 if start is GTG, else 0 | 0 or 1 |
 | `start_codon_ttg` | 1 if start is TTG, else 0 | 0 or 1 |
@@ -56,7 +55,8 @@ The 14 features extracted per ORF (from `src/ml_features.rs`):
 | `frame_1` | 1 if \|frame\| == 1, else 0 | 0 or 1 |
 | `frame_2` | 1 if \|frame\| == 2, else 0 | 0 or 1 |
 | `frame_3` | 1 if \|frame\| == 3, else 0 | 0 or 1 |
-| `log_non_sd_rbs_score` | Natural log of non-SD motif score | varies |
+| `non_sd_rbs_score` | Non-SD motif score | varies |
+| `dicodon_log_likelihood` | Natural log of Prodigal-style dicodon coding potential | varies |
 
 ## Training Data
 
@@ -71,8 +71,8 @@ The notebook performs **genome-stratified** cross-validation:
 
 1. Split genomes into training and validation folds (not individual ORFs).
 2. Train a model on the training genomes.
-3. Export the model to a JSON file compatible with `--model`.
-4. Run `phanotate-rs --model <json>` on each validation genome.
+3. Export the model to ONNX.
+4. Run `phanotate-rs --model <onnx>` on each validation genome.
 5. Compare predicted genes to the GenBank `CDS` annotations using start/stop
    coordinate overlap.
 
@@ -81,24 +81,14 @@ model's impact on the full gene-calling pipeline, not just ORF classification.
 
 ## Model Export
 
-The notebook exports a JSON file with the standardised coefficients, means, and
-standard deviations required by `src/orf_score_model.rs`:
-
-```json
-{
-  "version": 1,
-  "num_features": 14,
-  "coeffs": [...],
-  "mean": [...],
-  "std": [...]
-}
-```
-
-Use it with PHANOTATE-rs:
+The notebook exports an ONNX model consumed by `src/onnx_scorer.rs`:
 
 ```bash
-phanotate-rs -i genome.fasta --model model.json -f sco
+phanotate-rs -i genome.fasta --model outputs/model_final.onnx -f sco
 ```
+
+Linear models are exported via `skl2onnx`; XGBoost models are exported via
+`onnxmltools`.
 
 ## Outputs
 
@@ -108,7 +98,7 @@ Each run produces under `outputs/`:
 - `feature_correlations.png` — Correlation heatmap
 - `features_by_label.png` — Boxplots by gene/non-gene
 - `model_comparison.png` — ROC and PR curves across candidate models
-- `model_*.json` — Exported JSON models compatible with `--model`
+- `model_final.onnx` — Exported ONNX model compatible with `--model`
 - `experiment_summary.json` — Metrics and metadata
 
 ## Tips
@@ -116,8 +106,8 @@ Each run produces under `outputs/`:
 - **Start small**: Use a few phage genomes for initial experiments.
 - **Genome-stratified CV is essential**: ORFs from the same genome are highly
   correlated; splitting by genome gives a realistic estimate.
-- **Model selection**: Only the exported logistic-regression JSON is natively
-  consumed by `--model`, but you can benchmark any classifier/regressor inside
-  the notebook and re-train the best-performing linear model for export.
+- **Model selection**: Any classifier that can be exported to ONNX can be used
+  at runtime. Benchmark multiple models inside the notebook, then export the
+  best performer to ONNX.
 - **Scoring range**: The Rust scorer clamps the learned log-odds score to
   `[-10, 10]`.
