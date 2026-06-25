@@ -16,7 +16,6 @@ pub mod orf;
 pub mod output;
 pub mod rbs_mode;
 pub mod rbs_scanner;
-pub mod start_refiner;
 pub mod weights;
 
 // Include Python bindings module only when the `python` feature is enabled.

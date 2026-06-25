@@ -368,27 +368,6 @@ class TestPhanotatePipeline:
         dicodon = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", dicodon=True)
         assert default["primary"] != dicodon["primary"]
 
-    def test_phanotate_start_model(self):
-        import json
-        import tempfile
-
-        model = {
-            "version": 1,
-            "coeffs": [0.0] * 11,
-            "mean": [0.0] * 11,
-            "std": [1.0] * 11,
-        }
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
-            json.dump(model, fh)
-            path = fh.name
-        try:
-            out = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", start_model=path)
-            assert out["primary"]
-            assert isinstance(out["genes"], list)
-        finally:
-            os.unlink(path)
-
-
 # ---------------------------------------------------------------------------
 # 5. Integration tests with real data
 # ---------------------------------------------------------------------------

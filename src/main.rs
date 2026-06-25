@@ -91,7 +91,7 @@ struct Cli {
     #[arg(
         long = "export-features",
         value_name = "FILE",
-        conflicts_with_all = ["detect_table", "detect_table_batch", "start_model", "dicodon"]
+        conflicts_with_all = ["detect_table", "detect_table_batch", "dicodon"]
     )]
     export_features: Option<PathBuf>,
 
@@ -103,10 +103,6 @@ struct Cli {
     /// the default GC-frame hold score.
     #[arg(long = "dicodon")]
     dicodon: bool,
-
-    /// Path to a learned start-site scoring model (JSON).
-    #[arg(long = "start-model", value_name = "FILE")]
-    start_model: Option<PathBuf>,
 
 }
 
@@ -201,7 +197,6 @@ fn process_genome(
     table: u8,
     rbs_mode: RbsMode,
     dicodon: bool,
-    start_model: Option<&phanotate_rs::start_refiner::StartModel>,
 ) -> Result<(String, String, String)> {
     let contig_length = genome.seq.len();
     let dna = &genome.seq;
@@ -561,13 +556,6 @@ fn process_genome(
         }
     }
 
-    if let Some(model) = start_model {
-        for orf in &mut orfs {
-            let features = phanotate_rs::start_refiner::StartSiteFeatures::new(orf);
-            orf.start_score = model.score(&features);
-        }
-    }
-
     // --- Score ORFs ---
     for orf in &mut orfs {
         orf.score(start_codons_map);
@@ -797,16 +785,6 @@ fn main() -> Result<()> {
         }
     };
 
-    // Load start-site scoring model if provided
-    let start_model: Option<phanotate_rs::start_refiner::StartModel> = cli
-        .start_model
-        .as_ref()
-        .map(|p| {
-            phanotate_rs::start_refiner::StartModel::from_json(p)
-                .with_context(|| format!("Failed to load start model from {:?}", p))
-        })
-        .transpose()?;
-
     // Process each contig in parallel
     let results: Vec<(String, String, String)> = if cli.progress {
         let pb = ProgressBar::new(genomes.len() as u64);
@@ -831,7 +809,6 @@ fn main() -> Result<()> {
                     effective_table,
                     cli.rbs_mode,
                     cli.dicodon,
-                    start_model.as_ref(),
                 )
             })
             .collect::<Result<Vec<_>>>()?
@@ -850,7 +827,6 @@ fn main() -> Result<()> {
                     effective_table,
                     cli.rbs_mode,
                     cli.dicodon,
-                    start_model.as_ref(),
                 )
             })
             .collect::<Result<Vec<_>>>()?

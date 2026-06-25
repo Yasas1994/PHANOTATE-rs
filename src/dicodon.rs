@@ -204,7 +204,6 @@ mod tests {
             hold: 100.0,
             non_sd_rbs_score: 1.0,
             coding_potential: 1.0,
-            start_score: 1.0,
             weight: 1.0,
         }];
         let model = DicodonModel::train(&orfs, &seq, &rc);
@@ -234,7 +233,6 @@ mod tests {
             hold: 100.0,
             non_sd_rbs_score: 1.0,
             coding_potential: 1.0,
-            start_score: 1.0,
             weight: 1.0,
         }];
         let model = DicodonModel::train(&orfs, &seq, &rc);
@@ -265,7 +263,6 @@ mod tests {
             hold: 100.0,
             non_sd_rbs_score: 1.0,
             coding_potential: 1.0,
-            start_score: 1.0,
             weight: 1.0,
         };
         let model = DicodonModel::from_annotated_orfs(&[&orf], &seq, &rc);

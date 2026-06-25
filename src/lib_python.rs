@@ -312,9 +312,6 @@ impl PyTableScore {
 /// dicodon : bool, optional
 ///     If True, use a Prodigal-style 6-mer dicodon coding-potential model
 ///     instead of the GC-frame hold score. Default is False.
-/// start_model : str, optional
-///     Path to a JSON start-site scoring model produced by
-///     `scripts/train_start_model.py`. Default is None.
 /// min_orf_len : int, optional
 ///     Minimum ORF length in nucleotides. Default is 90.
 ///
@@ -348,7 +345,6 @@ impl PyTableScore {
     detect_table = false,
     rbs_mode = "auto",
     dicodon = false,
-    start_model = None,
     min_orf_len = 90,
 ))]
 fn phanotate(
@@ -361,7 +357,6 @@ fn phanotate(
     detect_table: bool,
     rbs_mode: &str,
     dicodon: bool,
-    start_model: Option<&str>,
     min_orf_len: usize,
 ) -> PyResult<PyObject> {
     let rbs_mode = parse_rbs_mode(rbs_mode)?;
@@ -422,7 +417,6 @@ fn phanotate(
         min_orf_len,
         rbs_mode,
         dicodon,
-        start_model,
     )?;
 
     // Build Python dict return
@@ -456,7 +450,6 @@ fn process_single_genome(
     min_orf_len: usize,
     rbs_mode: RbsMode,
     dicodon: bool,
-    start_model: Option<&str>,
 ) -> PyResult<(String, String, String, Vec<PyGene>, bool)> {
     let contig_length = dna.len();
 
@@ -789,15 +782,6 @@ fn process_single_genome(
         }
     }
 
-    if let Some(path) = start_model {
-        let model = crate::start_refiner::StartModel::from_json(std::path::Path::new(path))
-            .map_err(|e| PyRuntimeError::new_err(format!("Failed to load start model: {}", e)))?;
-        for orf in &mut orfs {
-            let features = crate::start_refiner::StartSiteFeatures::new(orf);
-            orf.start_score = model.score(&features);
-        }
-    }
-
     for orf in &mut orfs {
         orf.score(start_codons_map);
     }
@@ -941,9 +925,6 @@ fn process_single_genome(
 /// dicodon : bool, optional
 ///     If True, use a Prodigal-style 6-mer dicodon coding-potential model
 ///     instead of the GC-frame hold score. Default is False.
-/// start_model : str, optional
-///     Path to a JSON start-site scoring model produced by
-///     `scripts/train_start_model.py`. Default is None.
 ///
 /// Returns
 /// -------
@@ -967,7 +948,6 @@ fn process_single_genome(
     min_orf_len = 90,
     rbs_mode = "auto",
     dicodon = false,
-    start_model = None,
 ))]
 fn find_orfs(
     sequence: &str,
@@ -977,7 +957,6 @@ fn find_orfs(
     min_orf_len: usize,
     rbs_mode: &str,
     dicodon: bool,
-    start_model: Option<&str>,
 ) -> PyResult<Vec<PyOrf>> {
     let rbs_mode = parse_rbs_mode(rbs_mode)?;
     validate_table(table)?;
@@ -1061,15 +1040,6 @@ fn find_orfs(
                     .best_motif_label(orf, &dna, &rc_dna)
                     .map(|m| format!("nonSD:{m}"));
             }
-        }
-    }
-
-    if let Some(path) = start_model {
-        let model = crate::start_refiner::StartModel::from_json(std::path::Path::new(path))
-            .map_err(|e| PyRuntimeError::new_err(format!("Failed to load start model: {}", e)))?;
-        for orf in &mut orfs {
-            let features = crate::start_refiner::StartSiteFeatures::new(orf);
-            orf.start_score = model.score(&features);
         }
     }
 
@@ -1394,7 +1364,6 @@ mod tests {
             rbs_motif: None,
             hold,
             coding_potential: 1.0 / hold,
-            start_score: 1.0,
             weight: -1.0,
         };
         let py_orf = PyOrf::from(&orf);

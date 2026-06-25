@@ -15,7 +15,6 @@ pub struct Orf {
     pub rbs_motif: Option<String>, // detected RBS / non-SD motif sequence
     pub hold: f64,                 // product of adjusted P(not_stop) per codon
     pub coding_potential: f64,     // coding-potential multiplier (1/hold default, or dicodon model)
-    pub start_score: f64,          // learned start-site multiplier, default 1.0
     pub weight: f64,               // final ORF edge weight (negative)
 }
 
@@ -51,7 +50,7 @@ impl Orf {
     }
 
     pub fn score(&mut self, start_codons: &std::collections::HashMap<Vec<u8>, f64>) {
-        let mut s = self.coding_potential * self.start_score;
+        let mut s = self.coding_potential;
         let sc = self.start_codon().to_vec();
         if let Some(&w) = start_codons.get(&sc) {
             s *= w;
@@ -177,7 +176,6 @@ pub fn find_orfs_with_rc(
                         rbs_motif,
                         hold,
                         coding_potential: 1.0 / hold,
-                        start_score: 1.0,
                         weight: 1.0,
                     });
                 }
@@ -229,7 +227,6 @@ pub fn find_orfs_with_rc(
                         rbs_motif,
                         hold,
                         coding_potential: 1.0 / hold,
-                        start_score: 1.0,
                         weight: 1.0,
                     });
                 }
@@ -268,7 +265,6 @@ pub fn find_orfs_with_rc(
                         rbs_motif,
                         hold,
                         coding_potential: 1.0 / hold,
-                        start_score: 1.0,
                         weight: 1.0,
                     });
                 }
@@ -314,7 +310,6 @@ pub fn find_orfs_with_rc(
                         rbs_motif,
                         hold,
                         coding_potential: 1.0 / hold,
-                        start_score: 1.0,
                         weight: 1.0,
                     });
                 }
@@ -583,7 +578,6 @@ mod tests {
             sd_rbs_score: 1.0,
             hold,
             coding_potential: 1.0 / hold,
-            start_score: 1.0,
             non_sd_rbs_score: 1.0,
             rbs_motif: None,
             weight: 1.0,

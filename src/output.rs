@@ -244,7 +244,6 @@ mod tests {
             rbs_motif: None,
             hold,
             coding_potential: 1.0 / hold,
-            start_score: 1.0,
             weight: -1.0,
         }
     }

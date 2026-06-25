@@ -539,58 +539,6 @@ fn dicodon_changes_output() {
 }
 
 // ---------------------------------------------------------------------------
-// Start-model scoring
-// ---------------------------------------------------------------------------
-#[test]
-fn start_model_flag_requires_valid_file() {
-    let (_stdout, _stderr, code) = run(
-        &[
-            "-i",
-            "tests/data/small.fasta",
-            "--start-model",
-            "/nonexistent.json",
-        ],
-        None,
-    );
-    assert_ne!(code, 0, "missing model file should fail");
-}
-
-#[test]
-fn start_model_runs_without_error() {
-    // A minimal valid model: zero coefficients, unit scaling.
-    let tmpdir = tempfile::tempdir().unwrap();
-    let model_path = tmpdir.path().join("model.json");
-    std::fs::write(
-        &model_path,
-        r#"{"version":1,"num_features":11,"coeffs":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"mean":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"std":[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0]}"#,
-    )
-    .unwrap();
-
-    let (out, _, code) = run(
-        &[
-            "-i",
-            "tests/data/small.fasta",
-            "-f",
-            "sco",
-            "--start-model",
-            model_path.to_str().unwrap(),
-        ],
-        None,
-    );
-    assert_eq!(
-        code, 0,
-        "--start-model should succeed with a valid JSON model"
-    );
-    let data_line = out.lines().find(|l| !l.starts_with('#')).unwrap_or("");
-    assert!(!data_line.is_empty(), "should produce data lines");
-    assert_eq!(
-        data_line.split('\t').count(),
-        5,
-        "SCO line should have 5 columns"
-    );
-}
-
-// ---------------------------------------------------------------------------
 // Regression test for internal stop codons with non-standard genetic codes
 // ---------------------------------------------------------------------------
 #[test]
