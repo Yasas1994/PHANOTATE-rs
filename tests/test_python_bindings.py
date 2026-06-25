@@ -178,7 +178,7 @@ class TestOrfFinder:
     def test_find_orfs_prodigal_rbs(self):
         # Plant a canonical AGGAGG SD motif 6 bp upstream of the start codon.
         seq = "A" * 9 + "AGGAGG" + "A" * 6 + "ATG" + "A" * 300 + "TAA"
-        orfs = phanotate_rs.find_orfs(seq, prodigal_rbs=True)
+        orfs = phanotate_rs.find_orfs(seq, rbs_mode="prodigal")
         assert len(orfs) > 0
         # At least one forward ORF should carry a Prodigal RBS motif.
         motifs = [o.rbs_motif for o in orfs if o.frame > 0]
@@ -338,38 +338,30 @@ class TestPhanotatePipeline:
         with pytest.raises(ValueError):
             phanotate_rs.phanotate("", seq_id="test")
 
-    def test_phanotate_non_sd_returns_uses_sd_false(self):
-        result = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", non_sd=True)
+    def test_phanotate_rbs_mode_non_sd_returns_uses_sd_false(self):
+        result = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", rbs_mode="non_sd")
         assert isinstance(result, dict)
         assert "uses_sd" in result
         assert result["uses_sd"] is False
 
-    def test_phanotate_sd_returns_uses_sd_true(self):
-        result = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", sd=True)
+    def test_phanotate_rbs_mode_sd_returns_uses_sd_true(self):
+        result = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", rbs_mode="sd")
         assert isinstance(result, dict)
         assert "uses_sd" in result
         assert result["uses_sd"] is True
 
-    def test_phanotate_non_sd_and_sd_mutually_exclusive(self):
+    def test_phanotate_rbs_mode_rejects_invalid_value(self):
         with pytest.raises(ValueError):
-            phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", non_sd=True, sd=True)
+            phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", rbs_mode="invalid")
 
-    def test_phanotate_prodigal_rbs(self):
+    def test_phanotate_rbs_mode_prodigal(self):
         # Plant a canonical AGGAGG SD motif 6 bp upstream of the start codon.
         seq = "A" * 9 + "AGGAGG" + "A" * 6 + "ATG" + "A" * 300 + "TAA"
-        result = phanotate_rs.phanotate(seq, seq_id="test", prodigal_rbs=True)
+        result = phanotate_rs.phanotate(seq, seq_id="test", rbs_mode="prodigal")
         assert result["uses_sd"] is True
         # At least one gene should have an RBS motif string.
         motifs = [g.get("rbs_motif") for g in result["genes"]]
         assert any(m is not None for m in motifs)
-
-    def test_phanotate_prodigal_rbs_conflicts_with_non_sd(self):
-        with pytest.raises(ValueError):
-            phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", prodigal_rbs=True, non_sd=True)
-
-    def test_phanotate_prodigal_rbs_conflicts_with_sd(self):
-        with pytest.raises(ValueError):
-            phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", prodigal_rbs=True, sd=True)
 
     def test_phanotate_dicodon(self):
         default = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test")

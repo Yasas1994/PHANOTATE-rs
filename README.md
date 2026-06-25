@@ -121,16 +121,15 @@ phanotate-rs -i genome.fasta --sd
 
 ### Shine-Dalgarno vs non-SD scoring
 
-By default, PHANOTATE-rs scores Shine–Dalgarno (SD) motifs upstream of start codons.
-For genomes that lack a strong SD signal, it can instead discover an enriched
-non-SD motif upstream of start codons (similar to Prodigal's non-SD mode):
+By default, PHANOTATE-rs auto-detects whether the genome uses Shine–Dalgarno
+(SD) motifs upstream of start codons. You can control this with `--rbs-mode`:
 
-- `--non-sd` — force non-SD motif discovery.
-- `--sd` — force SD scoring and skip automatic non-SD detection.
-
-When automatic selection is used (neither flag), the tool compares the high-score
-tail of the RBS training distribution to the genomic background and switches to
-the non-SD model when the SD signal is weak.
+- `auto` (default) — compare the high-score tail of the RBS training
+distribution to the genomic background and switch to the non-SD model when the
+SD signal is weak.
+- `sd` — force legacy Shine–Dalgarno scoring.
+- `non-sd` — force non-SD motif discovery (similar to Prodigal's non-SD mode).
+- `prodigal` — use Prodigal-style SD bins with a non-SD fallback for display.
 
 For Python API users, the result dictionary from `phanotate_rs.phanotate()`
 contains a `uses_sd` key (`bool`) indicating whether SD scoring was used.
@@ -162,7 +161,16 @@ Options:
       --detect-table       Detect the most likely translation table
       --detect-table-batch Detect tables for all records, print TSV summary
       --yes                Skip the confirmation prompt with --detect-table
+      --ml-model <FILE>    ONNX model for ML-adjusted scoring
+      --export-features <FILE>
+                           Export ORF features and exit
+      --rbs-mode <RBS_MODE>
+                           RBS scoring mode: auto, sd, non-sd, prodigal [default: auto]
+      --dicodon [<THRESHOLD>]
+                           Use Prodigal-style dicodon scoring; optional filter threshold
+      --start-model <FILE> Path to a learned start-site scoring model (JSON)
   -h, --help          Print help
+  -V, --version       Print version
 ```
 
 ### Translation tables

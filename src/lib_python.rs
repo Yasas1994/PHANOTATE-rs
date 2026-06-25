@@ -30,6 +30,11 @@ fn parse_dicodon_arg(arg: Option<DicodonArg>) -> (bool, Option<f64>) {
     }
 }
 
+fn parse_rbs_mode(s: &str) -> PyResult<RbsMode> {
+    s.parse::<RbsMode>()
+        .map_err(|e| PyValueError::new_err(format!("Invalid rbs_mode: {}", e)))
+}
+
 use crate::bellman_ford;
 use crate::codon_table;
 use crate::detect_table;
@@ -38,6 +43,7 @@ use crate::genome;
 use crate::graph::{Graph, Node};
 use crate::orf::{self, Orf};
 use crate::output::{self, Format};
+use crate::rbs_mode::RbsMode;
 
 // ---------------------------------------------------------------------------
 // Helper: decide whether a genome uses Shine-Dalgarno RBS signalling.
@@ -315,16 +321,11 @@ impl PyTableScore {
 /// detect_table : bool, optional
 ///     If True, detect the most likely translation table before annotating
 ///     and use the top-ranked table. Default is False.
-/// non_sd : bool, optional
-///     If True, force non-Shine-Dalgarno motif discovery for start-codon
-///     scoring. Default is False.
-/// sd : bool, optional
-///     If True, force Shine-Dalgarno scoring (skip non-SD auto-detection).
-///     Default is False. `non_sd` and `sd` are mutually exclusive.
-/// prodigal_rbs : bool, optional
-///     If True, use Prodigal-style SD scanning with non-SD fallback.
-///     Default is False. `prodigal_rbs` is mutually exclusive with `sd`
-///     and `non_sd`.
+/// rbs_mode : str, optional
+///     How to score upstream start-codon motifs. One of "auto" (default),
+///     "sd", "non_sd", or "prodigal". "sd" forces Shine-Dalgarno scoring,
+///     "non_sd" forces non-SD motif discovery, and "prodigal" uses
+///     Prodigal-style SD bins with a non-SD fallback.
 /// dicodon : bool or float or None, optional
 ///     If True, use a Prodigal-style 6-mer dicodon coding-potential model.
 ///     If a float is given, use the dicodon model and drop ORFs whose
@@ -364,9 +365,7 @@ impl PyTableScore {
     closed_ends = false,
     mask_n = false,
     detect_table = false,
-    non_sd = false,
-    sd = false,
-    prodigal_rbs = false,
+    rbs_mode = "auto",
     dicodon = None,
     start_model = None,
     min_orf_len = 90,
@@ -379,24 +378,13 @@ fn phanotate(
     closed_ends: bool,
     mask_n: bool,
     detect_table: bool,
-    non_sd: bool,
-    sd: bool,
-    prodigal_rbs: bool,
+    rbs_mode: &str,
     dicodon: Option<DicodonArg>,
     start_model: Option<&str>,
     min_orf_len: usize,
 ) -> PyResult<PyObject> {
     let (dicodon, dicodon_filter_threshold) = parse_dicodon_arg(dicodon);
-    if non_sd && sd {
-        return Err(PyValueError::new_err(
-            "non_sd and sd are mutually exclusive",
-        ));
-    }
-    if prodigal_rbs && (sd || non_sd) {
-        return Err(PyValueError::new_err(
-            "prodigal_rbs is mutually exclusive with sd and non_sd",
-        ));
-    }
+    let rbs_mode = parse_rbs_mode(rbs_mode)?;
     // Parse format
     let out_format = parse_format(format)?;
 
@@ -452,9 +440,7 @@ fn phanotate(
         mask_n,
         effective_table,
         min_orf_len,
-        non_sd,
-        sd,
-        prodigal_rbs,
+        rbs_mode,
         dicodon,
         dicodon_filter_threshold,
         start_model,
@@ -489,9 +475,7 @@ fn process_single_genome(
     mask_n: bool,
     table: u8,
     min_orf_len: usize,
-    force_non_sd: bool,
-    force_sd: bool,
-    prodigal_rbs: bool,
+    rbs_mode: RbsMode,
     dicodon: bool,
     dicodon_filter_threshold: Option<f64>,
     start_model: Option<&str>,
@@ -531,7 +515,7 @@ fn process_single_genome(
         } else {
             &dna[i..]
         };
-        let score = if prodigal_rbs {
+        let score = if rbs_mode.is_prodigal() {
             crate::rbs_scanner::score_rbs_prodigal(window)
         } else {
             orf::score_rbs(window)
@@ -540,7 +524,7 @@ fn process_single_genome(
 
         let rc_start = len.saturating_sub(i + 21);
         let rc_window = &rc_dna[rc_start..len - i];
-        let rc_score = if prodigal_rbs {
+        let rc_score = if rbs_mode.is_prodigal() {
             crate::rbs_scanner::score_rbs_prodigal(rc_window)
         } else {
             orf::score_rbs(rc_window)
@@ -581,13 +565,13 @@ fn process_single_genome(
             no_orfs.clone(),
             no_orfs,
             Vec::new(),
-            force_non_sd,
+            rbs_mode != RbsMode::NonSd,
         ));
     }
 
     // --- Training RBS ---
     let use_non_sd;
-    if prodigal_rbs {
+    if rbs_mode.is_prodigal() {
         use_non_sd = false;
 
         // Train non-SD model once for the genome.
@@ -640,12 +624,11 @@ fn process_single_genome(
         }
 
         // --- Existing non-SD auto-detect block ---
-        use_non_sd = if force_non_sd {
-            true
-        } else if force_sd {
-            false
-        } else {
-            !detect_uses_sd(&background_rbs, &training_rbs)
+        use_non_sd = match rbs_mode {
+            RbsMode::NonSd => true,
+            RbsMode::Sd => false,
+            RbsMode::Auto => !detect_uses_sd(&background_rbs, &training_rbs),
+            RbsMode::Prodigal => unreachable!(),
         };
 
         if use_non_sd {
@@ -957,10 +940,11 @@ fn process_single_genome(
 ///     Default is False.
 /// min_orf_len : int, optional
 ///     Minimum ORF length in nucleotides. Default is 90.
-/// prodigal_rbs : bool, optional
-///     If True, score upstream RBS motifs with Prodigal-style SD scanning
-///     and fall back to non-SD motifs for ORFs without a strong SD signal.
-///     Default is False.
+/// rbs_mode : str, optional
+///     How to score upstream start-codon motifs. One of "auto" (default),
+///     "sd", "non_sd", or "prodigal". "sd" forces Shine-Dalgarno scoring,
+///     "non_sd" forces non-SD motif discovery, and "prodigal" uses
+///     Prodigal-style SD bins with a non-SD fallback.
 /// dicodon : bool or float or None, optional
 ///     If True, use a Prodigal-style 6-mer dicodon coding-potential model.
 ///     If a float is given, use the dicodon model and drop ORFs whose
@@ -990,7 +974,7 @@ fn process_single_genome(
     closed_ends = false,
     mask_n = false,
     min_orf_len = 90,
-    prodigal_rbs = false,
+    rbs_mode = "auto",
     dicodon = None,
     start_model = None,
 ))]
@@ -1000,11 +984,12 @@ fn find_orfs(
     closed_ends: bool,
     mask_n: bool,
     min_orf_len: usize,
-    prodigal_rbs: bool,
+    rbs_mode: &str,
     dicodon: Option<DicodonArg>,
     start_model: Option<&str>,
 ) -> PyResult<Vec<PyOrf>> {
     let (dicodon, dicodon_filter_threshold) = parse_dicodon_arg(dicodon);
+    let rbs_mode = parse_rbs_mode(rbs_mode)?;
     validate_table(table)?;
 
     let dna = genome::normalize_seq(sequence);
@@ -1033,7 +1018,7 @@ fn find_orfs(
         mask_n,
     );
 
-    if prodigal_rbs {
+    if rbs_mode.is_prodigal() {
         // Background distribution over all 21-nt windows.
         let mut background_rbs = [1.0f64; crate::rbs_scanner::NUM_RBS_BINS];
         let len = dna.len();

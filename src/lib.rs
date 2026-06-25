@@ -14,6 +14,7 @@ pub mod ml_features;
 pub mod nonsd_motif;
 pub mod orf;
 pub mod output;
+pub mod rbs_mode;
 pub mod rbs_scanner;
 pub mod start_refiner;
 pub mod weights;

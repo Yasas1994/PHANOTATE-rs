@@ -332,12 +332,12 @@ fn test_phix174_sco_matches_golden() {
 }
 
 // ---------------------------------------------------------------------------
-// Non-Shine-Dalgarno mode (--non-sd)
+// RBS scoring modes (--rbs-mode)
 // ---------------------------------------------------------------------------
 #[test]
-fn non_sd_flag_runs_without_error() {
+fn rbs_mode_non_sd_runs_without_error() {
     let (stdout, _stderr, code) = run(
-        &["-i", "tests/data/small.fasta", "--non-sd", "-f", "sco"],
+        &["-i", "tests/data/small.fasta", "--rbs-mode", "non-sd", "-f", "sco"],
         None,
     );
     assert_eq!(code, 0);
@@ -345,9 +345,9 @@ fn non_sd_flag_runs_without_error() {
 }
 
 #[test]
-fn non_sd_sco_includes_motif_column() {
+fn rbs_mode_non_sd_sco_includes_motif_column() {
     let (stdout, _stderr, code) = run(
-        &["-i", "tests/data/small.fasta", "--non-sd", "-f", "sco"],
+        &["-i", "tests/data/small.fasta", "--rbs-mode", "non-sd", "-f", "sco"],
         None,
     );
     assert_eq!(code, 0);
@@ -358,14 +358,57 @@ fn non_sd_sco_includes_motif_column() {
 }
 
 #[test]
+fn rbs_mode_sd_runs_without_error() {
+    let (stdout, _stderr, code) = run(
+        &["-i", "tests/data/small.fasta", "--rbs-mode", "sd", "-f", "sco"],
+        None,
+    );
+    assert_eq!(code, 0);
+    assert!(stdout.contains("uses_sd: 1"));
+}
+
+#[test]
 fn default_run_emits_uses_sd_header() {
     let (stdout, _stderr, code) = run(&["-i", "tests/data/small.fasta", "-f", "sco"], None);
     assert_eq!(code, 0);
     assert!(stdout.contains("uses_sd:"));
 }
 
+#[test]
+fn rbs_mode_rejects_invalid_value() {
+    let (_stdout, stderr, code) = run(
+        &["-i", "tests/data/small.fasta", "--rbs-mode", "invalid"],
+        None,
+    );
+    assert_ne!(code, 0, "invalid --rbs-mode should fail");
+    assert!(
+        stderr.contains("invalid value") || stderr.contains("invalid"),
+        "error should mention invalid value: {}",
+        stderr
+    );
+}
+
+#[test]
+fn old_rbs_flags_are_removed() {
+    let (_stdout, _stderr, code1) = run(
+        &["-i", "tests/data/small.fasta", "--non-sd"],
+        None,
+    );
+    let (_stdout, _stderr, code2) = run(
+        &["-i", "tests/data/small.fasta", "--sd"],
+        None,
+    );
+    let (_stdout, _stderr, code3) = run(
+        &["-i", "tests/data/small.fasta", "--prodigal-rbs"],
+        None,
+    );
+    assert_ne!(code1, 0, "--non-sd should no longer exist");
+    assert_ne!(code2, 0, "--sd should no longer exist");
+    assert_ne!(code3, 0, "--prodigal-rbs should no longer exist");
+}
+
 // ---------------------------------------------------------------------------
-// Prodigal-style RBS scanner (--prodigal-rbs)
+// Prodigal-style RBS scanner (--rbs-mode prodigal)
 // ---------------------------------------------------------------------------
 #[test]
 fn prodigal_rbs_produces_sco_with_mixed_motifs() {
@@ -375,8 +418,8 @@ fn prodigal_rbs_produces_sco_with_mixed_motifs() {
 
     // Synthetic genome with three forward ORFs. The first ORF has a planted
     // AGGAGG Shine-Dalgarno motif; the remaining ORFs fall back to the non-SD
-    // motif model under --prodigal-rbs. Spacers contain reverse-complement stop
-    // codons so the long reverse-strand ORF does not dominate the path.
+    // motif model under --rbs-mode prodigal. Spacers contain reverse-complement
+    // stop codons so the long reverse-strand ORF does not dominate the path.
     let orf = "ATG".to_string() + &"AAACGC".repeat(20) + "TAA";
     let seq =
         "aaaaaaaaaaggaggaaaaa".to_string() + &orf + "TTACTA" + &orf + "TTATGA" + &orf + "TTATAG";
@@ -391,11 +434,12 @@ fn prodigal_rbs_produces_sco_with_mixed_motifs() {
             output.to_str().unwrap(),
             "-f",
             "sco",
-            "--prodigal-rbs",
+            "--rbs-mode",
+            "prodigal",
         ],
         None,
     );
-    assert_eq!(code, 0, "--prodigal-rbs should succeed");
+    assert_eq!(code, 0, "--rbs-mode prodigal should succeed");
 
     let text = std::fs::read_to_string(&output).unwrap();
     assert!(text.starts_with("# uses_sd: 1"));
@@ -403,20 +447,6 @@ fn prodigal_rbs_produces_sco_with_mixed_motifs() {
     assert!(
         text.contains("nonSD:"),
         "expected at least one non-SD fallback motif"
-    );
-}
-
-#[test]
-fn prodigal_rbs_conflicts_with_non_sd() {
-    let (_stdout, stderr, code) = run(
-        &["-i", "tests/data/small.fasta", "--prodigal-rbs", "--non-sd"],
-        None,
-    );
-    assert_ne!(code, 0, "--prodigal-rbs with --non-sd should fail");
-    assert!(
-        stderr.contains("mutually exclusive"),
-        "error should mention mutual exclusion: {}",
-        stderr
     );
 }
 
@@ -454,11 +484,12 @@ fn prodigal_rbs_preserves_gene_count_on_spv4() {
             "sco",
             "-g",
             "4",
-            "--prodigal-rbs",
+            "--rbs-mode",
+            "prodigal",
         ],
         None,
     );
-    assert_eq!(code, 0, "--prodigal-rbs run should succeed");
+    assert_eq!(code, 0, "--rbs-mode prodigal run should succeed");
 
     let default_lines = std::fs::read_to_string(&default_out)
         .unwrap()
@@ -472,33 +503,7 @@ fn prodigal_rbs_preserves_gene_count_on_spv4() {
         .count();
     assert_eq!(
         default_lines, prodigal_lines,
-        "--prodigal-rbs should predict the same number of genes as default mode on SpV4"
-    );
-}
-
-#[test]
-fn prodigal_rbs_conflicts_with_sd() {
-    let tmpdir = tempfile::tempdir().unwrap();
-    let input = tmpdir.path().join("input.fa");
-    std::fs::write(&input, ">t\nATGCATGCATGCATGCATGCATGC\n").unwrap();
-
-    let output = tmpdir.path().join("out.sco");
-    let (_stdout, stderr, code) = run(
-        &[
-            "-i",
-            input.to_str().unwrap(),
-            "-o",
-            output.to_str().unwrap(),
-            "--prodigal-rbs",
-            "--sd",
-        ],
-        None,
-    );
-    assert_ne!(code, 0, "--prodigal-rbs with --sd should fail");
-    assert!(
-        stderr.contains("mutually exclusive"),
-        "error should mention mutual exclusion: {}",
-        stderr
+        "--rbs-mode prodigal should predict the same number of genes as default mode on SpV4"
     );
 }
 

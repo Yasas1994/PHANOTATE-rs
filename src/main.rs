@@ -15,6 +15,7 @@ use phanotate_rs::genome;
 use phanotate_rs::graph;
 use phanotate_rs::orf;
 use phanotate_rs::output;
+use phanotate_rs::rbs_mode::RbsMode;
 
 use codon_table::is_supported_table;
 use gcfp::{max_idx, min_idx, GCframe};
@@ -72,7 +73,7 @@ struct Cli {
 
     /// Detect the most likely translation table before annotating.
     /// Prints a ranked report and prompts for confirmation unless --yes is also set.
-    #[arg(long, default_value_t = false)]
+    #[arg(long, default_value_t = false, conflicts_with = "detect_table_batch")]
     detect_table: bool,
 
     /// Detect the translation table for every record in a multi-FASTA file
@@ -92,20 +93,16 @@ struct Cli {
 
     /// Export ORF features to FILE and exit without running annotation.
     /// Useful for generating training data for the ML model.
-    #[arg(long = "export-features", value_name = "FILE")]
+    #[arg(
+        long = "export-features",
+        value_name = "FILE",
+        conflicts_with_all = ["detect_table", "detect_table_batch", "ml_model", "start_model", "dicodon"]
+    )]
     export_features: Option<PathBuf>,
 
-    /// Force non-Shine-Dalgarno motif discovery for start-codon scoring.
-    #[arg(long = "non-sd")]
-    force_non_sd: bool,
-
-    /// Force Shine-Dalgarno scoring (skip non-SD auto-detection).
-    #[arg(long = "sd")]
-    force_sd: bool,
-
-    /// Use Prodigal-style SD scanner with non-SD fallback.
-    #[arg(long = "prodigal-rbs")]
-    prodigal_rbs: bool,
+    /// How to score upstream start-codon motifs.
+    #[arg(long, value_enum, default_value = "auto")]
+    rbs_mode: RbsMode,
 
     /// Use a Prodigal-style 6-mer dicodon coding-potential model.
     /// If a THRESHOLD is supplied, ORFs with a dicodon score below it are
@@ -208,11 +205,9 @@ fn process_genome(
     closed_ends: bool,
     mask_n: bool,
     table: u8,
-    force_non_sd: bool,
-    force_sd: bool,
+    rbs_mode: RbsMode,
     #[cfg(feature = "ml")] ml_scorer: &Option<phanotate_rs::ml_scorer::MlScorer>,
     #[cfg(not(feature = "ml"))] _ml_scorer: &Option<()>,
-    prodigal_rbs: bool,
     dicodon: Option<Option<f64>>,
     start_model: Option<&phanotate_rs::start_refiner::StartModel>,
 ) -> Result<(String, String, String)> {
@@ -253,7 +248,7 @@ fn process_genome(
         } else {
             &dna[i..]
         };
-        let score = if prodigal_rbs {
+        let score = if rbs_mode.is_prodigal() {
             phanotate_rs::rbs_scanner::score_rbs_prodigal(window)
         } else {
             phanotate_rs::rbs_scanner::score_rbs_legacy(window)
@@ -263,7 +258,7 @@ fn process_genome(
         // Reverse-strand window from pre-computed RC genome
         let rc_start = len.saturating_sub(i + 21);
         let rc_window = &rc_dna[rc_start..len - i];
-        let rc_score = if prodigal_rbs {
+        let rc_score = if rbs_mode.is_prodigal() {
             phanotate_rs::rbs_scanner::score_rbs_prodigal(rc_window)
         } else {
             phanotate_rs::rbs_scanner::score_rbs_legacy(rc_window)
@@ -304,7 +299,7 @@ fn process_genome(
 
     // --- Training RBS ---
     let use_non_sd;
-    if prodigal_rbs {
+    if rbs_mode.is_prodigal() {
         use_non_sd = false;
 
         // Train non-SD model once for the genome.
@@ -359,12 +354,11 @@ fn process_genome(
         }
 
         // --- Existing non-SD auto-detect block ---
-        use_non_sd = if force_non_sd {
-            true
-        } else if force_sd {
-            false
-        } else {
-            !detect_uses_sd(&background_rbs, &training_rbs)
+        use_non_sd = match rbs_mode {
+            RbsMode::NonSd => true,
+            RbsMode::Sd => false,
+            RbsMode::Auto => !detect_uses_sd(&background_rbs, &training_rbs),
+            RbsMode::Prodigal => unreachable!(),
         };
 
         if use_non_sd {
@@ -669,12 +663,6 @@ fn process_genome(
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    if cli.force_non_sd && cli.force_sd {
-        anyhow::bail!("--non-sd and --sd are mutually exclusive");
-    }
-    if cli.prodigal_rbs && (cli.force_sd || cli.force_non_sd) {
-        anyhow::bail!("--prodigal-rbs is mutually exclusive with --sd and --non-sd");
-    }
     // Validate format
     let format = match cli.format.to_lowercase().as_str() {
         "gbk" | "genbank" => Format::Gbk,
@@ -885,10 +873,8 @@ fn main() -> Result<()> {
                     cli.closed_ends,
                     cli.mask_n,
                     effective_table,
-                    cli.force_non_sd,
-                    cli.force_sd,
+                    cli.rbs_mode,
                     &ml_scorer,
-                    cli.prodigal_rbs,
                     cli.dicodon,
                     start_model.as_ref(),
                 )
@@ -907,10 +893,8 @@ fn main() -> Result<()> {
                     cli.closed_ends,
                     cli.mask_n,
                     effective_table,
-                    cli.force_non_sd,
-                    cli.force_sd,
+                    cli.rbs_mode,
                     &ml_scorer,
-                    cli.prodigal_rbs,
                     cli.dicodon,
                     start_model.as_ref(),
                 )
