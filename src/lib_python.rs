@@ -311,11 +311,9 @@ impl PyTableScore {
 /// dicodon : bool, optional
 ///     If True, use a Prodigal-style 6-mer dicodon coding-potential model.
 ///     Default is False.
-/// dicodon_filter : bool, optional
-///     If True, train a dicodon model from the ORF set and drop ORFs whose
-///     dicodon score is below `dicodon_filter_threshold`. Default is False.
-/// dicodon_filter_threshold : float, optional
-///     Minimum dicodon score kept by `dicodon_filter`. Default is 0.5.
+/// dicodon_filter_threshold : float or None, optional
+///     If set, drop ORFs whose dicodon score is below this threshold. Requires
+///     `dicodon=True`. Default is None (no filtering).
 /// start_model : str, optional
 ///     Path to a JSON start-site scoring model produced by
 ///     `scripts/train_start_model.py`. Default is None.
@@ -354,8 +352,7 @@ impl PyTableScore {
     sd = false,
     prodigal_rbs = false,
     dicodon = false,
-    dicodon_filter = false,
-    dicodon_filter_threshold = 0.5,
+    dicodon_filter_threshold = None,
     start_model = None,
     min_orf_len = 90,
 ))]
@@ -371,8 +368,7 @@ fn phanotate(
     sd: bool,
     prodigal_rbs: bool,
     dicodon: bool,
-    dicodon_filter: bool,
-    dicodon_filter_threshold: f64,
+    dicodon_filter_threshold: Option<f64>,
     start_model: Option<&str>,
     min_orf_len: usize,
 ) -> PyResult<PyObject> {
@@ -384,11 +380,6 @@ fn phanotate(
     if prodigal_rbs && (sd || non_sd) {
         return Err(PyValueError::new_err(
             "prodigal_rbs is mutually exclusive with sd and non_sd",
-        ));
-    }
-    if dicodon && dicodon_filter {
-        return Err(PyValueError::new_err(
-            "dicodon and dicodon_filter are mutually exclusive",
         ));
     }
     // Parse format
@@ -450,7 +441,6 @@ fn phanotate(
         sd,
         prodigal_rbs,
         dicodon,
-        dicodon_filter,
         dicodon_filter_threshold,
         start_model,
     )?;
@@ -488,8 +478,7 @@ fn process_single_genome(
     force_sd: bool,
     prodigal_rbs: bool,
     dicodon: bool,
-    dicodon_filter: bool,
-    dicodon_filter_threshold: f64,
+    dicodon_filter_threshold: Option<f64>,
     start_model: Option<&str>,
 ) -> PyResult<(String, String, String, Vec<PyGene>, bool)> {
     let contig_length = dna.len();
@@ -804,6 +793,9 @@ fn process_single_genome(
         for orf in &mut orfs {
             orf.coding_potential = model.score_orf(orf);
         }
+        if let Some(th) = dicodon_filter_threshold {
+            orfs.retain(|o| o.coding_potential >= th);
+        }
     }
 
     if let Some(path) = start_model {
@@ -813,15 +805,6 @@ fn process_single_genome(
             let features = crate::start_refiner::StartSiteFeatures::new(orf);
             orf.start_score = model.score(&features);
         }
-    }
-
-    if dicodon_filter {
-        // Python binding receives plain sequence/FASTA; use heuristic seeds.
-        let model = crate::dicodon::DicodonModel::train(&orfs, dna, rc_dna);
-        for orf in &mut orfs {
-            orf.coding_potential = model.score_orf(orf);
-        }
-        orfs.retain(|o| o.coding_potential >= dicodon_filter_threshold);
     }
 
     for orf in &mut orfs {
@@ -963,11 +946,12 @@ fn process_single_genome(
 ///     If True, score upstream RBS motifs with Prodigal-style SD scanning
 ///     and fall back to non-SD motifs for ORFs without a strong SD signal.
 ///     Default is False.
-/// dicodon_filter : bool, optional
-///     If True, train a dicodon model from the ORF set and drop ORFs whose
-///     dicodon score is below `dicodon_filter_threshold`. Default is False.
-/// dicodon_filter_threshold : float, optional
-///     Minimum dicodon score kept by `dicodon_filter`. Default is 0.5.
+/// dicodon : bool, optional
+///     If True, use a Prodigal-style 6-mer dicodon coding-potential model.
+///     Default is False.
+/// dicodon_filter_threshold : float or None, optional
+///     If set, drop ORFs whose dicodon score is below this threshold. Requires
+///     `dicodon=True`. Default is None (no filtering).
 /// start_model : str, optional
 ///     Path to a JSON start-site scoring model produced by
 ///     `scripts/train_start_model.py`. Default is None.
@@ -993,8 +977,8 @@ fn process_single_genome(
     mask_n = false,
     min_orf_len = 90,
     prodigal_rbs = false,
-    dicodon_filter = false,
-    dicodon_filter_threshold = 0.5,
+    dicodon = false,
+    dicodon_filter_threshold = None,
     start_model = None,
 ))]
 fn find_orfs(
@@ -1004,8 +988,8 @@ fn find_orfs(
     mask_n: bool,
     min_orf_len: usize,
     prodigal_rbs: bool,
-    dicodon_filter: bool,
-    dicodon_filter_threshold: f64,
+    dicodon: bool,
+    dicodon_filter_threshold: Option<f64>,
     start_model: Option<&str>,
 ) -> PyResult<Vec<PyOrf>> {
     validate_table(table)?;
@@ -1101,12 +1085,14 @@ fn find_orfs(
         }
     }
 
-    if dicodon_filter {
+    if dicodon {
         let model = crate::dicodon::DicodonModel::train(&orfs, &dna, &rc_dna);
         for orf in &mut orfs {
             orf.coding_potential = model.score_orf(orf);
         }
-        orfs.retain(|o| o.coding_potential >= dicodon_filter_threshold);
+        if let Some(th) = dicodon_filter_threshold {
+            orfs.retain(|o| o.coding_potential >= th);
+        }
     }
 
     Ok(orfs.iter().map(|o| PyOrf::from(o)).collect())

@@ -625,7 +625,7 @@ fn test_no_internal_stops_table4() {
 }
 
 // ---------------------------------------------------------------------------
-// Dicodon filter tests
+// Dicodon tests
 // ---------------------------------------------------------------------------
 #[test]
 fn dicodon_filter_runs_on_genbank() {
@@ -635,8 +635,7 @@ fn dicodon_filter_runs_on_genbank() {
             "tests/golden/NC_001365.gb",
             "-g",
             "4",
-            "--dicodon-filter",
-            "--dicodon-filter-threshold",
+            "--dicodon",
             "0.5",
             "-f",
             "sco",
@@ -660,7 +659,8 @@ fn dicodon_filter_changes_fasta_output() {
         &[
             "-i",
             "tests/data/small.fasta",
-            "--dicodon-filter",
+            "--dicodon",
+            "0.5",
             "-f",
             "sco",
         ],
@@ -670,22 +670,15 @@ fn dicodon_filter_changes_fasta_output() {
     assert_eq!(filter_code, 0);
     assert_ne!(
         default_out, filter_out,
-        "--dicodon-filter should change output"
+        "--dicodon filter should change output"
     );
 }
 
 #[test]
-fn dicodon_and_dicodon_filter_are_mutually_exclusive() {
+fn dicodon_multiplier_runs_without_threshold() {
     let (_stdout, _stderr, code) = run(
-        &[
-            "-i",
-            "tests/data/small.fasta",
-            "--dicodon",
-            "--dicodon-filter",
-            "-f",
-            "sco",
-        ],
+        &["-i", "tests/data/small.fasta", "--dicodon", "-f", "sco"],
         None,
     );
-    assert_ne!(code, 0, "mutually exclusive flags should error");
+    assert_eq!(code, 0, "--dicodon without threshold should succeed");
 }
