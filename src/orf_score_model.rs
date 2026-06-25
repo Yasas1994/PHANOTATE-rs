@@ -95,3 +95,58 @@ mod tests {
         assert!(w >= -10.0 && w <= 10.0);
     }
 }
+
+/// Unified model that backs `--model`.
+///
+/// The file format is auto-detected: JSON files are loaded as
+/// `OrfScoreModel`; otherwise the `ml` feature attempts ONNX loading.
+#[derive(Debug)]
+pub enum OrfModel {
+    Json(Box<OrfScoreModel>),
+    #[cfg(feature = "ml")]
+    Onnx(crate::onnx_scorer::OnnxScorer),
+}
+
+impl OrfModel {
+    /// Load a model from a file, auto-detecting JSON vs ONNX.
+    pub fn from_file(path: &std::path::Path) -> anyhow::Result<Self> {
+        // Try JSON first because it is cheap and has a deterministic header.
+        if let Ok(text) = std::fs::read_to_string(path) {
+            if text.trim_start().starts_with('{') {
+                let model: OrfScoreModel = serde_json::from_str(&text)
+                    .with_context(|| format!("Failed to parse JSON model from {:?}", path))?;
+                anyhow::ensure!(
+                    model.num_features == NUM_ORF_SCORE_FEATURES,
+                    "Model expected {} features but code expects {}",
+                    model.num_features,
+                    NUM_ORF_SCORE_FEATURES
+                );
+                return Ok(OrfModel::Json(Box::new(model)));
+            }
+        }
+
+        #[cfg(feature = "ml")]
+        {
+            crate::onnx_scorer::OnnxScorer::from_file(path)
+                .map(OrfModel::Onnx)
+                .with_context(|| format!("Failed to load ONNX model from {:?}", path))
+        }
+
+        #[cfg(not(feature = "ml"))]
+        {
+            anyhow::bail!(
+                "File {:?} is not a valid JSON model and ONNX support is not compiled in (build with --features ml)",
+                path
+            )
+        }
+    }
+
+    /// Predict the graph edge weight for an ORF feature vector.
+    pub fn score(&self, features: &OrfFeatures) -> f64 {
+        match self {
+            OrfModel::Json(m) => m.score(features),
+            #[cfg(feature = "ml")]
+            OrfModel::Onnx(m) => m.score(features),
+        }
+    }
+}

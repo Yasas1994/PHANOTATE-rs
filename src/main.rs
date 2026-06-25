@@ -104,8 +104,13 @@ struct Cli {
     #[arg(long = "dicodon")]
     dicodon: bool,
 
-    /// Path to a learned ORF scoring model (JSON). When given, the model
-    /// replaces the default PHANOTATE heuristic scoring function.
+    /// Path to a learned ORF scoring model. Accepts:
+    ///   * JSON logistic-regression models produced by scripts/train_orf_score_model.py
+    ///   * ONNX models when PHANOTATE-rs is built with `--features ml`
+    ///
+    /// When given, the model replaces the default PHANOTATE heuristic scoring
+    /// function and uses a Prodigal-style dicodon coding-potential score as a
+    /// learned feature.
     #[arg(long = "model", value_name = "FILE")]
     model: Option<PathBuf>,
 }
@@ -201,7 +206,7 @@ fn process_genome(
     table: u8,
     rbs_mode: RbsMode,
     dicodon: bool,
-    orf_model: Option<&phanotate_rs::orf_score_model::OrfScoreModel>,
+    orf_model: Option<&phanotate_rs::orf_score_model::OrfModel>,
 ) -> Result<(String, String, String)> {
     let contig_length = genome.seq.len();
     let dna = &genome.seq;
@@ -791,11 +796,11 @@ fn main() -> Result<()> {
     };
 
     // Load learned ORF scoring model if provided
-    let orf_model: Option<phanotate_rs::orf_score_model::OrfScoreModel> = cli
+    let orf_model: Option<phanotate_rs::orf_score_model::OrfModel> = cli
         .model
         .as_ref()
         .map(|p| {
-            phanotate_rs::orf_score_model::OrfScoreModel::from_json(p)
+            phanotate_rs::orf_score_model::OrfModel::from_file(p)
                 .with_context(|| format!("Failed to load ORF scoring model from {:?}", p))
         })
         .transpose()?;

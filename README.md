@@ -145,6 +145,10 @@ loads a JSON logistic-regression model trained on annotated genomes and
 replaces that heuristic entirely. This makes it possible to benchmark the
 legacy scorer and a learned scorer from the same binary.
 
+When PHANOTATE-rs is built with `--features ml`, `--model` also accepts ONNX
+models (for example from XGBoost or logistic-regression ONNX exports) in
+addition to the JSON format.
+
 ```bash
 # Train a model from annotated GenBank files
 python scripts/train_orf_score_model.py -i annotated_genomes/ -o model.json
@@ -194,8 +198,7 @@ Options:
                            Export ORF features and exit
       --rbs-mode <RBS_MODE>
                            RBS scoring mode: auto, sd, non-sd, prodigal [default: auto]
-      --dicodon            Use Prodigal-style dicodon scoring instead of GC-frame hold
-      --model <FILE>       Path to a learned ORF scoring model (JSON); replaces the default heuristic
+      --model <FILE>       Path to a learned ORF scoring model (JSON, or ONNX with --features ml); replaces the default heuristic
   -h, --help          Print help
   -V, --version       Print version
 ```
@@ -233,7 +236,6 @@ result = phanotate_rs.phanotate(
     mask_n=False,
     detect_table=False,
     rbs_mode="auto",   # auto, sd, non-sd, prodigal
-    dicodon=False,
     model=None,        # path to a learned ORF scoring model (JSON)
 )
 

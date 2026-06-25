@@ -38,7 +38,7 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import precision_score, recall_score, roc_auc_score
 
-NUM_FEATURES = 14
+NUM_FEATURES = 15
 SUPPORTED_TABLES = {1, 4, 6, 11, 15, 25}
 
 FEATURE_NAMES = [
@@ -56,7 +56,59 @@ FEATURE_NAMES = [
     "frame_2",
     "frame_3",
     "log_non_sd_rbs_score",
+    "log_coding_potential",
 ]
+
+
+def export_linear_to_onnx(
+    model: LogisticRegression,
+    mean: np.ndarray,
+    std: np.ndarray,
+    path: Path,
+) -> None:
+    """Export a standardised logistic-regression model to ONNX."""
+    try:
+        from skl2onnx import convert_sklearn
+        from skl2onnx.common.data_types import FloatTensorType
+    except ImportError as exc:
+        raise RuntimeError("skl2onnx is required for --onnx export") from exc
+
+    from sklearn.pipeline import Pipeline
+    from sklearn.preprocessing import StandardScaler
+
+    pipe = Pipeline([
+        ("scaler", StandardScaler()),
+        ("clf", LogisticRegression(max_iter=1000, class_weight="balanced", solver="lbfgs")),
+    ])
+    pipe.named_steps["scaler"].mean_ = mean
+    pipe.named_steps["scaler"].scale_ = std
+    pipe.named_steps["scaler"].var_ = std**2
+    pipe.named_steps["scaler"].n_features_in_ = mean.shape[0]
+    pipe.named_steps["clf"].coef_ = model.coef_
+    pipe.named_steps["clf"].intercept_ = model.intercept_
+    pipe.named_steps["clf"].classes_ = model.classes_
+
+    initial_type = [("input", FloatTensorType([None, NUM_FEATURES]))]
+    onnx_model = convert_sklearn(
+        pipe,
+        initial_types=initial_type,
+        target_opset=15,
+        options={LogisticRegression: {"zipmap": False}},
+    )
+    path.write_bytes(onnx_model.SerializeToString())
+
+
+def export_xgboost_to_onnx(model, path: Path) -> None:
+    """Export an XGBoost classifier to ONNX."""
+    try:
+        from onnxmltools.convert.common.data_types import FloatTensorType
+        import onnxmltools
+    except ImportError as exc:
+        raise RuntimeError("onnxmltools is required for XGBoost ONNX export") from exc
+    onnx_model = onnxmltools.convert_xgboost(
+        model, initial_types=[("input", FloatTensorType([None, NUM_FEATURES]))]
+    )
+    path.write_bytes(onnx_model.SerializeToString())
 
 
 def _find_phanotate_binary() -> str:
@@ -420,6 +472,22 @@ def main() -> int:
         default=None,
         help="Path to the phanotate-rs binary (default: target/release/phanotate-rs).",
     )
+    parser.add_argument(
+        "--model-type",
+        choices=["logistic", "xgboost"],
+        default="logistic",
+        help="Model type to train (default: logistic).",
+    )
+    parser.add_argument(
+        "--onnx",
+        action="store_true",
+        help="Also export the trained model to ONNX.",
+    )
+    parser.add_argument(
+        "--onnx-only",
+        action="store_true",
+        help="Export only ONNX, not JSON.",
+    )
     args = parser.parse_args()
 
     binary = args.binary or _find_phanotate_binary()
@@ -464,24 +532,62 @@ def main() -> int:
     mean = X.mean(axis=0)
     std = X.std(axis=0)
     std[std == 0.0] = 1.0
-    Xs = (X - mean) / std
 
-    model = LogisticRegression(
-        max_iter=1000, class_weight="balanced", solver="lbfgs"
-    )
-    model.fit(Xs, y)
+    if args.model_type == "logistic":
+        Xs = (X - mean) / std
+        model = LogisticRegression(
+            max_iter=1000, class_weight="balanced", solver="lbfgs"
+        )
+        model.fit(Xs, y)
+    elif args.model_type == "xgboost":
+        try:
+            from xgboost import XGBClassifier
+        except ImportError as exc:
+            print(
+                "Error: xgboost is required for --model-type xgboost",
+                file=sys.stderr,
+            )
+            raise SystemExit(1) from exc
+        scale_pos_weight = (len(y) - total_pos) / max(total_pos, 1)
+        model = XGBClassifier(
+            scale_pos_weight=scale_pos_weight, eval_metric="logloss"
+        )
+        model.fit(X, y)
+    else:
+        print(f"Error: unsupported model type: {args.model_type}", file=sys.stderr)
+        return 1
 
-    out = {
-        "version": 1,
-        "num_features": NUM_FEATURES,
-        "coeffs": model.coef_[0].tolist(),
-        "mean": mean.tolist(),
-        "std": std.tolist(),
-    }
-    Path(args.output).write_text(json.dumps(out, indent=2))
-    print(
-        f"Wrote {args.output}: {total_pos} positive, {total_rows - total_pos} negative examples."
-    )
+    out_path = Path(args.output)
+
+    if args.model_type == "logistic" and not args.onnx_only:
+        out = {
+            "version": 1,
+            "num_features": NUM_FEATURES,
+            "coeffs": model.coef_[0].tolist(),
+            "mean": mean.tolist(),
+            "std": std.tolist(),
+        }
+        out_path.write_text(json.dumps(out, indent=2))
+        print(
+            f"Wrote {args.output}: {total_pos} positive, {total_rows - total_pos} negative examples."
+        )
+
+    if args.model_type == "xgboost" and not (args.onnx or args.onnx_only):
+        print(
+            "Error: JSON export is only supported for logistic models. "
+            "Use --onnx or --onnx-only to export an XGBoost model.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if args.onnx or args.onnx_only:
+        onnx_path = out_path.with_suffix(".onnx")
+        if args.model_type == "logistic":
+            export_linear_to_onnx(model, mean, std, onnx_path)
+        else:
+            export_xgboost_to_onnx(model, onnx_path)
+        print(f"Wrote {onnx_path}.")
+
     return 0
 
 
