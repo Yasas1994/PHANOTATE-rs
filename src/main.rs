@@ -361,28 +361,41 @@ fn process_genome(
             RbsMode::Prodigal => unreachable!(),
         };
 
+        // Train the non-SD model once; it is used for scoring in non-SD mode
+        // and for fallback motif labels in SD mode.
+        let non_sd_model =
+            phanotate_rs::nonsd_motif::NonSdModel::train(&orfs, dna, rc_dna, start_codons_map);
+
         if use_non_sd {
             // Neutralize the SD-based RBS weight so the path is scored purely by
             // the non-SD motif model and start-codon type weights.
             for orf in &mut orfs {
                 orf.weight_rbs = 1.0;
             }
-            let model =
-                phanotate_rs::nonsd_motif::NonSdModel::train(&orfs, dna, rc_dna, start_codons_map);
             for orf in &mut orfs {
-                orf.motif_score = model.score_orf(orf, dna, rc_dna);
+                orf.motif_score = non_sd_model.score_orf(orf, dna, rc_dna);
                 let (wseq, start) = phanotate_rs::nonsd_motif::upstream_context(dna, rc_dna, orf);
                 let hit = if start >= 18 + phanotate_rs::nonsd_motif::MIN_MOTIF_LEN {
                     phanotate_rs::nonsd_motif::find_best_motif(
-                        &model.mot_wt,
+                        &non_sd_model.mot_wt,
                         wseq,
                         start,
-                        model.no_mot,
+                        non_sd_model.no_mot,
                     )
                 } else {
                     phanotate_rs::nonsd_motif::MotifHit::default()
                 };
                 orf.rbs_motif = phanotate_rs::nonsd_motif::format_motif_hit(&hit);
+            }
+        } else {
+            // SD mode: if an ORF has no SD motif, display the best non-SD motif
+            // as a fallback label, but keep the SD-based weight unchanged.
+            for orf in &mut orfs {
+                if orf.rbs_motif.is_none() {
+                    orf.rbs_motif = non_sd_model
+                        .best_motif_label(orf, dna, rc_dna)
+                        .map(|m| format!("nonSD:{m}"));
+                }
             }
         }
     }
