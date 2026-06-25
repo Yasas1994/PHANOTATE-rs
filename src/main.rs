@@ -543,14 +543,14 @@ fn process_genome(
         orf.hold = log_hold.exp();
         if !dicodon {
             // Default mode: GC-frame hold is the coding-potential multiplier.
-            orf.dicodon_score = 1.0 / orf.hold;
+            orf.coding_potential = 1.0 / orf.hold;
         }
     }
 
     if dicodon {
         let model = phanotate_rs::dicodon::DicodonModel::train(&orfs, dna, rc_dna);
         for orf in &mut orfs {
-            orf.dicodon_score = model.score_orf(orf);
+            orf.coding_potential = model.score_orf(orf);
         }
     }
 
@@ -592,9 +592,9 @@ fn process_genome(
         };
 
         for orf in &mut orfs {
-            orf.dicodon_score = model.score_orf(orf);
+            orf.coding_potential = model.score_orf(orf);
         }
-        orfs.retain(|o| o.dicodon_score >= dicodon_filter_threshold);
+        orfs.retain(|o| o.coding_potential >= dicodon_filter_threshold);
     }
 
     // --- Score ORFs ---

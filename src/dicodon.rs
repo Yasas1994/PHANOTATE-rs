@@ -203,7 +203,7 @@ mod tests {
             weight_rbs: 2.0,
             hold: 100.0,
             motif_score: 1.0,
-            dicodon_score: 1.0,
+            coding_potential: 1.0,
             start_score: 1.0,
             weight: 1.0,
         }];
@@ -233,7 +233,7 @@ mod tests {
             weight_rbs: 2.0,
             hold: 100.0,
             motif_score: 1.0,
-            dicodon_score: 1.0,
+            coding_potential: 1.0,
             start_score: 1.0,
             weight: 1.0,
         }];
@@ -264,7 +264,7 @@ mod tests {
             weight_rbs: 2.0,
             hold: 100.0,
             motif_score: 1.0,
-            dicodon_score: 1.0,
+            coding_potential: 1.0,
             start_score: 1.0,
             weight: 1.0,
         };

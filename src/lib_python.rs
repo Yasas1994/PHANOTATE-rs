@@ -795,14 +795,14 @@ fn process_single_genome(
         }
         orf.hold = log_hold.exp();
         if !dicodon {
-            orf.dicodon_score = 1.0 / orf.hold;
+            orf.coding_potential = 1.0 / orf.hold;
         }
     }
 
     if dicodon {
         let model = crate::dicodon::DicodonModel::train(&orfs, dna, rc_dna);
         for orf in &mut orfs {
-            orf.dicodon_score = model.score_orf(orf);
+            orf.coding_potential = model.score_orf(orf);
         }
     }
 
@@ -819,9 +819,9 @@ fn process_single_genome(
         // Python binding receives plain sequence/FASTA; use heuristic seeds.
         let model = crate::dicodon::DicodonModel::train(&orfs, dna, rc_dna);
         for orf in &mut orfs {
-            orf.dicodon_score = model.score_orf(orf);
+            orf.coding_potential = model.score_orf(orf);
         }
-        orfs.retain(|o| o.dicodon_score >= dicodon_filter_threshold);
+        orfs.retain(|o| o.coding_potential >= dicodon_filter_threshold);
     }
 
     for orf in &mut orfs {
@@ -1104,9 +1104,9 @@ fn find_orfs(
     if dicodon_filter {
         let model = crate::dicodon::DicodonModel::train(&orfs, &dna, &rc_dna);
         for orf in &mut orfs {
-            orf.dicodon_score = model.score_orf(orf);
+            orf.coding_potential = model.score_orf(orf);
         }
-        orfs.retain(|o| o.dicodon_score >= dicodon_filter_threshold);
+        orfs.retain(|o| o.coding_potential >= dicodon_filter_threshold);
     }
 
     Ok(orfs.iter().map(|o| PyOrf::from(o)).collect())
@@ -1422,7 +1422,7 @@ mod tests {
             motif_score: 1.0,
             rbs_motif: None,
             hold,
-            dicodon_score: 1.0 / hold,
+            coding_potential: 1.0 / hold,
             start_score: 1.0,
             weight: -1.0,
         };

@@ -29,7 +29,7 @@ impl StartSiteFeatures {
         f[4] = (orf.rbs_score as f64 / crate::rbs_scanner::NUM_RBS_BINS as f64).clamp(0.0, 1.0);
         f[5] = orf.motif_score.clamp(0.0, 10.0);
         f[6] = (orf.seq.len() as f64).max(1.0).ln();
-        f[7] = orf.dicodon_score.clamp(0.001, 1000.0);
+        f[7] = orf.coding_potential.clamp(0.001, 1000.0);
         match orf.frame.abs() {
             1 => f[8] = 1.0,
             2 => f[9] = 1.0,
@@ -88,7 +88,7 @@ mod tests {
             weight_rbs: 1.5,
             motif_score: 1.2,
             hold: 10.0,
-            dicodon_score: 0.1,
+            coding_potential: 0.1,
             start_score: 1.0,
             weight: 1.0,
         });

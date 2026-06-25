@@ -243,7 +243,7 @@ mod tests {
             motif_score: 1.0,
             rbs_motif: None,
             hold,
-            dicodon_score: 1.0 / hold,
+            coding_potential: 1.0 / hold,
             start_score: 1.0,
             weight: -1.0,
         }
