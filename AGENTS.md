@@ -24,12 +24,10 @@
 6. Finds the maximum-weight path (shortest path on negated weights) via topological relaxation, falling back to Bellman-Ford when cycles exist.
 7. Writes predicted genes in GenBank (`gbk`), GFF3 (`gff`), or simple coordinate (`sco`) format, plus optional protein (`-a`) and nucleotide (`-d`) FASTA side outputs.
 8. Optionally detects the most likely genetic code automatically (`--detect-table`, `--detect-table-batch`).
-9. Optionally adjusts ORF scores with an ONNX regression model (`--ml-model`, feature `ml`).
 
 ### Key differentiators from the original Python PHANOTATE
 * ~76× faster single-threaded and ~386× faster multi-threaded on the 100-genome validation set.
 * Six supported NCBI translation tables (1, 4, 6, 11, 15, 25); automatic detection among tables 1, 4, 11, 15, 25.
-* Optional ML-adjusted ORF scoring via ONNX models.
 * Full Python API via PyO3 bindings.
 
 ---
@@ -45,7 +43,6 @@
 | Parallelism | `rayon` + `indicatif` | Multi-threaded contig processing with progress bars |
 | Big integers | `num-bigint` | Graph edge weights (prevents overflow on long ORFs) |
 | Python bindings | `pyo3` 0.22 (optional, feature `python`) | `import phanotate_rs` |
-| ML inference | `ort` 2.0.0-rc.12 + `ndarray` (optional, feature `ml`) | Hybrid ORF scoring |
 | Dev benchmarks | `criterion` | Criterion.rs benchmark harness |
 | Dev assertions | `pretty_assertions`, `tempfile` | Integration test helpers |
 | Python packaging | `maturin` | Wheel builds for PyPI |
@@ -93,21 +90,11 @@ maturin develop
 pytest tests/test_python_bindings.py -v
 ```
 
-### ML feature build
-```bash
-# Build with ONNX Runtime support for --ml-model
-cargo build --release --features ml
-
-# Build with both Python and ML
-cargo build --release --features "python ml"
-```
-
 ### Feature flags
 | Feature | Dependencies enabled | What it does |
 |---------|----------------------|--------------|
 | `default` | none | CLI + library only |
 | `python` | `pyo3` | Python bindings via PyO3 |
-| `ml` | `ort`, `ndarray` | ONNX-based hybrid ORF scorer |
 
 ---
 
@@ -115,10 +102,10 @@ cargo build --release --features "python ml"
 
 | File | Lines | Responsibility |
 |------|-------|----------------|
-| `main.rs` | 733 | CLI entry point. Parses args, orchestrates the full pipeline, handles `--detect-table`, `--detect-table-batch`, `--ml-model`, `--export-features`, `--progress`, `-a`, `-d`, `-c`, `-m`, and multi-threading via `rayon`. |
-| `lib.rs` | 23 | Library root. Re-exports all internal modules as `pub` so integration tests can access crate-private items. Conditionally includes `ml_scorer` (feature `ml`) and `lib_python` (feature `python`). |
+| `main.rs` | 733 | CLI entry point. Parses args, orchestrates the full pipeline, handles `--detect-table`, `--detect-table-batch`, `--export-features`, `--progress`, `-a`, `-d`, `-c`, `-m`, and multi-threading via `rayon`. |
+| `lib.rs` | 23 | Library root. Re-exports all internal modules as `pub` so integration tests can access crate-private items. Conditionally includes `lib_python` (feature `python`). |
 | `lib_python.rs` | 1,091 | PyO3 Python bindings. Exposes `phanotate()`, `find_orfs()`, `detect_table()`, `score_rbs()`, `translate()`, plus utility functions and Python classes (`Orf`, `Gene`, `TableScore`). Mirrors the CLI pipeline logic. |
-| `orf.rs` | 1,286 | ORF data structure (`Orf` struct) and ORF finding logic. `find_orfs_with_rc()` enumerates all ORFs in 6 reading frames. Includes RBS scoring, P(stop) computation, heuristic scoring (`score()`), and hybrid ML scoring (`score_hybrid()` gated by `cfg(feature = "ml")`). |
+| `orf.rs` | 1,286 | ORF data structure (`Orf` struct) and ORF finding logic. `find_orfs_with_rc()` enumerates all ORFs in 6 reading frames. Includes RBS scoring, P(stop) computation, and heuristic scoring (`score()`). |
 | `graph.rs` | 525 | Graph construction from ORFs. Defines `Node`, `Edge`, and `Graph` structs. `Graph::from_orfs()` builds a directed graph where nodes are start/stop codons and edges represent ORFs, gaps, and overlaps. Uses `num_bigint::BigInt` for weights. |
 | `bellman_ford.rs` | 258 | Shortest path solver. Tries topological-order relaxation (O(V+E)) first; falls back to Bellman-Ford if backward edges (cycles from strand switches) are detected. |
 | `codon_table.rs` | 452 | NCBI translation tables 1, 4, 6, 11, 15, 25. Each supported table has its own `translate_tableN()` function. Also provides `start_codons()`, `stop_codons()`, `is_supported_table()`, `table_name()`. |
@@ -127,8 +114,7 @@ cargo build --release --features "python ml"
 | `gcfp.rs` | 221 | GC Frame Plot computation. Sliding 120-bp window (40 codons) over 3 frames to compute per-position GC content arrays. |
 | `output.rs` | 543 | Output formatting: GenBank (`gbk`), GFF3 (`gff`), and SCO (`sco`) formats. Also writes protein and nucleotide FASTA side outputs. |
 | `weights.rs` | 133 | Edge weight formulas: `score_overlap()` and `score_gap()` for graph edges. Includes unit tests. |
-| `ml_features.rs` | 233 | Feature extraction for ML. `OrfFeatures` is a fixed 14-feature vector (`NUM_FEATURES = 14`). Includes TSV export (`write_features_tsv()`) for training data generation. |
-| `ml_scorer.rs` | 202 | ONNX-based ML scorer (gated by `cfg(feature = "ml")`). Wraps `ort::Session` in a `Mutex` for thread safety. Loads ONNX models, runs inference, clamps adjustment to [0.5, 2.0]. |
+| `ml_features.rs` | 233 | Feature extraction for training. `OrfFeatures` is a fixed 14-feature vector (`NUM_FEATURES = 14`). Includes TSV export (`write_features_tsv()`) for training data generation. |
 
 ---
 
@@ -209,26 +195,19 @@ After bumping, commit, tag (`git tag v0.1.4`), and push. GitHub Actions triggers
 
 ---
 
-## 8. ML / Hybrid Scoring (Optional Feature)
+## 8. Training Data Generation
 
-The `ml` feature enables an optional ONNX-based ORF score adjustment:
+`--export-features` writes a TSV of per-ORF features without running annotation. This is useful for training external scoring models:
 
 1. **Feature extraction** (`src/ml_features.rs`): 14 features per ORF (log length, RBS score, log hold, P(stop), start-codon one-hot, GC content, frame indicators, log motif score).
-2. **Training** (`scripts/train_model.py`, `notebooks/01_train_hybrid_scorer.ipynb`): Train XGBoost / Random Forest / MLP regressors on labeled ORF data.
-3. **Label generation** (`scripts/generate_training_labels.py`): Uses UniProt reviewed phage proteins + DIAMOND blastp to label ORFs as genes/non-genes.
-4. **Export to ONNX** (`scripts/export_tree_onnx.py`, `scripts/export_regressor_onnx.py`, `scripts/export_pytorch_onnx.py`): Export trained models to ONNX format.
-5. **Runtime inference** (`src/ml_scorer.rs`): Loads ONNX model, predicts adjustment factor per ORF, clamps to [0.5, 2.0], multiplies heuristic weight.
+2. **Export** (`--export-features features.tsv`): Generates the TSV from the input genome.
+3. **Training scripts** (`scripts/train_model.py`, `notebooks/01_train_hybrid_scorer.ipynb`): Example pipelines that train XGBoost / Random Forest / MLP regressors on labeled ORF data.
+4. **Label generation** (`scripts/generate_training_labels.py`): Uses UniProt reviewed phage proteins + DIAMOND blastp to label ORFs as genes/non-genes.
 
 Trained example models and training plots are stored under `notebooks/models/`.
 
 Usage:
 ```bash
-# Build with ML support
-cargo build --release --features ml
-
-# Run with a trained model
-./target/release/phanotate-rs -i genome.fasta --ml-model model.onnx
-
 # Export features for training data generation
 ./target/release/phanotate-rs -i genome.fasta --export-features features.tsv
 ```
@@ -280,10 +259,9 @@ cargo build --release --features ml
 | Build Python bindings | `maturin develop` |
 | Run Python tests | `pytest tests/test_python_bindings.py -v` |
 | Run benchmarks | `cargo bench` |
-| Build with ML | `cargo build --release --features ml` |
 | Annotate a genome | `./target/release/phanotate-rs -i genome.fasta -f sco` |
 | Detect genetic code | `./target/release/phanotate-rs -i genome.fasta --detect-table --yes` |
-| Export ML features | `./target/release/phanotate-rs -i genome.fasta --export-features features.tsv` |
+| Export features | `./target/release/phanotate-rs -i genome.fasta --export-features features.tsv` |
 | Bump version | `./bump-version.sh 0.1.4` |
 
 ---

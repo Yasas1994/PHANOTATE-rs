@@ -161,7 +161,6 @@ Options:
       --detect-table       Detect the most likely translation table
       --detect-table-batch Detect tables for all records, print TSV summary
       --yes                Skip the confirmation prompt with --detect-table
-      --ml-model <FILE>    ONNX model for ML-adjusted scoring
       --export-features <FILE>
                            Export ORF features and exit
       --rbs-mode <RBS_MODE>

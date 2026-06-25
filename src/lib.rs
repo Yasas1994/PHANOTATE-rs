@@ -19,9 +19,6 @@ pub mod rbs_scanner;
 pub mod start_refiner;
 pub mod weights;
 
-#[cfg(feature = "ml")]
-pub mod ml_scorer;
-
 // Include Python bindings module only when the `python` feature is enabled.
 // This avoids linking against libpython during `cargo test --lib`.
 #[cfg(feature = "python")]

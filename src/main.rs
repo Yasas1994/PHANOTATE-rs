@@ -86,17 +86,12 @@ struct Cli {
     #[arg(long, default_value_t = false)]
     yes: bool,
 
-    /// Path to an ONNX model for ML-adjusted ORF scoring.
-    /// Requires the `ml` feature to be enabled at compile time.
-    #[arg(long = "ml-model", value_name = "FILE")]
-    ml_model: Option<PathBuf>,
-
     /// Export ORF features to FILE and exit without running annotation.
-    /// Useful for generating training data for the ML model.
+    /// Useful for generating training data.
     #[arg(
         long = "export-features",
         value_name = "FILE",
-        conflicts_with_all = ["detect_table", "detect_table_batch", "ml_model", "start_model", "dicodon"]
+        conflicts_with_all = ["detect_table", "detect_table_batch", "start_model", "dicodon"]
     )]
     export_features: Option<PathBuf>,
 
@@ -205,8 +200,6 @@ fn process_genome(
     mask_n: bool,
     table: u8,
     rbs_mode: RbsMode,
-    #[cfg(feature = "ml")] ml_scorer: &Option<phanotate_rs::ml_scorer::MlScorer>,
-    #[cfg(not(feature = "ml"))] _ml_scorer: &Option<()>,
     dicodon: bool,
     start_model: Option<&phanotate_rs::start_refiner::StartModel>,
 ) -> Result<(String, String, String)> {
@@ -576,17 +569,6 @@ fn process_genome(
     }
 
     // --- Score ORFs ---
-    #[cfg(feature = "ml")]
-    if let Some(ref ml) = ml_scorer {
-        for orf in &mut orfs {
-            orf.score_hybrid(start_codons_map, ml);
-        }
-    } else {
-        for orf in &mut orfs {
-            orf.score(start_codons_map);
-        }
-    }
-    #[cfg(not(feature = "ml"))]
     for orf in &mut orfs {
         orf.score(start_codons_map);
     }
@@ -677,15 +659,6 @@ fn main() -> Result<()> {
         anyhow::bail!(
             "Invalid translation table: {}. Supported: 1, 4, 6, 11, 15, 25",
             cli.table
-        );
-    }
-
-    // Validate ML model flag
-    #[cfg(not(feature = "ml"))]
-    if cli.ml_model.is_some() {
-        anyhow::bail!(
-            "The --ml-model flag requires the 'ml' feature to be enabled at compile time. \
-             Rebuild with: cargo build --features ml"
         );
     }
 
@@ -824,19 +797,6 @@ fn main() -> Result<()> {
         }
     };
 
-    // Load ML model if provided
-    #[cfg(feature = "ml")]
-    let ml_scorer: Option<phanotate_rs::ml_scorer::MlScorer> = cli
-        .ml_model
-        .as_ref()
-        .map(|p| {
-            phanotate_rs::ml_scorer::MlScorer::from_file(p.to_str().unwrap_or(""))
-                .with_context(|| format!("Failed to load ML model from {:?}", p))
-        })
-        .transpose()?;
-    #[cfg(not(feature = "ml"))]
-    let ml_scorer: Option<()> = None;
-
     // Load start-site scoring model if provided
     let start_model: Option<phanotate_rs::start_refiner::StartModel> = cli
         .start_model
@@ -870,7 +830,6 @@ fn main() -> Result<()> {
                     cli.mask_n,
                     effective_table,
                     cli.rbs_mode,
-                    &ml_scorer,
                     cli.dicodon,
                     start_model.as_ref(),
                 )
@@ -890,7 +849,6 @@ fn main() -> Result<()> {
                     cli.mask_n,
                     effective_table,
                     cli.rbs_mode,
-                    &ml_scorer,
                     cli.dicodon,
                     start_model.as_ref(),
                 )

@@ -1,0 +1,28 @@
+digraph original_phanotate {
+  rankdir=TB;
+  node [shape=box, style=rounded, fontname="Helvetica", fontsize=11];
+  edge [fontname="Helvetica", fontsize=10];
+
+  find [label="Find ORFs in 6 frames"];
+  compute [label="Compute per-ORF signals"];
+
+  rbs [label="RBS / Shine-Dalgarno motif\n► weight_rbs"];
+  hold [label="P(stop) + GC frame plot\n► hold\n► coding_potential = 1/hold"];
+  start [label="start codon type\n► start_weight"];
+
+  score [label="Orf::score\nweight = -(1/hold × start_weight × weight_rbs)"];
+  build_graph [label="Graph edges\n(score_overlap, score_gap)"];
+  bf [label="Bellman-Ford shortest path"];
+  genes [label="Predicted genes"];
+
+  find -> compute;
+  compute -> rbs [style=dashed];
+  compute -> hold [style=dashed];
+  compute -> start [style=dashed];
+
+  rbs -> score [style=dashed];
+  hold -> score [style=dashed];
+  start -> score [style=dashed];
+
+  score -> build_graph -> bf -> genes;
+}
