@@ -117,9 +117,6 @@ struct Cli {
     #[arg(long = "start-model", value_name = "FILE")]
     start_model: Option<PathBuf>,
 
-    /// Drop ORFs whose start-model score is below this threshold.
-    #[arg(long = "start-model-filter-threshold", value_name = "FLOAT")]
-    start_model_filter_threshold: Option<f64>,
 }
 
 /// Build start-codon weights from a list of codons.

@@ -13,6 +13,23 @@ use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use std::collections::HashMap;
 
+// ---------------------------------------------------------------------------
+// Shared Python-facing argument for --dicodon [THRESHOLD] semantics.
+// ---------------------------------------------------------------------------
+#[derive(FromPyObject)]
+enum DicodonArg {
+    Bool(bool),
+    Float(f64),
+}
+
+fn parse_dicodon_arg(arg: Option<DicodonArg>) -> (bool, Option<f64>) {
+    match arg {
+        None | Some(DicodonArg::Bool(false)) => (false, None),
+        Some(DicodonArg::Bool(true)) => (true, None),
+        Some(DicodonArg::Float(th)) => (true, Some(th)),
+    }
+}
+
 use crate::bellman_ford;
 use crate::codon_table;
 use crate::detect_table;
@@ -308,12 +325,11 @@ impl PyTableScore {
 ///     If True, use Prodigal-style SD scanning with non-SD fallback.
 ///     Default is False. `prodigal_rbs` is mutually exclusive with `sd`
 ///     and `non_sd`.
-/// dicodon : bool, optional
+/// dicodon : bool or float or None, optional
 ///     If True, use a Prodigal-style 6-mer dicodon coding-potential model.
-///     Default is False.
-/// dicodon_filter_threshold : float or None, optional
-///     If set, drop ORFs whose dicodon score is below this threshold. Requires
-///     `dicodon=True`. Default is None (no filtering).
+///     If a float is given, use the dicodon model and drop ORFs whose
+///     coding-potential score is below the threshold. Default is None
+///     (use the GC-frame hold score instead).
 /// start_model : str, optional
 ///     Path to a JSON start-site scoring model produced by
 ///     `scripts/train_start_model.py`. Default is None.
@@ -351,8 +367,7 @@ impl PyTableScore {
     non_sd = false,
     sd = false,
     prodigal_rbs = false,
-    dicodon = false,
-    dicodon_filter_threshold = None,
+    dicodon = None,
     start_model = None,
     min_orf_len = 90,
 ))]
@@ -367,11 +382,11 @@ fn phanotate(
     non_sd: bool,
     sd: bool,
     prodigal_rbs: bool,
-    dicodon: bool,
-    dicodon_filter_threshold: Option<f64>,
+    dicodon: Option<DicodonArg>,
     start_model: Option<&str>,
     min_orf_len: usize,
 ) -> PyResult<PyObject> {
+    let (dicodon, dicodon_filter_threshold) = parse_dicodon_arg(dicodon);
     if non_sd && sd {
         return Err(PyValueError::new_err(
             "non_sd and sd are mutually exclusive",
@@ -946,12 +961,11 @@ fn process_single_genome(
 ///     If True, score upstream RBS motifs with Prodigal-style SD scanning
 ///     and fall back to non-SD motifs for ORFs without a strong SD signal.
 ///     Default is False.
-/// dicodon : bool, optional
+/// dicodon : bool or float or None, optional
 ///     If True, use a Prodigal-style 6-mer dicodon coding-potential model.
-///     Default is False.
-/// dicodon_filter_threshold : float or None, optional
-///     If set, drop ORFs whose dicodon score is below this threshold. Requires
-///     `dicodon=True`. Default is None (no filtering).
+///     If a float is given, use the dicodon model and drop ORFs whose
+///     coding-potential score is below the threshold. Default is None
+///     (use the GC-frame hold score instead).
 /// start_model : str, optional
 ///     Path to a JSON start-site scoring model produced by
 ///     `scripts/train_start_model.py`. Default is None.
@@ -977,8 +991,7 @@ fn process_single_genome(
     mask_n = false,
     min_orf_len = 90,
     prodigal_rbs = false,
-    dicodon = false,
-    dicodon_filter_threshold = None,
+    dicodon = None,
     start_model = None,
 ))]
 fn find_orfs(
@@ -988,10 +1001,10 @@ fn find_orfs(
     mask_n: bool,
     min_orf_len: usize,
     prodigal_rbs: bool,
-    dicodon: bool,
-    dicodon_filter_threshold: Option<f64>,
+    dicodon: Option<DicodonArg>,
     start_model: Option<&str>,
 ) -> PyResult<Vec<PyOrf>> {
+    let (dicodon, dicodon_filter_threshold) = parse_dicodon_arg(dicodon);
     validate_table(table)?;
 
     let dna = genome::normalize_seq(sequence);
