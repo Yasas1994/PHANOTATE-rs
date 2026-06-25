@@ -10,7 +10,7 @@ Usage
     # Exact coordinate match
     python scripts/compare_predictions.py -p preds.sco -r ref.gb
 
-    # Allow start/stod differences up to 3 bp
+    # Allow start/stop differences up to 3 bp
     python scripts/compare_predictions.py -p preds.sco -r ref.gb --tolerance 3
 
 Metrics
@@ -22,6 +22,12 @@ Metrics
 A predicted gene is a true positive (TP) when both its start and stop
 coordinates are within `--tolerance` bp of a reference CDS. Coordinates on
 the reverse strand are compared as written in the SCO file (start > stop).
+
+Note on coordinates
+-------------------
+PHANOTATE SCO forward stops are the first base of the stop codon, while
+GenBank CDS coordinates include the full stop codon. For forward-strand CDS
+features we subtract 2 from the stop coordinate before comparing.
 """
 
 from __future__ import annotations
@@ -49,7 +55,7 @@ def _parse_genbank_cds(path: str) -> Set[Tuple[int, int]]:
     cds: Set[Tuple[int, int]] = set()
     current: dict | None = None
 
-    def parse_loc(loc: str) -> Tuple[int, int] | None:
+    def parse_loc(loc: str) -> Tuple[int, int, str] | None:
         loc = loc.strip()
         strand = "+"
         if loc.startswith("complement("):
@@ -67,7 +73,16 @@ def _parse_genbank_cds(path: str) -> Set[Tuple[int, int]]:
             return None
         low = min(s for s, _ in coords)
         high = max(e for _, e in coords)
-        return (low, high) if strand == "+" else (high, low)
+        return (low, high, strand)
+
+    def add_cds(parsed: Tuple[int, int, str] | None) -> None:
+        if parsed is None:
+            return
+        s, e, strand = parsed
+        if strand == "+" and e - s + 1 >= 3:
+            cds.add((s, e - 2))
+        else:
+            cds.add((s, e))
 
     for raw_line in block.splitlines():
         if not raw_line.strip():
@@ -85,15 +100,11 @@ def _parse_genbank_cds(path: str) -> Set[Tuple[int, int]]:
         feat_key_match = re.match(r"^\s{5}(\S+)\s+(\S.*)$", raw_line)
         if feat_key_match:
             if current is not None and current["key"] == "CDS":
-                parsed = parse_loc(current["location"])
-                if parsed is not None:
-                    cds.add(parsed)
+                add_cds(parse_loc(current["location"]))
             current = {"key": feat_key_match.group(1), "location": feat_key_match.group(2)}
 
     if current is not None and current["key"] == "CDS":
-        parsed = parse_loc(current["location"])
-        if parsed is not None:
-            cds.add(parsed)
+        add_cds(parse_loc(current["location"]))
 
     return cds
 

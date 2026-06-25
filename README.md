@@ -154,6 +154,9 @@ phanotate-rs -i genome.fasta --model model.json -f sco
 
 # Compare predictions to the reference annotations
 python scripts/compare_predictions.py -p preds.sco -r ref.gb
+
+# Compare Prodigal-gv to the reference annotations
+python scripts/compare_prodigal_gv.py -i ref.gb -r ref.gb -g 4
 ```
 
 In Python, pass `model=path` to `phanotate_rs.phanotate()` or
