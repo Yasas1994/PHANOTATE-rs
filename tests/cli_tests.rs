@@ -630,10 +630,10 @@ fn test_no_internal_stops_table4() {
 }
 
 // ---------------------------------------------------------------------------
-// Dicodon tests
+// Dicodon scoring
 // ---------------------------------------------------------------------------
 #[test]
-fn dicodon_filter_runs_on_genbank() {
+fn dicodon_runs_on_genbank() {
     let (stdout, _stderr, code) = run(
         &[
             "-i",
@@ -641,7 +641,6 @@ fn dicodon_filter_runs_on_genbank() {
             "-g",
             "4",
             "--dicodon",
-            "0.5",
             "-f",
             "sco",
         ],
@@ -654,36 +653,4 @@ fn dicodon_filter_runs_on_genbank() {
         5,
         "SCO line should have 5 columns"
     );
-}
-
-#[test]
-fn dicodon_filter_changes_fasta_output() {
-    let (default_out, _stderr, default_code) =
-        run(&["-i", "tests/data/small.fasta", "-f", "sco"], None);
-    let (filter_out, _stderr, filter_code) = run(
-        &[
-            "-i",
-            "tests/data/small.fasta",
-            "--dicodon",
-            "0.5",
-            "-f",
-            "sco",
-        ],
-        None,
-    );
-    assert_eq!(default_code, 0);
-    assert_eq!(filter_code, 0);
-    assert_ne!(
-        default_out, filter_out,
-        "--dicodon filter should change output"
-    );
-}
-
-#[test]
-fn dicodon_multiplier_runs_without_threshold() {
-    let (_stdout, _stderr, code) = run(
-        &["-i", "tests/data/small.fasta", "--dicodon", "-f", "sco"],
-        None,
-    );
-    assert_eq!(code, 0, "--dicodon without threshold should succeed");
 }

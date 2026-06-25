@@ -104,11 +104,10 @@ struct Cli {
     #[arg(long, value_enum, default_value = "auto")]
     rbs_mode: RbsMode,
 
-    /// Use a Prodigal-style 6-mer dicodon coding-potential model.
-    /// If a THRESHOLD is supplied, ORFs with a dicodon score below it are
-    /// dropped before the graph is built.
-    #[arg(long = "dicodon", value_name = "THRESHOLD", num_args = 0..=1)]
-    dicodon: Option<Option<f64>>,
+    /// Use a Prodigal-style 6-mer dicodon coding-potential model instead of
+    /// the default GC-frame hold score.
+    #[arg(long = "dicodon")]
+    dicodon: bool,
 
     /// Path to a learned start-site scoring model (JSON).
     #[arg(long = "start-model", value_name = "FILE")]
@@ -208,7 +207,7 @@ fn process_genome(
     rbs_mode: RbsMode,
     #[cfg(feature = "ml")] ml_scorer: &Option<phanotate_rs::ml_scorer::MlScorer>,
     #[cfg(not(feature = "ml"))] _ml_scorer: &Option<()>,
-    dicodon: Option<Option<f64>>,
+    dicodon: bool,
     start_model: Option<&phanotate_rs::start_refiner::StartModel>,
 ) -> Result<(String, String, String)> {
     let contig_length = genome.seq.len();
@@ -533,16 +532,13 @@ fn process_genome(
             }
         }
         orf.hold = log_hold.exp();
-        if dicodon.is_none() {
+        if !dicodon {
             // Default mode: GC-frame hold is the coding-potential multiplier.
             orf.coding_potential = 1.0 / orf.hold;
         }
     }
 
-    let use_dicodon = dicodon.is_some();
-    let dicodon_filter_threshold = dicodon.as_ref().and_then(|x| *x);
-
-    if use_dicodon {
+    if dicodon {
         let annotated: Vec<&Orf> = if genome.cds.is_empty() {
             Vec::new()
         } else {
@@ -561,27 +557,14 @@ fn process_genome(
                 .collect()
         };
 
-        let model = if dicodon_filter_threshold.is_some() {
-            if annotated.is_empty() {
-                eprintln!(
-                    "Warning: --dicodon filter enabled for '{}' but no annotated CDS found; \
-                     falling back to heuristic seed training.",
-                    genome.id
-                );
-                phanotate_rs::dicodon::DicodonModel::train(&orfs, dna, rc_dna)
-            } else {
-                phanotate_rs::dicodon::DicodonModel::from_annotated_orfs(&annotated, dna, rc_dna)
-            }
-        } else {
+        let model = if annotated.is_empty() {
             phanotate_rs::dicodon::DicodonModel::train(&orfs, dna, rc_dna)
+        } else {
+            phanotate_rs::dicodon::DicodonModel::from_annotated_orfs(&annotated, dna, rc_dna)
         };
 
         for orf in &mut orfs {
             orf.coding_potential = model.score_orf(orf);
-        }
-
-        if let Some(th) = dicodon_filter_threshold {
-            orfs.retain(|o| o.coding_potential >= th);
         }
     }
 

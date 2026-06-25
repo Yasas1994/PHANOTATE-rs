@@ -166,8 +166,7 @@ Options:
                            Export ORF features and exit
       --rbs-mode <RBS_MODE>
                            RBS scoring mode: auto, sd, non-sd, prodigal [default: auto]
-      --dicodon [<THRESHOLD>]
-                           Use Prodigal-style dicodon scoring; optional filter threshold
+      --dicodon            Use Prodigal-style dicodon scoring instead of GC-frame hold
       --start-model <FILE> Path to a learned start-site scoring model (JSON)
   -h, --help          Print help
   -V, --version       Print version

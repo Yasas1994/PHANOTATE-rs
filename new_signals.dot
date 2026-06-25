@@ -1,0 +1,37 @@
+digraph new_signals {
+  rankdir=TB;
+  node [shape=box, style=rounded, fontname="Helvetica", fontsize=11];
+  edge [fontname="Helvetica", fontsize=10];
+
+  find [label="Find ORFs\n(--closed-ends, --mask-n, --min-orf-len, -g)"];
+  compute [label="Compute per-ORF signals"];
+
+  rbs [label="--rbs-mode (sd / non-sd / prodigal / auto)\n► weight_rbs, motif_score, rbs_motif"];
+  hold [label="P(stop) + GCFP\n► hold\n► coding_potential = 1/hold"];
+  start [label="start codon\n► start_codon_weight"];
+  dicodon [label="--dicodon\n► alternative coding_potential"];
+  start_model [label="--start-model\n► start_score"];
+  ml [label="--ml-model\n► adjustment factor"];
+
+  score [label="Orf::score (or score_hybrid)\n► weight"];
+  build_graph [label="Graph edges\n(score_overlap, score_gap)"];
+  bf [label="Bellman-Ford shortest path"];
+  genes [label="Predicted genes"];
+
+  find -> compute;
+  compute -> rbs [style=dashed];
+  compute -> hold [style=dashed];
+  compute -> start [style=dashed];
+  compute -> dicodon [style=dashed];
+  compute -> start_model [style=dashed];
+  compute -> ml [style=dashed];
+
+  rbs -> score [style=dashed];
+  hold -> score [style=dashed];
+  start -> score [style=dashed];
+  dicodon -> score [style=dashed];
+  start_model -> score [style=dashed];
+  ml -> score [style=dashed];
+
+  score -> build_graph -> bf -> genes;
+}
