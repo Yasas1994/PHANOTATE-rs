@@ -314,13 +314,13 @@ fn process_genome(
             let bin = phanotate_rs::rbs_scanner::score_rbs_prodigal(&upstream);
             if bin > 0 {
                 orf.rbs_score = bin;
-                orf.weight_rbs = training_rbs[bin] / background_rbs[bin];
-                orf.motif_score = 1.0;
+                orf.sd_rbs_score = training_rbs[bin] / background_rbs[bin];
+                orf.non_sd_rbs_score = 1.0;
                 orf.rbs_motif = phanotate_rs::rbs_scanner::format_prodigal_rbs_motif(bin);
             } else {
                 orf.rbs_score = 0;
-                orf.weight_rbs = 1.0;
-                orf.motif_score = 1.0;
+                orf.sd_rbs_score = 1.0;
+                orf.non_sd_rbs_score = 1.0;
                 // Keep the best non-SD motif label for display, but do not let
                 // the non-SD score influence the graph path.  The non-SD model
                 // is trained globally and its absolute scale is not comparable
@@ -342,7 +342,7 @@ fn process_genome(
             *v /= tr_sum;
         }
         for orf in &mut orfs {
-            orf.weight_rbs = training_rbs[orf.rbs_score] / background_rbs[orf.rbs_score];
+            orf.sd_rbs_score = training_rbs[orf.rbs_score] / background_rbs[orf.rbs_score];
         }
 
         // --- Existing non-SD auto-detect block ---
@@ -362,10 +362,10 @@ fn process_genome(
             // Neutralize the SD-based RBS weight so the path is scored purely by
             // the non-SD motif model and start-codon type weights.
             for orf in &mut orfs {
-                orf.weight_rbs = 1.0;
+                orf.sd_rbs_score = 1.0;
             }
             for orf in &mut orfs {
-                orf.motif_score = non_sd_model.score_orf(orf, dna, rc_dna);
+                orf.non_sd_rbs_score = non_sd_model.score_orf(orf, dna, rc_dna);
                 let (wseq, start) = phanotate_rs::nonsd_motif::upstream_context(dna, rc_dna, orf);
                 let hit = if start >= 18 + phanotate_rs::nonsd_motif::MIN_MOTIF_LEN {
                     phanotate_rs::nonsd_motif::find_best_motif(

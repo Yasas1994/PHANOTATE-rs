@@ -76,7 +76,7 @@ impl DicodonModel {
             if (orf.seq.len() as f64) < threshold {
                 continue;
             }
-            if orf.weight_rbs <= 1.0 && orf.motif_score <= 1.0 {
+            if orf.sd_rbs_score <= 1.0 && orf.non_sd_rbs_score <= 1.0 {
                 continue;
             }
             let seq = orf.sequence();
@@ -200,9 +200,9 @@ mod tests {
             rbs_score: 0,
             rbs_motif: None,
             pstop: 0.01,
-            weight_rbs: 2.0,
+            sd_rbs_score: 2.0,
             hold: 100.0,
-            motif_score: 1.0,
+            non_sd_rbs_score: 1.0,
             coding_potential: 1.0,
             start_score: 1.0,
             weight: 1.0,
@@ -230,9 +230,9 @@ mod tests {
             rbs_score: 0,
             rbs_motif: None,
             pstop: 0.01,
-            weight_rbs: 2.0,
+            sd_rbs_score: 2.0,
             hold: 100.0,
-            motif_score: 1.0,
+            non_sd_rbs_score: 1.0,
             coding_potential: 1.0,
             start_score: 1.0,
             weight: 1.0,
@@ -261,9 +261,9 @@ mod tests {
             rbs_score: 0,
             rbs_motif: None,
             pstop: 0.01,
-            weight_rbs: 2.0,
+            sd_rbs_score: 2.0,
             hold: 100.0,
-            motif_score: 1.0,
+            non_sd_rbs_score: 1.0,
             coding_potential: 1.0,
             start_score: 1.0,
             weight: 1.0,

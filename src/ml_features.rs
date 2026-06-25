@@ -67,8 +67,8 @@ impl Orf {
         // 3. P(stop) for this ORF
         features[3] = self.pstop as f32;
 
-        // 4. log(weight_rbs) — guard against zero/negative weights
-        features[4] = self.weight_rbs.max(1e-6).ln() as f32;
+        // 4. log(sd_rbs_score) — guard against zero/negative weights
+        features[4] = self.sd_rbs_score.max(1e-6).ln() as f32;
 
         // 5-7. Start codon one-hot (ATG, GTG, TTG)
         let sc = self.start_codon();
@@ -93,8 +93,8 @@ impl Orf {
         features[11] = if abs_frame == 2 { 1.0 } else { 0.0 };
         features[12] = if abs_frame == 3 { 1.0 } else { 0.0 };
 
-        // 13. log(motif_score)
-        features[13] = self.motif_score.max(1e-6).ln() as f32;
+        // 13. log(non_sd_rbs_score)
+        features[13] = self.non_sd_rbs_score.max(1e-6).ln() as f32;
 
         OrfFeatures(features)
     }
@@ -134,8 +134,8 @@ mod tests {
             seq: b"atggctagctagctagc".to_vec(),
             rbs_score: 15,
             pstop: 0.05,
-            weight_rbs: 2.5,
-            motif_score: 1.0,
+            sd_rbs_score: 2.5,
+            non_sd_rbs_score: 1.0,
             rbs_motif: None,
             hold,
             coding_potential: 1.0 / hold,
@@ -218,7 +218,7 @@ mod tests {
     #[test]
     fn test_motif_score_feature() {
         let mut orf = test_orf();
-        orf.motif_score = 2.0;
+        orf.non_sd_rbs_score = 2.0;
         let f = orf.extract_features();
         assert_eq!(f.0.len(), NUM_FEATURES);
         assert!((f.0[13] - 2.0f32.ln()).abs() < 0.001);

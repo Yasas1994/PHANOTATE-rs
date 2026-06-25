@@ -148,9 +148,9 @@ pub struct PyOrf {
     #[pyo3(get)]
     pub pstop: f64,
     #[pyo3(get)]
-    pub weight_rbs: f64,
+    pub sd_rbs_score: f64,
     #[pyo3(get)]
-    pub motif_score: f64,
+    pub non_sd_rbs_score: f64,
     #[pyo3(get)]
     pub rbs_motif: Option<String>,
     #[pyo3(get)]
@@ -171,8 +171,8 @@ impl From<&Orf> for PyOrf {
             frame: orf.frame,
             rbs_score: orf.rbs_score,
             pstop: orf.pstop,
-            weight_rbs: orf.weight_rbs,
-            motif_score: orf.motif_score,
+            sd_rbs_score: orf.sd_rbs_score,
+            non_sd_rbs_score: orf.non_sd_rbs_score,
             rbs_motif: orf.rbs_motif.clone(),
             hold: orf.hold,
             weight: orf.weight,
@@ -572,13 +572,13 @@ fn process_single_genome(
             let bin = crate::rbs_scanner::score_rbs_prodigal(&upstream);
             if bin > 0 {
                 orf.rbs_score = bin;
-                orf.weight_rbs = training_rbs[bin] / background_rbs[bin];
-                orf.motif_score = 1.0;
+                orf.sd_rbs_score = training_rbs[bin] / background_rbs[bin];
+                orf.non_sd_rbs_score = 1.0;
                 orf.rbs_motif = crate::rbs_scanner::format_prodigal_rbs_motif(bin);
             } else {
                 orf.rbs_score = 0;
-                orf.weight_rbs = 1.0;
-                orf.motif_score = 1.0;
+                orf.sd_rbs_score = 1.0;
+                orf.non_sd_rbs_score = 1.0;
                 // Record the best non-SD motif label for display, but do not
                 // let the non-SD score influence the graph path.  The model's
                 // absolute scale is not comparable to the per-bin SD weight.
@@ -598,7 +598,7 @@ fn process_single_genome(
             *v /= tr_sum;
         }
         for orf in &mut orfs {
-            orf.weight_rbs = training_rbs[orf.rbs_score] / background_rbs[orf.rbs_score];
+            orf.sd_rbs_score = training_rbs[orf.rbs_score] / background_rbs[orf.rbs_score];
         }
 
         // --- Existing non-SD auto-detect block ---
@@ -617,10 +617,10 @@ fn process_single_genome(
             // Neutralize the SD-based RBS weight so the path is scored purely by
             // the non-SD motif model and start-codon type weights.
             for orf in &mut orfs {
-                orf.weight_rbs = 1.0;
+                orf.sd_rbs_score = 1.0;
             }
             for orf in &mut orfs {
-                orf.motif_score = non_sd_model.score_orf(orf, dna, rc_dna);
+                orf.non_sd_rbs_score = non_sd_model.score_orf(orf, dna, rc_dna);
                 let (wseq, start) = crate::nonsd_motif::upstream_context(dna, rc_dna, orf);
                 let hit = if start >= 18 + crate::nonsd_motif::MIN_MOTIF_LEN {
                     crate::nonsd_motif::find_best_motif(
@@ -949,7 +949,7 @@ fn process_single_genome(
 /// -------
 /// list[Orf]
 ///     A list of Orf objects, each with attributes:
-///     start, stop, frame, rbs_score, pstop, weight_rbs, motif_score,
+///     start, stop, frame, rbs_score, pstop, sd_rbs_score, non_sd_rbs_score,
 ///     rbs_motif, hold, weight, start_codon, sequence.
 ///
 /// Examples
@@ -1049,13 +1049,13 @@ fn find_orfs(
             let bin = crate::rbs_scanner::score_rbs_prodigal(&upstream);
             if bin > 0 {
                 orf.rbs_score = bin;
-                orf.weight_rbs = training_rbs[bin] / background_rbs[bin];
-                orf.motif_score = 1.0;
+                orf.sd_rbs_score = training_rbs[bin] / background_rbs[bin];
+                orf.non_sd_rbs_score = 1.0;
                 orf.rbs_motif = crate::rbs_scanner::format_prodigal_rbs_motif(bin);
             } else {
                 orf.rbs_score = 0;
-                orf.weight_rbs = 1.0;
-                orf.motif_score = 1.0;
+                orf.sd_rbs_score = 1.0;
+                orf.non_sd_rbs_score = 1.0;
                 // Record the best non-SD motif label for display only.
                 orf.rbs_motif = non_sd_model
                     .best_motif_label(orf, &dna, &rc_dna)
@@ -1389,8 +1389,8 @@ mod tests {
             seq: b"atg".to_vec(),
             rbs_score: 10,
             pstop: 0.05,
-            weight_rbs: 1.0,
-            motif_score: 1.0,
+            sd_rbs_score: 1.0,
+            non_sd_rbs_score: 1.0,
             rbs_motif: None,
             hold,
             coding_potential: 1.0 / hold,

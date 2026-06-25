@@ -127,7 +127,7 @@ class TestOrfFinder:
             assert hasattr(orf, 'frame')
             assert hasattr(orf, 'rbs_score')
             assert hasattr(orf, 'pstop')
-            assert hasattr(orf, 'weight_rbs')
+            assert hasattr(orf, 'sd_rbs_score')
             assert hasattr(orf, 'hold')
             assert hasattr(orf, 'weight')
             assert hasattr(orf, 'start_codon')

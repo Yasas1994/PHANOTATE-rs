@@ -176,7 +176,7 @@ def build_features(orf) -> np.ndarray:
     else:
         f[3] = 1.0
     f[4] = min(orf.rbs_score / NUM_RBS_BINS, 1.0)
-    f[5] = min(max(orf.motif_score, 0.0), 10.0)
+    f[5] = min(max(orf.non_sd_motif_score, 0.0), 10.0)
     f[6] = np.log(max(len(orf.sequence), 1))
     f[7] = min(max(1.0 / orf.hold, 0.001), 1000.0)
     frame_abs = abs(orf.frame)

@@ -27,7 +27,7 @@ impl StartSiteFeatures {
             f[3] = 1.0;
         }
         f[4] = (orf.rbs_score as f64 / crate::rbs_scanner::NUM_RBS_BINS as f64).clamp(0.0, 1.0);
-        f[5] = orf.motif_score.clamp(0.0, 10.0);
+        f[5] = orf.non_sd_rbs_score.clamp(0.0, 10.0);
         f[6] = (orf.seq.len() as f64).max(1.0).ln();
         f[7] = orf.coding_potential.clamp(0.001, 1000.0);
         match orf.frame.abs() {
@@ -85,8 +85,8 @@ mod tests {
             rbs_score: 5,
             rbs_motif: None,
             pstop: 0.01,
-            weight_rbs: 1.5,
-            motif_score: 1.2,
+            sd_rbs_score: 1.5,
+            non_sd_rbs_score: 1.2,
             hold: 10.0,
             coding_potential: 0.1,
             start_score: 1.0,

@@ -10,8 +10,8 @@ pub struct Orf {
     pub seq: Vec<u8>, // the ORF nucleotide sequence (forward direction)
     pub rbs_score: usize,
     pub pstop: f64, // P(stop) for this ORF
-    pub weight_rbs: f64,
-    pub motif_score: f64,          // non-Shine-Dalgarno motif score multiplier
+    pub sd_rbs_score: f64,
+    pub non_sd_rbs_score: f64,          // non-Shine-Dalgarno motif score multiplier
     pub rbs_motif: Option<String>, // detected RBS / non-SD motif sequence
     pub hold: f64,                 // product of adjusted P(not_stop) per codon
     pub coding_potential: f64,     // coding-potential multiplier (1/hold default, or dicodon model)
@@ -56,8 +56,8 @@ impl Orf {
         if let Some(&w) = start_codons.get(&sc) {
             s *= w;
         }
-        s *= self.weight_rbs;
-        s *= self.motif_score;
+        s *= self.sd_rbs_score;
+        s *= self.non_sd_rbs_score;
         self.weight = -s;
     }
 
@@ -172,8 +172,8 @@ pub fn find_orfs_with_rc(
                         seq,
                         rbs_score,
                         pstop,
-                        weight_rbs: 1.0,
-                        motif_score: 1.0,
+                        sd_rbs_score: 1.0,
+                        non_sd_rbs_score: 1.0,
                         rbs_motif,
                         hold,
                         coding_potential: 1.0 / hold,
@@ -224,8 +224,8 @@ pub fn find_orfs_with_rc(
                         seq,
                         rbs_score,
                         pstop,
-                        weight_rbs: 1.0,
-                        motif_score: 1.0,
+                        sd_rbs_score: 1.0,
+                        non_sd_rbs_score: 1.0,
                         rbs_motif,
                         hold,
                         coding_potential: 1.0 / hold,
@@ -263,8 +263,8 @@ pub fn find_orfs_with_rc(
                         seq,
                         rbs_score,
                         pstop,
-                        weight_rbs: 1.0,
-                        motif_score: 1.0,
+                        sd_rbs_score: 1.0,
+                        non_sd_rbs_score: 1.0,
                         rbs_motif,
                         hold,
                         coding_potential: 1.0 / hold,
@@ -309,8 +309,8 @@ pub fn find_orfs_with_rc(
                         seq,
                         rbs_score,
                         pstop,
-                        weight_rbs: 1.0,
-                        motif_score: 1.0,
+                        sd_rbs_score: 1.0,
+                        non_sd_rbs_score: 1.0,
                         rbs_motif,
                         hold,
                         coding_potential: 1.0 / hold,
@@ -580,11 +580,11 @@ mod tests {
             seq: b"atgttagctagctagctaa".to_vec(),
             rbs_score: 10,
             pstop: 0.05,
-            weight_rbs: 1.0,
+            sd_rbs_score: 1.0,
             hold,
             coding_potential: 1.0 / hold,
             start_score: 1.0,
-            motif_score: 1.0,
+            non_sd_rbs_score: 1.0,
             rbs_motif: None,
             weight: 1.0,
         };
@@ -592,7 +592,7 @@ mod tests {
         orf.score(&start_codons);
         let base_weight = orf.weight;
 
-        orf.motif_score = 2.0;
+        orf.non_sd_rbs_score = 2.0;
         orf.score(&start_codons);
         assert!((orf.weight - base_weight * 2.0).abs() < 1e-9);
     }
