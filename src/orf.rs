@@ -11,11 +11,11 @@ pub struct Orf {
     pub rbs_score: usize,
     pub pstop: f64, // P(stop) for this ORF
     pub sd_rbs_score: f64,
-    pub non_sd_rbs_score: f64,          // non-Shine-Dalgarno motif score multiplier
+    pub non_sd_rbs_score: f64, // non-Shine-Dalgarno motif score multiplier
     pub rbs_motif: Option<String>, // detected RBS / non-SD motif sequence
-    pub hold: f64,                 // product of adjusted P(not_stop) per codon
-    pub coding_potential: f64,     // coding-potential multiplier (1/hold default, or dicodon model)
-    pub weight: f64,               // final ORF edge weight (negative)
+    pub hold: f64,             // product of adjusted P(not_stop) per codon
+    pub coding_potential: f64, // coding-potential multiplier (1/hold default, or dicodon model)
+    pub weight: f64,           // final ORF edge weight (negative)
 }
 
 impl Orf {
@@ -49,7 +49,17 @@ impl Orf {
         pt * pa * pa + pt * pg * pa + pt * pa * pg
     }
 
-    pub fn score(&mut self, start_codons: &std::collections::HashMap<Vec<u8>, f64>) {
+    pub fn score(
+        &mut self,
+        start_codons: &std::collections::HashMap<Vec<u8>, f64>,
+        model: Option<&crate::orf_score_model::OrfScoreModel>,
+    ) {
+        if let Some(m) = model {
+            let features = self.extract_features();
+            self.weight = m.score(&features);
+            return;
+        }
+
         let mut s = self.coding_potential;
         let sc = self.start_codon().to_vec();
         if let Some(&w) = start_codons.get(&sc) {
@@ -59,7 +69,6 @@ impl Orf {
         s *= self.non_sd_rbs_score;
         self.weight = -s;
     }
-
 }
 
 /// Enumerate all ORFs in all six reading frames.
@@ -583,11 +592,11 @@ mod tests {
             weight: 1.0,
         };
         let start_codons = std::collections::HashMap::new();
-        orf.score(&start_codons);
+        orf.score(&start_codons, None);
         let base_weight = orf.weight;
 
         orf.non_sd_rbs_score = 2.0;
-        orf.score(&start_codons);
+        orf.score(&start_codons, None);
         assert!((orf.weight - base_weight * 2.0).abs() < 1e-9);
     }
 }

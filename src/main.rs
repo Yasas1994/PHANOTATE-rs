@@ -104,6 +104,10 @@ struct Cli {
     #[arg(long = "dicodon")]
     dicodon: bool,
 
+    /// Path to a learned ORF scoring model (JSON). When given, the model
+    /// replaces the default PHANOTATE heuristic scoring function.
+    #[arg(long = "model", value_name = "FILE")]
+    model: Option<PathBuf>,
 }
 
 /// Build start-codon weights from a list of codons.
@@ -197,6 +201,7 @@ fn process_genome(
     table: u8,
     rbs_mode: RbsMode,
     dicodon: bool,
+    orf_model: Option<&phanotate_rs::orf_score_model::OrfScoreModel>,
 ) -> Result<(String, String, String)> {
     let contig_length = genome.seq.len();
     let dna = &genome.seq;
@@ -558,7 +563,7 @@ fn process_genome(
 
     // --- Score ORFs ---
     for orf in &mut orfs {
-        orf.score(start_codons_map);
+        orf.score(start_codons_map, orf_model);
     }
 
     // --- Build graph ---
@@ -785,6 +790,16 @@ fn main() -> Result<()> {
         }
     };
 
+    // Load learned ORF scoring model if provided
+    let orf_model: Option<phanotate_rs::orf_score_model::OrfScoreModel> = cli
+        .model
+        .as_ref()
+        .map(|p| {
+            phanotate_rs::orf_score_model::OrfScoreModel::from_json(p)
+                .with_context(|| format!("Failed to load ORF scoring model from {:?}", p))
+        })
+        .transpose()?;
+
     // Process each contig in parallel
     let results: Vec<(String, String, String)> = if cli.progress {
         let pb = ProgressBar::new(genomes.len() as u64);
@@ -809,6 +824,7 @@ fn main() -> Result<()> {
                     effective_table,
                     cli.rbs_mode,
                     cli.dicodon,
+                    orf_model.as_ref(),
                 )
             })
             .collect::<Result<Vec<_>>>()?
@@ -827,6 +843,7 @@ fn main() -> Result<()> {
                     effective_table,
                     cli.rbs_mode,
                     cli.dicodon,
+                    orf_model.as_ref(),
                 )
             })
             .collect::<Result<Vec<_>>>()?

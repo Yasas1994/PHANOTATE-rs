@@ -18,6 +18,15 @@ fn parse_rbs_mode(s: &str) -> PyResult<RbsMode> {
         .map_err(|e| PyValueError::new_err(format!("Invalid rbs_mode: {}", e)))
 }
 
+fn load_orf_model(path: Option<&str>) -> PyResult<Option<crate::orf_score_model::OrfScoreModel>> {
+    match path {
+        None => Ok(None),
+        Some(p) => crate::orf_score_model::OrfScoreModel::from_json(std::path::Path::new(p))
+            .map(Some)
+            .map_err(|e| PyRuntimeError::new_err(format!("Failed to load ORF model: {}", e))),
+    }
+}
+
 use crate::bellman_ford;
 use crate::codon_table;
 use crate::detect_table;
@@ -161,10 +170,13 @@ pub struct PyOrf {
     pub start_codon: String,
     #[pyo3(get)]
     pub sequence: String,
+    #[pyo3(get)]
+    pub features: Vec<f64>,
 }
 
 impl From<&Orf> for PyOrf {
     fn from(orf: &Orf) -> Self {
+        let features = orf.extract_features();
         PyOrf {
             start: orf.start,
             stop: orf.stop,
@@ -178,6 +190,7 @@ impl From<&Orf> for PyOrf {
             weight: orf.weight,
             start_codon: String::from_utf8_lossy(orf.start_codon()).to_string(),
             sequence: String::from_utf8_lossy(&orf.seq).to_string(),
+            features: features.0.iter().map(|&v| f64::from(v)).collect(),
         }
     }
 }
@@ -193,6 +206,11 @@ impl PyOrf {
 
     fn __str__(&self) -> String {
         self.__repr__()
+    }
+
+    /// Return the numeric feature vector used by the optional --model scorer.
+    fn extract_features(&self) -> Vec<f64> {
+        self.features.clone()
     }
 }
 
@@ -312,6 +330,9 @@ impl PyTableScore {
 /// dicodon : bool, optional
 ///     If True, use a Prodigal-style 6-mer dicodon coding-potential model
 ///     instead of the GC-frame hold score. Default is False.
+/// model : str, optional
+///     Path to a JSON ORF scoring model. When given, the model replaces the
+///     default PHANOTATE heuristic scoring function. Default is None.
 /// min_orf_len : int, optional
 ///     Minimum ORF length in nucleotides. Default is 90.
 ///
@@ -345,6 +366,7 @@ impl PyTableScore {
     detect_table = false,
     rbs_mode = "auto",
     dicodon = false,
+    model = None,
     min_orf_len = 90,
 ))]
 fn phanotate(
@@ -357,9 +379,11 @@ fn phanotate(
     detect_table: bool,
     rbs_mode: &str,
     dicodon: bool,
+    model: Option<&str>,
     min_orf_len: usize,
 ) -> PyResult<PyObject> {
     let rbs_mode = parse_rbs_mode(rbs_mode)?;
+    let orf_model = load_orf_model(model)?;
     // Parse format
     let out_format = parse_format(format)?;
 
@@ -417,6 +441,7 @@ fn phanotate(
         min_orf_len,
         rbs_mode,
         dicodon,
+        orf_model.as_ref(),
     )?;
 
     // Build Python dict return
@@ -450,6 +475,7 @@ fn process_single_genome(
     min_orf_len: usize,
     rbs_mode: RbsMode,
     dicodon: bool,
+    orf_model: Option<&crate::orf_score_model::OrfScoreModel>,
 ) -> PyResult<(String, String, String, Vec<PyGene>, bool)> {
     let contig_length = dna.len();
 
@@ -604,7 +630,8 @@ fn process_single_genome(
 
         // Train the non-SD model once; it is used for scoring in non-SD mode
         // and for fallback motif labels in SD mode.
-        let non_sd_model = crate::nonsd_motif::NonSdModel::train(&orfs, dna, rc_dna, start_codons_map);
+        let non_sd_model =
+            crate::nonsd_motif::NonSdModel::train(&orfs, dna, rc_dna, start_codons_map);
 
         if use_non_sd {
             // Neutralize the SD-based RBS weight so the path is scored purely by
@@ -783,7 +810,7 @@ fn process_single_genome(
     }
 
     for orf in &mut orfs {
-        orf.score(start_codons_map);
+        orf.score(start_codons_map, orf_model);
     }
 
     // --- Build graph ---
@@ -925,6 +952,9 @@ fn process_single_genome(
 /// dicodon : bool, optional
 ///     If True, use a Prodigal-style 6-mer dicodon coding-potential model
 ///     instead of the GC-frame hold score. Default is False.
+/// model : str, optional
+///     Path to a JSON ORF scoring model. When given, the model replaces the
+///     default PHANOTATE heuristic scoring function. Default is None.
 ///
 /// Returns
 /// -------
@@ -948,6 +978,7 @@ fn process_single_genome(
     min_orf_len = 90,
     rbs_mode = "auto",
     dicodon = false,
+    model = None,
 ))]
 fn find_orfs(
     sequence: &str,
@@ -957,8 +988,10 @@ fn find_orfs(
     min_orf_len: usize,
     rbs_mode: &str,
     dicodon: bool,
+    model: Option<&str>,
 ) -> PyResult<Vec<PyOrf>> {
     let rbs_mode = parse_rbs_mode(rbs_mode)?;
+    let orf_model = load_orf_model(model)?;
     validate_table(table)?;
 
     let dna = genome::normalize_seq(sequence);
@@ -1047,6 +1080,12 @@ fn find_orfs(
         let model = crate::dicodon::DicodonModel::train(&orfs, &dna, &rc_dna);
         for orf in &mut orfs {
             orf.coding_potential = model.score_orf(orf);
+        }
+    }
+
+    if let Some(m) = orf_model.as_ref() {
+        for orf in &mut orfs {
+            orf.score(&start_codons_map, Some(m));
         }
     }
 

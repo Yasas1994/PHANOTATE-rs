@@ -1,6 +1,8 @@
 # PHANOTATE-rs ML Training Notebooks
 
-This directory contains Jupyter notebooks for training and evaluating machine learning models that predict ORF score adjustments for PHANOTATE-rs.
+This directory contains Jupyter notebooks for training and evaluating machine learning models that predict ORF scores for PHANOTATE-rs.
+
+> **Note:** The runtime ONNX/ML scorer (`--ml-model`) has been removed. The current pipeline uses the lightweight JSON model loaded via `--model`. For a ready-to-use training script, see `scripts/train_orf_score_model.py`.
 
 ## Quick Start
 
@@ -8,18 +10,17 @@ This directory contains Jupyter notebooks for training and evaluating machine le
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Build PHANOTATE-rs with ML support
+# 2. Build PHANOTATE-rs
 cd ..
-cargo build --release --features ml
+cargo build --release
 
-# 3. Generate training labels (using UniProt + DIAMOND)
-#    This creates labels.tsv by comparing ORFs against reviewed phage proteins
-python scripts/generate_training_labels.py -i genome.fasta -o notebooks/labels.tsv
+# 3. Train a JSON model directly from annotated GenBank files
+python scripts/train_orf_score_model.py -i annotated_genomes/ -o notebooks/model.json
 
-# 4. Generate training features
-./target/release/phanotate-rs -i genome.fasta --export-features notebooks/features.tsv
+# 4. Use the model
+./target/release/phanotate-rs -i genome.fasta --model notebooks/model.json -f sco
 
-# 5. Launch Jupyter
+# 5. Launch Jupyter for exploratory training
 jupyter notebook
 
 # 6. Open `01_train_hybrid_scorer.ipynb` and run all cells
@@ -29,13 +30,13 @@ jupyter notebook
 
 ### `01_train_hybrid_scorer.ipynb`
 
-End-to-end training pipeline:
+End-to-end exploratory training pipeline:
 
 1. **Load & inspect** ORF features exported from PHANOTATE-rs
 2. **Explore** feature distributions, correlations, and label relationships
 3. **Train** multiple models (Logistic Regression, Random Forest, XGBoost)
 4. **Evaluate** with ROC, PR curves, and calibration plots
-5. **Export** the best model to ONNX for Rust inference
+5. **Export** a JSON logistic-regression model compatible with `--model`
 6. **Validate** end-to-end by running PHANOTATE-rs with the trained model
 
 ## Feature Description
@@ -48,7 +49,7 @@ The 14 features extracted per ORF (from `src/ml_features.rs`):
 | `rbs_score_norm` | Shine-Dalgarno score / 27 | 0–1 |
 | `log_hold` | Log of GC frame plot product | varies |
 | `pstop` | Stop codon probability | 0–1 |
-| `weight_rbs_log` | Log of RBS likelihood ratio | varies |
+| `log_sd_rbs_score` | Log of SD RBS likelihood ratio | varies |
 | `start_codon_atg` | 1 if start is ATG, else 0 | 0 or 1 |
 | `start_codon_gtg` | 1 if start is GTG, else 0 | 0 or 1 |
 | `start_codon_ttg` | 1 if start is TTG, else 0 | 0 or 1 |
@@ -57,7 +58,7 @@ The 14 features extracted per ORF (from `src/ml_features.rs`):
 | `frame_1` | 1 if \|frame\| == 1, else 0 | 0 or 1 |
 | `frame_2` | 1 if \|frame\| == 2, else 0 | 0 or 1 |
 | `frame_3` | 1 if \|frame\| == 3, else 0 | 0 or 1 |
-| `log_motif_score` | Natural log of motif score | varies |
+| `log_non_sd_rbs_score` | Natural log of non-SD motif score | varies |
 
 ## Training Data
 
@@ -108,18 +109,19 @@ If you don't have annotations, the notebook can generate pseudo-labels based on 
 
 ## Model Export
 
-The notebook exports trained models to ONNX format, which PHANOTATE-rs loads at runtime:
+The recommended path is to use `scripts/train_orf_score_model.py`, which exports the standardised coefficients, means, and standard deviations as JSON:
 
-```python
-# In the notebook
-export_regressor_to_onnx(model, FEATURE_NAMES, "model.onnx")
+```bash
+python scripts/train_orf_score_model.py -i annotated_genomes/ -o model.json
 ```
 
 Then use with PHANOTATE-rs:
 
 ```bash
-phanotate-rs -i genome.fasta --ml-model model.onnx
+phanotate-rs -i genome.fasta --model model.json -f sco
 ```
+
+The notebook can also produce a JSON logistic-regression model for `--model`; ONNX export is no longer supported by the runtime.
 
 ## Outputs
 
@@ -131,12 +133,12 @@ Each run produces:
 - `outputs/rf_importances.png` — Random Forest feature importance
 - `outputs/xgb_importances.png` — XGBoost feature importance
 - `outputs/model_comparison.png` — ROC and PR curves
-- `outputs/model_*.onnx` — Exported ONNX models
+- `outputs/model_*.json` — Exported JSON models compatible with `--model`
 - `outputs/experiment_summary.json` — Metrics and metadata
 
 ## Tips
 
 - **Start small**: Use a single phage genome (~5kb) for initial experiments
 - **Feature engineering**: Try adding codon usage bias, protein length, or amino acid composition
-- **Model selection**: XGBoost regressor works best for the hybrid scorer; Random Forest is more interpretable
-- **Adjustment bounds**: The Rust scorer clamps adjustments to [0.5, 2.0], so the model only tweaks the heuristic
+- **Model selection**: Logistic regression is the format natively consumed by `--model`; the notebook can train and export it
+- **Scoring range**: The Rust scorer clamps the learned log-odds score to [-10, 10]

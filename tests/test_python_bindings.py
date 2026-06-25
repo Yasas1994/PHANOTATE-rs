@@ -5,8 +5,11 @@ Run with: pytest tests/test_python_bindings.py -v
 Or:       python -m pytest tests/test_python_bindings.py -v
 """
 
+import json
 import os
 import sys
+import tempfile
+
 import pytest
 
 # Ensure the local build is importable
@@ -367,6 +370,51 @@ class TestPhanotatePipeline:
         default = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test")
         dicodon = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", dicodon=True)
         assert default["primary"] != dicodon["primary"]
+
+    def test_phanotate_model_changes_output(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            json.dump(
+                {
+                    "version": 1,
+                    "num_features": 14,
+                    "coeffs": [5.0] + [0.0] * 13,
+                    "mean": [0.0] * 14,
+                    "std": [1.0] * 14,
+                },
+                fh,
+            )
+            path = fh.name
+        try:
+            default = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test")
+            model = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", model=path)
+            assert default["primary"] != model["primary"]
+        finally:
+            os.unlink(path)
+
+    def test_phanotate_model_invalid_path(self):
+        with pytest.raises(RuntimeError):
+            phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", model="/nonexistent/model.json")
+
+    def test_find_orfs_model_parameter(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            json.dump(
+                {
+                    "version": 1,
+                    "num_features": 14,
+                    "coeffs": [0.0] * 14,
+                    "mean": [0.0] * 14,
+                    "std": [1.0] * 14,
+                },
+                fh,
+            )
+            path = fh.name
+        try:
+            orfs = phanotate_rs.find_orfs(SYNTHETIC_SEQ, model=path)
+            assert len(orfs) > 0
+            # All ORFs should expose the same-length feature vector.
+            assert all(len(orf.extract_features()) == 14 for orf in orfs)
+        finally:
+            os.unlink(path)
 
 # ---------------------------------------------------------------------------
 # 5. Integration tests with real data

@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::process::Command;
 
 const PHANOTATE_RS: &str = env!("CARGO_BIN_EXE_phanotate-rs");
@@ -57,6 +58,7 @@ fn test_help_flag() {
     assert!(stdout.contains("-g"), "help should mention -g");
     assert!(stdout.contains("-i"), "help should mention -i");
     assert!(stdout.contains("-m"), "help should mention -m");
+    assert!(stdout.contains("--model"), "help should mention --model");
 }
 
 // ---------------------------------------------------------------------------
@@ -337,7 +339,14 @@ fn test_phix174_sco_matches_golden() {
 #[test]
 fn rbs_mode_non_sd_runs_without_error() {
     let (stdout, _stderr, code) = run(
-        &["-i", "tests/data/small.fasta", "--rbs-mode", "non-sd", "-f", "sco"],
+        &[
+            "-i",
+            "tests/data/small.fasta",
+            "--rbs-mode",
+            "non-sd",
+            "-f",
+            "sco",
+        ],
         None,
     );
     assert_eq!(code, 0);
@@ -347,7 +356,14 @@ fn rbs_mode_non_sd_runs_without_error() {
 #[test]
 fn rbs_mode_non_sd_sco_includes_motif_column() {
     let (stdout, _stderr, code) = run(
-        &["-i", "tests/data/small.fasta", "--rbs-mode", "non-sd", "-f", "sco"],
+        &[
+            "-i",
+            "tests/data/small.fasta",
+            "--rbs-mode",
+            "non-sd",
+            "-f",
+            "sco",
+        ],
         None,
     );
     assert_eq!(code, 0);
@@ -360,7 +376,14 @@ fn rbs_mode_non_sd_sco_includes_motif_column() {
 #[test]
 fn rbs_mode_sd_runs_without_error() {
     let (stdout, _stderr, code) = run(
-        &["-i", "tests/data/small.fasta", "--rbs-mode", "sd", "-f", "sco"],
+        &[
+            "-i",
+            "tests/data/small.fasta",
+            "--rbs-mode",
+            "sd",
+            "-f",
+            "sco",
+        ],
         None,
     );
     assert_eq!(code, 0);
@@ -390,18 +413,9 @@ fn rbs_mode_rejects_invalid_value() {
 
 #[test]
 fn old_rbs_flags_are_removed() {
-    let (_stdout, _stderr, code1) = run(
-        &["-i", "tests/data/small.fasta", "--non-sd"],
-        None,
-    );
-    let (_stdout, _stderr, code2) = run(
-        &["-i", "tests/data/small.fasta", "--sd"],
-        None,
-    );
-    let (_stdout, _stderr, code3) = run(
-        &["-i", "tests/data/small.fasta", "--prodigal-rbs"],
-        None,
-    );
+    let (_stdout, _stderr, code1) = run(&["-i", "tests/data/small.fasta", "--non-sd"], None);
+    let (_stdout, _stderr, code2) = run(&["-i", "tests/data/small.fasta", "--sd"], None);
+    let (_stdout, _stderr, code3) = run(&["-i", "tests/data/small.fasta", "--prodigal-rbs"], None);
     assert_ne!(code1, 0, "--non-sd should no longer exist");
     assert_ne!(code2, 0, "--sd should no longer exist");
     assert_ne!(code3, 0, "--prodigal-rbs should no longer exist");
@@ -600,5 +614,87 @@ fn dicodon_runs_on_genbank() {
         data_line.split('\t').count(),
         5,
         "SCO line should have 5 columns"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// ORF scoring model (--model)
+// ---------------------------------------------------------------------------
+
+fn write_temp_model(content: &str) -> tempfile::NamedTempFile {
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    std::io::Write::write_all(&mut file, content.as_bytes()).unwrap();
+    file.flush().unwrap();
+    file
+}
+
+#[test]
+fn model_flag_runs_without_error() {
+    let model = r#"{"version":1,"num_features":14,"coeffs":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"mean":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"std":[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0]}"#;
+    let file = write_temp_model(model);
+    let path = file.path().to_str().unwrap();
+    let (stdout, _stderr, code) = run(
+        &[
+            "-i",
+            "tests/golden/NC_001365.gb",
+            "--model",
+            path,
+            "-f",
+            "sco",
+        ],
+        None,
+    );
+    assert_eq!(code, 0, "--model should exit successfully: {stdout}");
+    let data_line = stdout.lines().find(|l| !l.starts_with('#')).unwrap();
+    assert_eq!(
+        data_line.split('\t').count(),
+        5,
+        "SCO line should have 5 columns"
+    );
+}
+
+#[test]
+fn model_flag_changes_output() {
+    // A model that strongly rewards longer ORFs should change predictions
+    // relative to the default PHANOTATE heuristic.
+    let model = r#"{"version":1,"num_features":14,"coeffs":[5.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"mean":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"std":[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0]}"#;
+    let file = write_temp_model(model);
+    let path = file.path().to_str().unwrap();
+    let (default_out, _, default_code) = run(
+        &["-i", "tests/golden/NC_001365.gb", "-g", "4", "-f", "sco"],
+        None,
+    );
+    assert_eq!(default_code, 0);
+    let (model_out, _, model_code) = run(
+        &[
+            "-i",
+            "tests/golden/NC_001365.gb",
+            "-g",
+            "4",
+            "--model",
+            path,
+            "-f",
+            "sco",
+        ],
+        None,
+    );
+    assert_eq!(model_code, 0);
+    assert_ne!(
+        default_out.lines().collect::<Vec<_>>(),
+        model_out.lines().collect::<Vec<_>>(),
+        "--model should change the predicted gene set"
+    );
+}
+
+#[test]
+fn model_flag_rejects_invalid_json() {
+    let model = r#"{"version":1,"num_features":14}"#;
+    let file = write_temp_model(model);
+    let path = file.path().to_str().unwrap();
+    let (_stdout, stderr, code) = run(&["-i", "tests/golden/NC_001365.gb", "--model", path], None);
+    assert_ne!(code, 0, "invalid model should fail");
+    assert!(
+        stderr.to_lowercase().contains("model") || stderr.to_lowercase().contains("parse"),
+        "error should mention model: {stderr}"
     );
 }

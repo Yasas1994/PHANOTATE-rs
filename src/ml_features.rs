@@ -30,7 +30,7 @@ pub const FEATURE_NAMES: [&str; NUM_FEATURES] = [
     "rbs_score_norm",
     "log_hold",
     "pstop",
-    "weight_rbs_log",
+    "log_sd_rbs_score",
     "start_codon_atg",
     "start_codon_gtg",
     "start_codon_ttg",
@@ -39,7 +39,7 @@ pub const FEATURE_NAMES: [&str; NUM_FEATURES] = [
     "frame_1",
     "frame_2",
     "frame_3",
-    "log_motif_score",
+    "log_non_sd_rbs_score",
 ];
 
 impl Orf {
@@ -229,7 +229,7 @@ mod tests {
         let mut buf = Vec::new();
         write_features_tsv(&mut buf, &orfs, true).unwrap();
         let s = String::from_utf8(buf).unwrap();
-        assert!(s.starts_with("log_length\trbs_score_norm\tlog_hold\tpstop\tweight_rbs_log\tstart_codon_atg\tstart_codon_gtg\tstart_codon_ttg\tgc_content\tframe_fwd\tframe_1\tframe_2\tframe_3\tlog_motif_score"));
+        assert!(s.starts_with("log_length\trbs_score_norm\tlog_hold\tpstop\tlog_sd_rbs_score\tstart_codon_atg\tstart_codon_gtg\tstart_codon_ttg\tgc_content\tframe_fwd\tframe_1\tframe_2\tframe_3\tlog_non_sd_rbs_score"));
     }
 
     #[test]

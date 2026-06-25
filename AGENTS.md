@@ -115,31 +115,31 @@ pytest tests/test_python_bindings.py -v
 | `output.rs` | 543 | Output formatting: GenBank (`gbk`), GFF3 (`gff`), and SCO (`sco`) formats. Also writes protein and nucleotide FASTA side outputs. |
 | `weights.rs` | 133 | Edge weight formulas: `score_overlap()` and `score_gap()` for graph edges. Includes unit tests. |
 | `ml_features.rs` | 233 | Feature extraction for training. `OrfFeatures` is a fixed 14-feature vector (`NUM_FEATURES = 14`). Includes TSV export (`write_features_tsv()`) for training data generation. |
+| `orf_score_model.rs` | ~120 | Lightweight learned ORF scoring model. Loads a JSON logistic-regression model and returns a negative log-odds edge weight for `Orf::score()`. |
 
 ---
 
 ## 5. Testing Strategy
 
-The project uses a **three-tier testing** approach. The exact number of compiled tests depends on the enabled features (`python` / `ml`).
+The project uses a **three-tier testing** approach. The exact number of compiled tests depends on the enabled `python` feature.
 
 ### Tier 1 — Unit tests (inline in source files)
 * Located in `#[cfg(test)]` modules inside `src/` files.
-* With default features, `cargo test --lib -- --skip debug_ --skip regression_ --skip lambda_ --skip table4_` runs **98 tests**.
-* With the `ml` feature enabled, the same skip filter runs **100 tests**.
-* With both `python` and `ml` features enabled, the total unit-test count rises to roughly **136** (some tests are defined in `lib_python.rs`).
-* Running `cargo test --lib` without skips currently yields **102 passed; 22 failed** — the 22 failures are `debug_`, `regression_`, `lambda_`, and `table4_` tests that require files from an external `../PHANOTATE/` directory.
+* With default features, `cargo test --lib -- --skip debug_ --skip regression_ --skip lambda_ --skip table4_` runs **166 tests**.
+* With the `python` feature enabled, the total unit-test count rises to roughly **170+** (some tests are defined in `lib_python.rs`).
+* Running `cargo test --lib` without skips currently yields **166 passed; 3 failed** — the failures are `regression_crass_table15_wins`, `regression_spv4_table4_wins`, and `table4_genome_table4_signal_high`, which require files from an external `../PHANOTATE/` directory.
 * Examples: `weights.rs` has 12 tests for overlap/gap scoring; `genome.rs` has tests for `rev_comp()` and `normalize_seq()`; `bellman_ford.rs` has tests for linear and cyclic graphs; `output.rs` has 28 tests for formatters.
 * Run with: `cargo test --lib -- --skip debug_ --skip regression_ --skip lambda_ --skip table4_`
 
 ### Tier 2 — Integration tests (spawn the real binary)
-* `tests/cli_tests.rs` (365 lines): Tests CLI flag parsing, output format validation, golden-file comparisons against the Python reference, stdin input, closed ends, N-masking, and combo flags. A full run without external files yields **7 passed; 14 failed**; the failures need `../PHANOTATE/tests/` files.
-* `tests/detect_table_tests.rs` (640 lines): Tests genetic-code detection on real genomes (lambda, phiX174, SpV4) and synthetic sequences. Covers confidence levels, batch mode, pipe mode, and deterministic LCG-based synthetic benchmarks. A full run without external files yields **17 passed; 6 failed**; the failures need `../PHANOTATE/tests/` files.
+* `tests/cli_tests.rs` (~640 lines): Tests CLI flag parsing, output format validation, golden-file comparisons against the Python reference, stdin input, closed ends, N-masking, RBS modes, dicodon scoring, learned `--model` loading, and combo flags. A full run without external files currently yields **35 passed; 0 failed**.
+* `tests/detect_table_tests.rs` (~640 lines): Tests genetic-code detection on real genomes (lambda, phiX174, SpV4) and synthetic sequences. Covers confidence levels, batch mode, pipe mode, and deterministic LCG-based synthetic benchmarks. A full run without external files currently yields **21 passed; 2 failed**; the two failures need `../PHANOTATE/tests/` files.
 * Golden test data lives in `tests/golden/` (e.g. `phiX174.tabular`, `NC_000866.1.tabular`, `phiX174.fasta_out`).
 * Some integration tests require files from an external `../PHANOTATE/` directory; CI skips these via `--skip` flags.
 * Run with: `cargo test --test cli_tests` and `cargo test --test detect_table_tests` (expect failures if the external repo is absent).
 
 ### Tier 3 — Python binding tests
-* `tests/test_python_bindings.py` (451 lines): `pytest` suite covering all PyO3 API functions (`phanotate`, `find_orfs`, `detect_table`, `translate`, `score_rbs`, data classes), edge cases (short sequences, ambiguous bases, mixed case, multiline FASTA), and protein translation without internal stops.
+* `tests/test_python_bindings.py` (~490 lines): `pytest` suite covering all PyO3 API functions (`phanotate`, `find_orfs`, `detect_table`, `translate`, `score_rbs`, data classes), edge cases (short sequences, ambiguous bases, mixed case, multiline FASTA), protein translation without internal stops, and the optional `model=` parameter.
 * Run with: `pytest tests/test_python_bindings.py -v` (requires `maturin develop` first).
 
 ### CI behaviour
@@ -153,13 +153,13 @@ The project uses a **three-tier testing** approach. The exact number of compiled
 * **Formatting**: Enforced via `cargo fmt --check` in CI. Run `cargo fmt` before committing.
 * **Linting**: `cargo clippy -- -D warnings` (warnings are treated as errors in CI).
 * **Error handling**: Use `anyhow` with `.context()` for ergonomic error propagation. Avoid `unwrap()` in production code; it is acceptable only in tests.
-* **Conditional compilation**: Use `#[cfg(feature = "ml")]` and `#[cfg(feature = "python")]` to gate optional functionality. The `ml` and `python` features are **not** enabled by default.
+* **Conditional compilation**: Use `#[cfg(feature = "python")]` to gate optional functionality. The `python` feature is **not** enabled by default.
 * **Documentation**: Module-level doc comments (`//!`) with detailed algorithm explanations. Public APIs should have doc comments.
 * **Unsafe code**: Minimal. One instance exists in `detect_table_tests.rs` using `unsafe { seq.as_bytes_mut() }` for synthetic test data mutation. No unsafe in production code.
 * **Naming**: Follow standard Rust conventions (`snake_case` for functions/variables, `PascalCase` for types/structs, `SCREAMING_SNAKE_CASE` for constants).
 * **BigInt weights**: Graph edge weights use `num_bigint::BigInt` to prevent overflow on very long ORFs. Conversion helper `f64_to_bigint_weight()` is in `graph.rs`.
 * **Parallelism**: Use `rayon` parallel iterators (`par_iter()`) for multi-genome processing. The `indicatif` progress bar integrates with Rayon when `--progress` is used.
-* **Thread-safe ONNX**: The `MlScorer` wraps `ort::Session` in a `Mutex` because `Session::run()` requires `&mut self`, but inference is called from multiple threads.
+* **Learned ORF scoring**: The optional `--model` JSON file is loaded once and used to replace the default heuristic ORF edge weight. The scorer is a lightweight logistic regression over `OrfFeatures` (`src/orf_score_model.rs`) and is thread-safe by value.
 
 ---
 
@@ -195,21 +195,25 @@ After bumping, commit, tag (`git tag v0.1.4`), and push. GitHub Actions triggers
 
 ---
 
-## 8. Training Data Generation
+## 8. Training Data Generation & Learned ORF Scoring
 
 `--export-features` writes a TSV of per-ORF features without running annotation. This is useful for training external scoring models:
 
-1. **Feature extraction** (`src/ml_features.rs`): 14 features per ORF (log length, RBS score, log hold, P(stop), start-codon one-hot, GC content, frame indicators, log motif score).
+1. **Feature extraction** (`src/ml_features.rs`): 14 features per ORF (log length, RBS score, log hold, P(stop), log SD RBS score, start-codon one-hot, GC content, frame indicators, log non-SD RBS score).
 2. **Export** (`--export-features features.tsv`): Generates the TSV from the input genome.
-3. **Training scripts** (`scripts/train_model.py`, `notebooks/01_train_hybrid_scorer.ipynb`): Example pipelines that train XGBoost / Random Forest / MLP regressors on labeled ORF data.
-4. **Label generation** (`scripts/generate_training_labels.py`): Uses UniProt reviewed phage proteins + DIAMOND blastp to label ORFs as genes/non-genes.
-
-Trained example models and training plots are stored under `notebooks/models/`.
+3. **Training script** (`scripts/train_orf_score_model.py`): Parses annotated GenBank files, enumerates ORFs, labels them by overlap with CDS features, trains a `LogisticRegression(class_weight="balanced")`, and exports the standardised coefficients as JSON.
+4. **Runtime scoring** (`--model model.json`): Loads the JSON model and replaces the default PHANOTATE heuristic ORF edge weight with a learned negative log-odds score.
 
 Usage:
 ```bash
 # Export features for training data generation
 ./target/release/phanotate-rs -i genome.fasta --export-features features.tsv
+
+# Train a model from annotated GenBank files
+python scripts/train_orf_score_model.py -i tests/golden/NC_001365.gb -o model.json
+
+# Use the learned model for annotation
+./target/release/phanotate-rs -i genome.fasta --model model.json -f sco
 ```
 
 ---
@@ -242,7 +246,7 @@ Usage:
 | `.github/workflows/release.yml` | Native binary release building. |
 | `.github/workflows/bioconda.yml.disabled` | Disabled Bioconda recipe automation placeholder. |
 | `tests/golden/` | Golden test files for CLI regression testing. |
-| `notebooks/README.md` | ML training pipeline documentation. |
+| `notebooks/README.md` | ML training pipeline documentation (historical; current training is via `scripts/train_orf_score_model.py`). |
 | `memory/progress_2026-06-06.md` | Project progress tracker (feature status, benchmarks). |
 
 ---
@@ -262,6 +266,8 @@ Usage:
 | Annotate a genome | `./target/release/phanotate-rs -i genome.fasta -f sco` |
 | Detect genetic code | `./target/release/phanotate-rs -i genome.fasta --detect-table --yes` |
 | Export features | `./target/release/phanotate-rs -i genome.fasta --export-features features.tsv` |
+| Train ORF score model | `python scripts/train_orf_score_model.py -i annotated.gb -o model.json` |
+| Annotate with learned model | `./target/release/phanotate-rs -i genome.fasta --model model.json -f sco` |
 | Bump version | `./bump-version.sh 0.1.4` |
 
 ---

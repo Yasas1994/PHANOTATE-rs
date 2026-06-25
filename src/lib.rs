@@ -13,6 +13,7 @@ pub mod graph;
 pub mod ml_features;
 pub mod nonsd_motif;
 pub mod orf;
+pub mod orf_score_model;
 pub mod output;
 pub mod rbs_mode;
 pub mod rbs_scanner;

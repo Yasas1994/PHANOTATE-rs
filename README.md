@@ -112,11 +112,14 @@ phanotate-rs -i genome.fasta -g 4 -f sco
 # Write protein and nucleotide sequences to separate files
 phanotate-rs -i genome.fasta -a proteins.faa -d nucleotides.fna
 
-# Force non-Shine-Dalgarno motif discovery for start-codon scoring
-phanotate-rs -i genome.fasta --non-sd
+# Use non-SD motif discovery for start-codon scoring
+phanotate-rs -i genome.fasta --rbs-mode non-sd
 
 # Force Shine-Dalgarno scoring and skip non-SD auto-detection
-phanotate-rs -i genome.fasta --sd
+phanotate-rs -i genome.fasta --rbs-mode sd
+
+# Use a learned ORF scoring model (replaces the default heuristic)
+phanotate-rs -i genome.fasta --model model.json -f sco
 ```
 
 ### Shine-Dalgarno vs non-SD scoring
@@ -133,6 +136,26 @@ SD signal is weak.
 
 For Python API users, the result dictionary from `phanotate_rs.phanotate()`
 contains a `uses_sd` key (`bool`) indicating whether SD scoring was used.
+
+### Learned ORF scoring with `--model`
+
+By default PHANOTATE-rs uses the original PHANOTATE heuristic to score each ORF
+(`coding_potential × start_codon_weight × RBS_scores`). Optionally, `--model`
+loads a JSON logistic-regression model trained on annotated genomes and
+replaces that heuristic entirely. This makes it possible to benchmark the
+legacy scorer and a learned scorer from the same binary.
+
+```bash
+# Train a model from annotated GenBank files
+python scripts/train_orf_score_model.py -i annotated_genomes/ -o model.json
+
+# Use the model for annotation
+phanotate-rs -i genome.fasta --model model.json -f sco
+```
+
+In Python, pass `model=path` to `phanotate_rs.phanotate()` or
+`phanotate_rs.find_orfs()`. Without `--model` / `model=`, the default
+PHANOTATE-rs 0.1.2 heuristic is used.
 
 ### Stdin input
 
@@ -166,7 +189,7 @@ Options:
       --rbs-mode <RBS_MODE>
                            RBS scoring mode: auto, sd, non-sd, prodigal [default: auto]
       --dicodon            Use Prodigal-style dicodon scoring instead of GC-frame hold
-      --start-model <FILE> Path to a learned start-site scoring model (JSON)
+      --model <FILE>       Path to a learned ORF scoring model (JSON); replaces the default heuristic
   -h, --help          Print help
   -V, --version       Print version
 ```
@@ -203,6 +226,9 @@ result = phanotate_rs.phanotate(
     closed_ends=False,
     mask_n=False,
     detect_table=False,
+    rbs_mode="auto",   # auto, sd, non-sd, prodigal
+    dicodon=False,
+    model=None,        # path to a learned ORF scoring model (JSON)
 )
 
 print(result["primary"])       # Annotation output
