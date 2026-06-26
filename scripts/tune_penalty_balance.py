@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import Optional
 
@@ -21,44 +22,52 @@ def paths(limit: Optional[int] = None) -> list[Path]:
     return p
 
 
-def evaluate(gap_target: float, overlap_target: float, genomes: list[Path]) -> dict:
+def _evaluate_one(args: tuple[Path, float, float]) -> dict:
+    genome, gap_target, overlap_target = args
     env = os.environ.copy()
     env["PHANOTATE_MODEL_GAP_TARGET_RATIO"] = str(gap_target)
     env["PHANOTATE_MODEL_OVERLAP_TARGET_RATIO"] = str(overlap_target)
+    r = subprocess.run(
+        [
+            str(BINARY),
+            "-i",
+            str(genome),
+            "--detect-table",
+            "--yes",
+            "-f",
+            "sco",
+            "--model",
+            str(MODEL),
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    ref = _parse_genbank_cds(str(genome))
+    pred = set()
+    for line in r.stdout.splitlines():
+        if line.startswith("#") or not line.strip():
+            continue
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        try:
+            pred.add((int(parts[0]), int(parts[1])))
+        except ValueError:
+            pass
+    return compare(pred, ref, 3)
+
+
+def evaluate(gap_target: float, overlap_target: float, genomes: list[Path]) -> dict:
     agg = {"tp": 0, "fp": 0, "fn": 0}
-    for genome in genomes:
-        r = subprocess.run(
-            [
-                str(BINARY),
-                "-i",
-                str(genome),
-                "--detect-table",
-                "--yes",
-                "-f",
-                "sco",
-                "--model",
-                str(MODEL),
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env,
-        )
-        ref = _parse_genbank_cds(str(genome))
-        pred = set()
-        for line in r.stdout.splitlines():
-            if line.startswith("#") or not line.strip():
-                continue
-            parts = line.split("\t")
-            if len(parts) < 2:
-                continue
-            try:
-                pred.add((int(parts[0]), int(parts[1])))
-            except ValueError:
-                pass
-        c = compare(pred, ref, 3)
-        for k in ("tp", "fp", "fn"):
-            agg[k] += c[k]
+    workers = min(8, len(genomes))
+    with ProcessPoolExecutor(max_workers=workers) as executor:
+        for c in executor.map(
+            _evaluate_one, [(g, gap_target, overlap_target) for g in genomes]
+        ):
+            for k in ("tp", "fp", "fn"):
+                agg[k] += c[k]
     p = agg["tp"] / (agg["tp"] + agg["fp"]) if agg["tp"] + agg["fp"] else 0.0
     r = agg["tp"] / (agg["tp"] + agg["fn"]) if agg["tp"] + agg["fn"] else 0.0
     f1 = 2 * p * r / (p + r) if p + r else 0.0
@@ -67,7 +76,10 @@ def evaluate(gap_target: float, overlap_target: float, genomes: list[Path]) -> d
 
 def main() -> None:
     if not BINARY.exists():
-        print(f"Binary not found: {BINARY}; run cargo build --release --features ml", file=sys.stderr)
+        print(
+            f"Binary not found: {BINARY}; run cargo build --release --features ml",
+            file=sys.stderr,
+        )
         sys.exit(1)
     genomes = paths(50)
     print(f"Tuning on {len(genomes)} genomes")
