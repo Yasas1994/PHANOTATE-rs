@@ -3,8 +3,8 @@
 use crate::orf::Orf;
 use crate::weights::{score_gap, score_overlap};
 
-const MODEL_GAP_TARGET_RATIO: f64 = 1.0;
-const MODEL_OVERLAP_TARGET_RATIO: f64 = 1.0;
+const MODEL_GAP_TARGET_RATIO: f64 = 0.5;
+const MODEL_OVERLAP_TARGET_RATIO: f64 = 0.3;
 const MIN_ORFS_FOR_CALIBRATION: usize = 3;
 const SCALE_MIN: f64 = 0.1;
 const SCALE_MAX: f64 = 10.0;
