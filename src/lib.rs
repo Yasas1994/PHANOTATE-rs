@@ -12,11 +12,14 @@ pub mod genome;
 pub mod graph;
 pub mod ml_features;
 pub mod nonsd_motif;
+pub mod onnx_scorer;
 pub mod orf;
-pub mod orf_score_model;
+pub mod penalty_calibration;
+pub mod orf_signals;
 pub mod output;
 pub mod rbs_mode;
 pub mod rbs_scanner;
+pub mod rbs_training;
 pub mod weights;
 
 // Include Python bindings module only when the `python` feature is enabled.
