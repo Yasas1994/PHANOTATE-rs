@@ -83,8 +83,89 @@ impl Graph {
         self.edges[src_idx].push((tgt_idx, edge.weight));
     }
 
+    /// Export the graph to Graphviz DOT format.
+    ///
+    /// If `path` is supplied, nodes and edges on that path are highlighted in
+    /// red with thicker pens. `endpoints` are the source/target node indices.
+    pub fn to_dot(&self, path: Option<&[usize]>, endpoints: &[usize]) -> String {
+        use std::collections::HashSet;
+
+        let path_nodes: HashSet<usize> = path
+            .map(|p| p.iter().copied().collect())
+            .unwrap_or_default();
+        let path_edges: HashSet<(usize, usize)> = path
+            .map(|p| p.windows(2).map(|w| (w[0], w[1])).collect())
+            .unwrap_or_default();
+        let endpoint_set: HashSet<usize> = endpoints.iter().copied().collect();
+
+        let mut out = String::from("digraph phanotate {\n");
+        out.push_str("  rankdir=LR;\n");
+        out.push_str("  node [fontname=\"Helvetica\"];\n");
+
+        for (i, node) in self.nodes.iter().enumerate() {
+            let label = format!(
+                "{}\\npos {}\\nframe {}",
+                node.node_type, node.position, node.frame
+            );
+            let shape = match node.node_type {
+                "start" => "ellipse",
+                "stop" => "box",
+                _ => "diamond",
+            };
+            let (fillcolor, style) = if endpoint_set.contains(&i) {
+                ("lightblue", "filled")
+            } else if path_nodes.contains(&i) {
+                ("lightyellow", "filled")
+            } else {
+                ("white", "filled")
+            };
+            let color = if path_nodes.contains(&i) {
+                "red"
+            } else {
+                "black"
+            };
+            out.push_str(&format!(
+                "  n{} [label=\"{}\", shape={}, color={}, fillcolor={}, style={}];\n",
+                i, label, shape, color, fillcolor, style
+            ));
+        }
+
+        for (src, targets) in self.edges.iter().enumerate() {
+            for (tgt, weight) in targets {
+                let on_path = path_edges.contains(&(src, *tgt));
+                let color = if on_path { "red" } else { "gray" };
+                let penwidth = if on_path { "3" } else { "1" };
+                // Truncate huge BigInt weights for readability.
+                let wstr = weight.to_string();
+                let label = if wstr.len() > 10 {
+                    format!("{:.3e}", weight.to_string().parse::<f64>().unwrap_or(0.0))
+                } else {
+                    wstr
+                };
+                out.push_str(&format!(
+                    "  n{} -> n{} [label=\"{}\", color={}, penwidth={}];\n",
+                    src, tgt, label, color, penwidth
+                ));
+            }
+        }
+
+        out.push_str("}\n");
+        out
+    }
+
     /// Build the graph from ORFs.
-    pub fn from_orfs(orfs: &[Orf], contig_length: usize, pgap: f64) -> (Self, Vec<usize>) {
+    ///
+    /// `gap_scale` multiplies gap edge weights and `overlap_scale` multiplies
+    /// overlap edge weights. In the learned `--model` path these are used to
+    /// calibrate penalty magnitudes against the ORF score; the default
+    /// heuristic path uses `1.0` for both.
+    pub fn from_orfs(
+        orfs: &[Orf],
+        contig_length: usize,
+        pgap: f64,
+        gap_scale: f64,
+        overlap_scale: f64,
+    ) -> (Self, Vec<usize>) {
         let mut graph = Graph::new();
 
         // other_end maps position -> counterpart position in same ORF
@@ -168,8 +249,12 @@ impl Graph {
                                         && right_node.node_type == "stop"
                                         && left_node.frame < 0)
                                 {
-                                    let score =
-                                        score_gap((r as isize) - (l as isize) - 3, "same", pgap);
+                                    let score = score_gap(
+                                        (r as isize) - (l as isize) - 3,
+                                        "same",
+                                        pgap,
+                                        gap_scale,
+                                    );
                                     graph.add_edge(Edge {
                                         source: *left_node,
                                         target: *right_node,
@@ -183,8 +268,12 @@ impl Graph {
                                     && right_node.node_type == "start"
                                     && left_node.frame < 0)
                             {
-                                let score =
-                                    score_gap((r as isize) - (l as isize) - 3, "diff", pgap);
+                                let score = score_gap(
+                                    (r as isize) - (l as isize) - 3,
+                                    "diff",
+                                    pgap,
+                                    gap_scale,
+                                );
                                 graph.add_edge(Edge {
                                     source: *left_node,
                                     target: *right_node,
@@ -256,7 +345,8 @@ impl Graph {
                 if same_strand {
                     if left_node.node_type == "stop" && right_node.node_type == "start" {
                         if left_node.frame > 0 {
-                            let score = score_gap((r as isize) - (l as isize) - 3, "same", pgap);
+                            let score =
+                                score_gap((r as isize) - (l as isize) - 3, "same", pgap, gap_scale);
                             graph.add_edge(Edge {
                                 source: *left_node,
                                 target: *right_node,
@@ -271,6 +361,7 @@ impl Graph {
                                             r as isize - l as isize + 3,
                                             "same",
                                             pstop,
+                                            overlap_scale,
                                         );
                                         graph.add_edge(Edge {
                                             source: *right_node,
@@ -290,6 +381,7 @@ impl Graph {
                                             r as isize - l as isize + 3,
                                             "same",
                                             pstop,
+                                            overlap_scale,
                                         );
                                         graph.add_edge(Edge {
                                             source: *right_node,
@@ -300,7 +392,8 @@ impl Graph {
                                 }
                             }
                         } else {
-                            let score = score_gap((r as isize) - (l as isize) - 3, "same", pgap);
+                            let score =
+                                score_gap((r as isize) - (l as isize) - 3, "same", pgap, gap_scale);
                             graph.add_edge(Edge {
                                 source: *left_node,
                                 target: *right_node,
@@ -314,8 +407,12 @@ impl Graph {
                         if right_node.frame > 0 {
                             if let (Some(lo), Some(ro)) = (l_other, r_other) {
                                 if ro + 3 < l && r < lo {
-                                    let score =
-                                        score_overlap(r as isize - l as isize + 3, "diff", pstop);
+                                    let score = score_overlap(
+                                        r as isize - l as isize + 3,
+                                        "diff",
+                                        pstop,
+                                        overlap_scale,
+                                    );
                                     graph.add_edge(Edge {
                                         source: *right_node,
                                         target: *left_node,
@@ -324,7 +421,8 @@ impl Graph {
                                 }
                             }
                         } else {
-                            let score = score_gap((r as isize) - (l as isize) - 3, "diff", pgap);
+                            let score =
+                                score_gap((r as isize) - (l as isize) - 3, "diff", pgap, gap_scale);
                             graph.add_edge(Edge {
                                 source: *left_node,
                                 target: *right_node,
@@ -333,7 +431,8 @@ impl Graph {
                         }
                     } else if left_node.node_type == "start" && right_node.node_type == "start" {
                         if right_node.frame > 0 && r - l > 2 {
-                            let score = score_gap((r as isize) - (l as isize) - 3, "diff", pgap);
+                            let score =
+                                score_gap((r as isize) - (l as isize) - 3, "diff", pgap, gap_scale);
                             graph.add_edge(Edge {
                                 source: *left_node,
                                 target: *right_node,
@@ -342,8 +441,12 @@ impl Graph {
                         } else if right_node.frame < 0 {
                             if let (Some(lo), Some(ro)) = (l_other, r_other) {
                                 if ro < l && r < lo {
-                                    let score =
-                                        score_overlap(r as isize - l as isize + 3, "diff", pstop);
+                                    let score = score_overlap(
+                                        r as isize - l as isize + 3,
+                                        "diff",
+                                        pstop,
+                                        overlap_scale,
+                                    );
                                     graph.add_edge(Edge {
                                         source: *right_node,
                                         target: *left_node,
@@ -371,7 +474,7 @@ impl Graph {
                 && ((node.node_type == "start" && node.frame > 0)
                     || (node.node_type == "stop" && node.frame < 0))
             {
-                let score = score_gap(node.position as isize, "same", pgap);
+                let score = score_gap(node.position as isize, "same", pgap, gap_scale);
                 graph.add_edge(Edge {
                     source,
                     target: *node,
@@ -383,7 +486,12 @@ impl Graph {
                 && ((node.node_type == "start" && node.frame < 0)
                     || (node.node_type == "stop" && node.frame > 0))
             {
-                let score = score_gap((contig_length - node.position) as isize, "same", pgap);
+                let score = score_gap(
+                    (contig_length - node.position) as isize,
+                    "same",
+                    pgap,
+                    gap_scale,
+                );
                 graph.add_edge(Edge {
                     source: *node,
                     target,
@@ -494,7 +602,7 @@ mod tests {
     #[test]
     fn test_graph_from_orfs_empty() {
         let orfs: Vec<Orf> = vec![];
-        let (graph, endpoints) = Graph::from_orfs(&orfs, 100, 0.05);
+        let (graph, endpoints) = Graph::from_orfs(&orfs, 100, 0.05, 1.0, 1.0);
         assert_eq!(graph.nodes.len(), 2); // source + target
         assert_eq!(endpoints.len(), 2);
     }
@@ -515,8 +623,21 @@ mod tests {
             hold,
             coding_potential: 1.0 / hold,
             weight: -1.0,
+            cai: 0.0,
+            gc1: 0.0,
+            gc2: 0.0,
+            gc3: 0.0,
+            overlap_upstream_length: 0.0,
+            overlap_upstream_same_strand: 0.0,
+            overlap_downstream_length: 0.0,
+            overlap_downstream_same_strand: 0.0,
+            stop_sharing_count: 0.0,
+            gc_skew: 0.0,
+            truncation_penalty: 0.0,
+            upstream_pwm_score: 0.0,
+            rbs_spacer: 0.0,
         }];
-        let (graph, endpoints) = Graph::from_orfs(&orfs, 100, 0.05);
+        let (graph, endpoints) = Graph::from_orfs(&orfs, 100, 0.05, 1.0, 1.0);
         assert!(graph.nodes.len() >= 2);
         assert_eq!(endpoints.len(), 2);
     }
