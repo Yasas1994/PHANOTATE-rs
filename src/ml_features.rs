@@ -481,8 +481,11 @@ pub fn compute_extra_ml_features(
         // upstream neighbor (next lower coordinate)
         if sorted_idx > 0 {
             let (plo, phi, pframe, _) = indexed[sorted_idx - 1];
-            let overlap = hi.min(phi).saturating_sub(lo.max(plo)) + 1;
-            let overlap_len = if overlap > 0 { overlap } else { 0 };
+            let overlap_len = if hi < plo || phi < lo {
+                0
+            } else {
+                hi.min(phi) - lo.max(plo) + 1
+            };
             let same = (frame > 0) == (pframe > 0);
             let orf = &mut orfs[orig_idx];
             orf.overlap_upstream_length = overlap_len as f64;
@@ -492,8 +495,11 @@ pub fn compute_extra_ml_features(
         // downstream neighbor (next higher coordinate)
         if sorted_idx + 1 < indexed.len() {
             let (nlo, nhi, nframe, _) = indexed[sorted_idx + 1];
-            let overlap = hi.min(nhi).saturating_sub(lo.max(nlo)) + 1;
-            let overlap_len = if overlap > 0 { overlap } else { 0 };
+            let overlap_len = if hi < nlo || nhi < lo {
+                0
+            } else {
+                hi.min(nhi) - lo.max(nlo) + 1
+            };
             let same = (frame > 0) == (nframe > 0);
             let orf = &mut orfs[orig_idx];
             orf.overlap_downstream_length = overlap_len as f64;
@@ -665,15 +671,21 @@ impl Orf {
 /// Each row corresponds to one ORF.  The first two columns are the ORF
 /// coordinates (`start`, `stop`), followed by the feature values in the
 /// order defined by [`FEATURE_NAMES`].  If `include_header` is true, a
-/// header row is written first.
+/// header row is written first.  When `genome_id` is provided it is appended
+/// as an extra column so downstream training scripts can associate rows with
+/// their source genome.
 pub fn write_features_tsv<W: std::io::Write>(
     writer: &mut W,
     orfs: &[Orf],
     include_header: bool,
+    genome_id: Option<&str>,
 ) -> std::io::Result<()> {
     if include_header {
         let mut headers: Vec<&str> = COORD_NAMES.to_vec();
         headers.extend(FEATURE_NAMES.iter().copied());
+        if genome_id.is_some() {
+            headers.push("genome_id");
+        }
         writeln!(writer, "{}", headers.join("\t"))?;
     }
     for orf in orfs {
@@ -688,6 +700,9 @@ pub fn write_features_tsv<W: std::io::Write>(
         };
         let mut vals: Vec<String> = vec![display_start.to_string(), display_stop.to_string()];
         vals.extend(f.0.iter().map(|v| format!("{:.6}", v)));
+        if let Some(id) = genome_id {
+            vals.push(id.to_string());
+        }
         writeln!(writer, "{}", vals.join("\t"))?;
     }
     Ok(())
@@ -824,7 +839,7 @@ mod tests {
     fn test_tsv_header_includes_coordinates_and_features() {
         let orfs = vec![test_orf()];
         let mut buf = Vec::new();
-        write_features_tsv(&mut buf, &orfs, true).unwrap();
+        write_features_tsv(&mut buf, &orfs, true, None).unwrap();
         let s = String::from_utf8(buf).unwrap();
         let expected_header = "start\tstop\tlog_length\trbs_bin\tlog_hold\tpstop\tsd_rbs_score\tstart_codon_atg\tstart_codon_gtg\tstart_codon_ttg\tgc_content\tframe_fwd\tframe_1\tframe_2\tframe_3\tnon_sd_rbs_score\tdicodon_log_likelihood";
         assert!(s.starts_with(expected_header));
@@ -834,7 +849,7 @@ mod tests {
     fn test_tsv_export() {
         let orfs = vec![test_orf()];
         let mut buf = Vec::new();
-        write_features_tsv(&mut buf, &orfs, true).unwrap();
+        write_features_tsv(&mut buf, &orfs, true, None).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(s.starts_with("start\tstop"));
         let lines: Vec<&str> = s.lines().collect();
@@ -857,7 +872,7 @@ mod tests {
     fn test_tsv_no_header() {
         let orfs = vec![test_orf()];
         let mut buf = Vec::new();
-        write_features_tsv(&mut buf, &orfs, false).unwrap();
+        write_features_tsv(&mut buf, &orfs, false, None).unwrap();
         let s = String::from_utf8(buf).unwrap();
         let lines: Vec<&str> = s.lines().collect();
         assert_eq!(lines.len(), 1); // just data row

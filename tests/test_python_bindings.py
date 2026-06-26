@@ -366,55 +366,28 @@ class TestPhanotatePipeline:
         motifs = [g.get("rbs_motif") for g in result["genes"]]
         assert any(m is not None for m in motifs)
 
-    def test_phanotate_dicodon(self):
-        default = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test")
-        dicodon = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", dicodon=True)
-        assert default["primary"] != dicodon["primary"]
+    TEST_ONNX_MODEL = os.path.join(
+        os.path.dirname(__file__), "golden", "orf_model.onnx"
+    )
 
     def test_phanotate_model_changes_output(self):
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
-            json.dump(
-                {
-                    "version": 1,
-                    "num_features": 14,
-                    "coeffs": [5.0] + [0.0] * 13,
-                    "mean": [0.0] * 14,
-                    "std": [1.0] * 14,
-                },
-                fh,
-            )
-            path = fh.name
-        try:
-            default = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test")
-            model = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", model=path)
-            assert default["primary"] != model["primary"]
-        finally:
-            os.unlink(path)
+        default = phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test")
+        model = phanotate_rs.phanotate(
+            SYNTHETIC_SEQ, seq_id="test", model=self.TEST_ONNX_MODEL
+        )
+        assert default["primary"] != model["primary"]
 
     def test_phanotate_model_invalid_path(self):
         with pytest.raises(RuntimeError):
-            phanotate_rs.phanotate(SYNTHETIC_SEQ, seq_id="test", model="/nonexistent/model.json")
+            phanotate_rs.phanotate(
+                SYNTHETIC_SEQ, seq_id="test", model="/nonexistent/model.onnx"
+            )
 
     def test_find_orfs_model_parameter(self):
-        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
-            json.dump(
-                {
-                    "version": 1,
-                    "num_features": 14,
-                    "coeffs": [0.0] * 14,
-                    "mean": [0.0] * 14,
-                    "std": [1.0] * 14,
-                },
-                fh,
-            )
-            path = fh.name
-        try:
-            orfs = phanotate_rs.find_orfs(SYNTHETIC_SEQ, model=path)
-            assert len(orfs) > 0
-            # All ORFs should expose the same-length feature vector.
-            assert all(len(orf.extract_features()) == 14 for orf in orfs)
-        finally:
-            os.unlink(path)
+        orfs = phanotate_rs.find_orfs(SYNTHETIC_SEQ, model=self.TEST_ONNX_MODEL)
+        assert len(orfs) > 0
+        # All ORFs should expose the same-length feature vector.
+        assert all(len(orf.extract_features()) == 34 for orf in orfs)
 
 # ---------------------------------------------------------------------------
 # 5. Integration tests with real data

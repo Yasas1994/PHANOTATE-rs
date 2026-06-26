@@ -1047,6 +1047,7 @@ mod tests {
             hold,
             coding_potential: 1.0 / hold,
             weight: -1.0,
+            ..Orf::default()
         };
         let py_orf = PyOrf::from(&orf);
         assert_eq!(py_orf.start, 1);
