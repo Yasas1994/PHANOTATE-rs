@@ -2,7 +2,7 @@ pub use crate::rbs_scanner::{
     detect_rbs_motif_legacy as detect_rbs_motif, score_rbs_legacy as score_rbs,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Orf {
     pub start: usize, // 1-based, inclusive start of start codon (forward coords)
     pub stop: usize,  // 1-based, inclusive stop of stop codon (forward coords)
@@ -16,6 +16,28 @@ pub struct Orf {
     pub hold: f64,             // product of adjusted P(not_stop) per codon
     pub coding_potential: f64, // coding-potential multiplier (1/hold default, or dicodon model)
     pub weight: f64,           // final ORF edge weight (negative)
+
+    // Extra ML features (computed in a post-processing pass)
+    pub cai: f64,                     // codon adaptation index vs. genome-wide usage
+    pub gc1: f64,                     // GC content at codon position 1
+    pub gc2: f64,                     // GC content at codon position 2
+    pub gc3: f64,                     // GC content at codon position 3
+    pub overlap_upstream_length: f64, // bases overlapping nearest upstream ORF
+    pub overlap_upstream_same_strand: f64, // 1 if overlapping upstream ORF is same strand
+    pub overlap_downstream_length: f64, // bases overlapping nearest downstream ORF
+    pub overlap_downstream_same_strand: f64, // 1 if overlapping downstream ORF is same strand
+    pub stop_sharing_count: f64,      // number of ORFs sharing this stop codon
+    pub gc_skew: f64,                 // (G-C)/(G+C) of the ORF sequence
+    pub truncation_penalty: f64,      // Prodigal-style sharpening penalty
+    pub upstream_pwm_score: f64,      // log-likelihood of start upstream region
+    pub rbs_spacer: f64,              // bases between detected RBS motif and start codon
+
+    // Relative start-site features
+    pub best_alt_pwm_score: f64,
+    pub pwm_ratio: f64,
+    pub start_rank: f64,
+    pub num_alt_starts: f64,
+    pub start_codon_log_freq: f64,
 }
 
 impl Orf {
@@ -52,11 +74,13 @@ impl Orf {
     pub fn score(
         &mut self,
         start_codons: &std::collections::HashMap<Vec<u8>, f64>,
-        model: Option<&crate::orf_score_model::OrfScoreModel>,
+        model: Option<&crate::onnx_scorer::OnnxScorer>,
+        model_scale: f64,
+        model_threshold: f64,
     ) {
         if let Some(m) = model {
             let features = self.extract_features();
-            self.weight = m.score(&features);
+            self.weight = m.score(&features, model_scale, model_threshold);
             return;
         }
 
@@ -186,6 +210,24 @@ pub fn find_orfs_with_rc(
                         hold,
                         coding_potential: 1.0 / hold,
                         weight: 1.0,
+                        cai: 0.0,
+                        gc1: 0.0,
+                        gc2: 0.0,
+                        gc3: 0.0,
+                        overlap_upstream_length: 0.0,
+                        overlap_upstream_same_strand: 0.0,
+                        overlap_downstream_length: 0.0,
+                        overlap_downstream_same_strand: 0.0,
+                        stop_sharing_count: 0.0,
+                        gc_skew: 0.0,
+                        truncation_penalty: 0.0,
+                        upstream_pwm_score: 0.0,
+                        rbs_spacer: 0.0,
+                        best_alt_pwm_score: 0.0,
+                        pwm_ratio: 1.0,
+                        start_rank: 1.0,
+                        num_alt_starts: 1.0,
+                        start_codon_log_freq: 0.0,
                     });
                 }
             }
@@ -237,6 +279,24 @@ pub fn find_orfs_with_rc(
                         hold,
                         coding_potential: 1.0 / hold,
                         weight: 1.0,
+                        cai: 0.0,
+                        gc1: 0.0,
+                        gc2: 0.0,
+                        gc3: 0.0,
+                        overlap_upstream_length: 0.0,
+                        overlap_upstream_same_strand: 0.0,
+                        overlap_downstream_length: 0.0,
+                        overlap_downstream_same_strand: 0.0,
+                        stop_sharing_count: 0.0,
+                        gc_skew: 0.0,
+                        truncation_penalty: 0.0,
+                        upstream_pwm_score: 0.0,
+                        rbs_spacer: 0.0,
+                        best_alt_pwm_score: 0.0,
+                        pwm_ratio: 1.0,
+                        start_rank: 1.0,
+                        num_alt_starts: 1.0,
+                        start_codon_log_freq: 0.0,
                     });
                 }
             }
@@ -275,6 +335,24 @@ pub fn find_orfs_with_rc(
                         hold,
                         coding_potential: 1.0 / hold,
                         weight: 1.0,
+                        cai: 0.0,
+                        gc1: 0.0,
+                        gc2: 0.0,
+                        gc3: 0.0,
+                        overlap_upstream_length: 0.0,
+                        overlap_upstream_same_strand: 0.0,
+                        overlap_downstream_length: 0.0,
+                        overlap_downstream_same_strand: 0.0,
+                        stop_sharing_count: 0.0,
+                        gc_skew: 0.0,
+                        truncation_penalty: 0.0,
+                        upstream_pwm_score: 0.0,
+                        rbs_spacer: 0.0,
+                        best_alt_pwm_score: 0.0,
+                        pwm_ratio: 1.0,
+                        start_rank: 1.0,
+                        num_alt_starts: 1.0,
+                        start_codon_log_freq: 0.0,
                     });
                 }
             }
@@ -320,6 +398,24 @@ pub fn find_orfs_with_rc(
                         hold,
                         coding_potential: 1.0 / hold,
                         weight: 1.0,
+                        cai: 0.0,
+                        gc1: 0.0,
+                        gc2: 0.0,
+                        gc3: 0.0,
+                        overlap_upstream_length: 0.0,
+                        overlap_upstream_same_strand: 0.0,
+                        overlap_downstream_length: 0.0,
+                        overlap_downstream_same_strand: 0.0,
+                        stop_sharing_count: 0.0,
+                        gc_skew: 0.0,
+                        truncation_penalty: 0.0,
+                        upstream_pwm_score: 0.0,
+                        rbs_spacer: 0.0,
+                        best_alt_pwm_score: 0.0,
+                        pwm_ratio: 1.0,
+                        start_rank: 1.0,
+                        num_alt_starts: 1.0,
+                        start_codon_log_freq: 0.0,
                     });
                 }
             }
@@ -590,13 +686,31 @@ mod tests {
             non_sd_rbs_score: 1.0,
             rbs_motif: None,
             weight: 1.0,
+            cai: 0.0,
+            gc1: 0.0,
+            gc2: 0.0,
+            gc3: 0.0,
+            overlap_upstream_length: 0.0,
+            overlap_upstream_same_strand: 0.0,
+            overlap_downstream_length: 0.0,
+            overlap_downstream_same_strand: 0.0,
+            stop_sharing_count: 0.0,
+            gc_skew: 0.0,
+            truncation_penalty: 0.0,
+            upstream_pwm_score: 0.0,
+            rbs_spacer: 0.0,
+            best_alt_pwm_score: 0.0,
+            pwm_ratio: 1.0,
+            start_rank: 1.0,
+            num_alt_starts: 1.0,
+            start_codon_log_freq: 0.0,
         };
         let start_codons = std::collections::HashMap::new();
-        orf.score(&start_codons, None);
+        orf.score(&start_codons, None, 1.0, 0.5);
         let base_weight = orf.weight;
 
         orf.non_sd_rbs_score = 2.0;
-        orf.score(&start_codons, None);
+        orf.score(&start_codons, None, 1.0, 0.5);
         assert!((orf.weight - base_weight * 2.0).abs() < 1e-9);
     }
 }
