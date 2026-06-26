@@ -1,30 +1,35 @@
 #!/usr/bin/env python3
 """Train an ORF scoring model for PHANOTATE-rs --model.
 
-The model is a JSON logistic regression over the `OrfFeatures` vector used by
+The model is an ONNX classifier that consumes the `OrfFeatures` vector used by
 `--export-features`. It predicts the probability that an ORF is a real gene;
 the Rust runtime converts the probability to a negative log-odds edge weight.
 
 Examples
 --------
-Train on a single annotated GenBank file:
+Train a logistic-regression model on a single annotated GenBank file:
 
     python scripts/train_orf_score_model.py \
         -i tests/golden/NC_001365.gb -t 4 \
-        -o /tmp/orf_score_model.json
+        -o /tmp/orf_score_model.onnx
+
+Train an XGBoost model:
+
+    python scripts/train_orf_score_model.py \
+        -i tests/golden/annotgenomes --model-type xgboost \
+        -o /tmp/orf_score_model.onnx
 
 Cross-validate on a directory of GenBank files:
 
     python scripts/train_orf_score_model.py \
         -i tests/golden/annotgenomes --cv-folds 3 --seed 42 \
-        -o /tmp/orf_score_model.json
+        -o /tmp/orf_score_model.onnx
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
-import json
 import random
 import re
 import shutil
@@ -38,15 +43,15 @@ import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import precision_score, recall_score, roc_auc_score
 
-NUM_FEATURES = 15
+NUM_FEATURES = 34
 SUPPORTED_TABLES = {1, 4, 6, 11, 15, 25}
 
 FEATURE_NAMES = [
     "log_length",
-    "rbs_score_norm",
+    "rbs_bin",
     "log_hold",
     "pstop",
-    "log_sd_rbs_score",
+    "sd_rbs_score",
     "start_codon_atg",
     "start_codon_gtg",
     "start_codon_ttg",
@@ -55,8 +60,27 @@ FEATURE_NAMES = [
     "frame_1",
     "frame_2",
     "frame_3",
-    "log_non_sd_rbs_score",
-    "log_coding_potential",
+    "non_sd_rbs_score",
+    "dicodon_log_likelihood",
+    "cai",
+    "gc1",
+    "gc2",
+    "gc3",
+    "overlap_upstream_length",
+    "overlap_upstream_same_strand",
+    "overlap_downstream_length",
+    "overlap_downstream_same_strand",
+    "stop_sharing_count",
+    "gc_skew",
+    "truncation_penalty",
+    "upstream_pwm_score",
+    "rbs_spacer",
+    "heuristic_score",
+    "best_alt_pwm_score",
+    "pwm_ratio",
+    "start_rank",
+    "num_alt_starts",
+    "start_codon_log_freq",
 ]
 
 
@@ -71,7 +95,7 @@ def export_linear_to_onnx(
         from skl2onnx import convert_sklearn
         from skl2onnx.common.data_types import FloatTensorType
     except ImportError as exc:
-        raise RuntimeError("skl2onnx is required for --onnx export") from exc
+        raise RuntimeError("skl2onnx is required for ONNX export") from exc
 
     from sklearn.pipeline import Pipeline
     from sklearn.preprocessing import StandardScaler
@@ -271,11 +295,9 @@ def _load_genome(path: Path, args: argparse.Namespace, binary: str):
 
     ann_set: set = set()
     for s, e, strand, _ in entries:
-        if strand == "+":
-            if e - s + 1 >= 3:
-                ann_set.add((s, e - 2))
-        else:
-            ann_set.add((s, e))
+        if abs(e - s) + 1 < 3:
+            continue
+        ann_set.add((s, e))
 
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".tsv", delete=False
@@ -308,14 +330,54 @@ def _load_genome(path: Path, args: argparse.Namespace, binary: str):
 
         rows: List[List[float]] = []
         labels: List[int] = []
+        hard_negs: List[int] = []
+        pred_fp_set: set[tuple[int, int]] = set()
+
+        if args.hard_negatives:
+            pred_cmd = [
+                binary,
+                "-i",
+                str(path),
+                "-g",
+                str(genome_table),
+                "-f",
+                "sco",
+            ]
+            pred_result = subprocess.run(
+                pred_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+            if pred_result.returncode == 0:
+                pred_set = _parse_sco_text(pred_result.stdout)
+                pred_fp_set = {
+                    c for c in pred_set if not _match_coord(c, ann_set, 3)
+                }
+            else:
+                print(
+                    f"Warning: SCO prediction failed for {path}; "
+                    "hard-negative mining skipped.",
+                    file=sys.stderr,
+                )
+
         with open(features_path, newline="") as fh:
             reader = csv.DictReader(fh, delimiter="\t")
             for row in reader:
                 start = int(row["start"])
                 stop = int(row["stop"])
                 feat = [float(row[name]) for name in FEATURE_NAMES]
+                label = 1 if (start, stop) in ann_set else 0
                 rows.append(feat)
-                labels.append(1 if (start, stop) in ann_set else 0)
+                labels.append(label)
+                hard_negs.append(
+                    1
+                    if label == 0
+                    and pred_fp_set
+                    and _match_coord((start, stop), pred_fp_set, 3)
+                    else 0
+                )
     finally:
         Path(features_path).unlink(missing_ok=True)
 
@@ -324,6 +386,9 @@ def _load_genome(path: Path, args: argparse.Namespace, binary: str):
         "table": genome_table,
         "X": np.asarray(rows, dtype=float) if rows else np.empty((0, NUM_FEATURES)),
         "y": np.asarray(labels, dtype=int) if labels else np.empty(0, dtype=int),
+        "hard_neg": np.asarray(hard_negs, dtype=bool)
+        if hard_negs
+        else np.empty(0, dtype=bool),
     }
 
 
@@ -424,6 +489,32 @@ def _fmt(value: float | None) -> str:
     return f"{value:>7.3f}"
 
 
+def _parse_sco_text(text: str) -> set[tuple[int, int]]:
+    """Parse a PHANOTATE SCO string into a set of (start, stop) coordinates."""
+    coords: set[tuple[int, int]] = set()
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        try:
+            coords.add((int(parts[0]), int(parts[1])))
+        except ValueError:
+            continue
+    return coords
+
+
+def _match_coord(coord: tuple[int, int], coord_set: set[tuple[int, int]], tolerance: int = 3) -> bool:
+    """Return True if `coord` matches any coordinate in `coord_set` within tolerance."""
+    s, e = coord
+    for ts, te in coord_set:
+        if abs(s - ts) <= tolerance and abs(e - te) <= tolerance:
+            return True
+    return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Train an ORF scoring model for PHANOTATE-rs --model."
@@ -439,7 +530,7 @@ def main() -> int:
         "-o",
         "--output",
         required=True,
-        help="Output JSON path for the trained model.",
+        help="Output ONNX path for the trained model.",
     )
     parser.add_argument(
         "-t",
@@ -479,14 +570,12 @@ def main() -> int:
         help="Model type to train (default: logistic).",
     )
     parser.add_argument(
-        "--onnx",
+        "--hard-negatives",
         action="store_true",
-        help="Also export the trained model to ONNX.",
-    )
-    parser.add_argument(
-        "--onnx-only",
-        action="store_true",
-        help="Export only ONNX, not JSON.",
+        help=(
+            "Run the default heuristic on each genome and keep its false-positive "
+            "predictions in the down-sampled negative set."
+        ),
     )
     args = parser.parse_args()
 
@@ -548,46 +637,54 @@ def main() -> int:
                 file=sys.stderr,
             )
             raise SystemExit(1) from exc
-        scale_pos_weight = (len(y) - total_pos) / max(total_pos, 1)
+        pos_idx = np.where(y == 1)[0]
+        neg_idx = np.where(y == 0)[0]
+        n_pos = len(pos_idx)
+        n_neg_target = min(len(neg_idx), n_pos * 10)
+        rng = np.random.default_rng(args.seed)
+
+        hard_neg_mask = np.concatenate([g["hard_neg"] for g in genomes])
+        if hard_neg_mask.any():
+            hard_neg_idx = np.where((y == 0) & hard_neg_mask)[0]
+            other_neg_idx = np.where((y == 0) & ~hard_neg_mask)[0]
+            n_other = max(0, n_neg_target - len(hard_neg_idx))
+            sel_other = rng.choice(
+                other_neg_idx, size=min(len(other_neg_idx), n_other), replace=False
+            )
+            sel_neg = np.concatenate([hard_neg_idx, sel_other])
+        else:
+            sel_neg = rng.choice(neg_idx, size=n_neg_target, replace=False)
+        sel = np.concatenate([pos_idx, sel_neg])
+        X_sel = X[sel]
+        y_sel = y[sel]
+
+        scale_pos_weight = (len(y_sel) - n_pos) / max(n_pos, 1)
         model = XGBClassifier(
-            scale_pos_weight=scale_pos_weight, eval_metric="logloss"
+            n_estimators=200,
+            max_depth=4,
+            learning_rate=0.05,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            scale_pos_weight=scale_pos_weight,
+            eval_metric="logloss",
         )
-        model.fit(X, y)
+        model.fit(X_sel, y_sel)
     else:
         print(f"Error: unsupported model type: {args.model_type}", file=sys.stderr)
         return 1
 
     out_path = Path(args.output)
+    if out_path.suffix != ".onnx":
+        out_path = out_path.with_suffix(".onnx")
 
-    if args.model_type == "logistic" and not args.onnx_only:
-        out = {
-            "version": 1,
-            "num_features": NUM_FEATURES,
-            "coeffs": model.coef_[0].tolist(),
-            "mean": mean.tolist(),
-            "std": std.tolist(),
-        }
-        out_path.write_text(json.dumps(out, indent=2))
-        print(
-            f"Wrote {args.output}: {total_pos} positive, {total_rows - total_pos} negative examples."
-        )
+    if args.model_type == "logistic":
+        export_linear_to_onnx(model, mean, std, out_path)
+    else:
+        export_xgboost_to_onnx(model, out_path)
 
-    if args.model_type == "xgboost" and not (args.onnx or args.onnx_only):
-        print(
-            "Error: JSON export is only supported for logistic models. "
-            "Use --onnx or --onnx-only to export an XGBoost model.",
-            file=sys.stderr,
-        )
-        return 1
-
-    if args.onnx or args.onnx_only:
-        onnx_path = out_path.with_suffix(".onnx")
-        if args.model_type == "logistic":
-            export_linear_to_onnx(model, mean, std, onnx_path)
-        else:
-            export_xgboost_to_onnx(model, onnx_path)
-        print(f"Wrote {onnx_path}.")
-
+    print(
+        f"Wrote {out_path}: {total_pos} positive, {total_rows - total_pos} negative examples."
+    )
     return 0
 
 
