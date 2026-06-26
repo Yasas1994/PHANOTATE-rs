@@ -46,32 +46,29 @@ Add the following features to `src/ml_features.rs` (the existing `upstream_pwm_s
 
 ### 3.4 Runtime integration
 
-- `src/ml_features.rs` computes the new features for every candidate ORF using the saved PWM and alternative-start enumeration.
-- `src/onnx_scorer.rs` already accepts the feature vector length from the ONNX input shape; verify it matches 35.
+- `src/ml_features.rs` computes the new features for every candidate ORF by building a per-genome PWM from high-confidence ORFs and enumerating alternative in-frame starts.
+- `src/onnx_scorer.rs` already accepts the feature vector length from the ONNX input shape; verify it matches 34.
 - No changes to the graph/path algorithm are required.
 
 ## 4. Fallbacks
 
-- If no annotated starts are available for a translation table, `start_codon_log_freq` defaults to 0.0 for all codons.
 - If a stop has no alternative starts, `best_alt_pwm_score` = 0.0, `pwm_ratio` = 1.0, `start_rank` = 1.
-- If the saved PWM file is missing, fall back to a uniform PWM (all scores 0.0).
+- If no high-confidence ORFs are available for start-codon frequency estimation, `start_codon_log_freq` defaults to 0.0.
 
 ## 5. Testing Plan
 
-1. Train PWM on annotated genomes and visually inspect top motifs.
-2. Regenerate training TSV and confirm the new columns are populated.
+1. Regenerate training TSV and confirm the new columns are populated.
 3. Retrain model, export ONNX, and run `cargo test --lib`.
 4. Benchmark `--model` on the first 50 annotated genomes; target F1 > 0.6717.
 5. Run `cargo fmt`, `cargo clippy -- -D warnings`, and `cargo test --test cli_tests`.
 
 ## 6. Files Affected
 
-- `src/ml_features.rs` — add new features and PWM loading.
-- `src/lib.rs` — expose PWM helper if needed.
-- `scripts/train_orf_score_model.py` — update feature count and training data generation.
-- `scripts/build_start_pwm.py` (new) — train PWM from annotated genomes.
+- `src/ml_features.rs` — add new features and relative-start ranking.
+- `src/orf.rs` — add new fields to `Orf`.
+- `src/lib_python.rs` — keep Python-binding tests compatible with the expanded `Orf`.
+- `scripts/train_orf_score_model.py` — update feature count.
 - `tests/golden/orf_model.onnx` — retrained model.
-- `tests/golden/start_pwm.json` (new) — saved PWM.
 
 ## 7. Open Questions / Future Work
 
