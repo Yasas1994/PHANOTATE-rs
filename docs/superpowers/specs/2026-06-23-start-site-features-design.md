@@ -25,22 +25,21 @@ Improve start-site selection on the `--model` path by adding relative start-site
 
 ### 3.2 New ORF features
 
-Add the following features to `src/ml_features.rs`:
+Add the following features to `src/ml_features.rs` (the existing `upstream_pwm_score` already plays the role of `chosen_pwm_score`):
 
 | Feature | Description |
 |---------|-------------|
-| `chosen_pwm_score` | PWM score of the chosen start's upstream window. |
 | `best_alt_pwm_score` | Highest PWM score among alternative in-frame starts sharing the same stop. |
-| `pwm_ratio` | `chosen_pwm_score / max(best_alt_pwm_score, eps)`. |
+| `pwm_ratio` | `upstream_pwm_score / max(best_alt_pwm_score, eps)`. |
 | `start_rank` | Rank of the chosen start by PWM among alternatives (1 = best). |
 | `num_alt_starts` | Number of alternative in-frame starts considered. |
-| `start_codon_log_freq` | Log frequency of the start codon among annotated starts for the active translation table. |
+| `start_codon_log_freq` | Log frequency of the start codon among high-confidence ORFs in this genome. |
 
-`NUM_FEATURES` increases from 29 to 35.
+`NUM_FEATURES` increases from 29 to 34.
 
 ### 3.3 Training pipeline updates
 
-- Update `scripts/train_orf_score_model.py` to expect 35 features.
+- Update `scripts/train_orf_score_model.py` to expect 34 features.
 - Regenerate training data from annotated genomes so the new features are populated and labels use the annotated start coordinates.
 - Retrain the XGBoost model.
 - Export to `tests/golden/orf_model.onnx`.
