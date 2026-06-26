@@ -18,10 +18,10 @@ fn parse_rbs_mode(s: &str) -> PyResult<RbsMode> {
         .map_err(|e| PyValueError::new_err(format!("Invalid rbs_mode: {}", e)))
 }
 
-fn load_orf_model(path: Option<&str>) -> PyResult<Option<crate::orf_score_model::OrfScoreModel>> {
+fn load_orf_model(path: Option<&str>) -> PyResult<Option<crate::onnx_scorer::OnnxScorer>> {
     match path {
         None => Ok(None),
-        Some(p) => crate::orf_score_model::OrfScoreModel::from_json(std::path::Path::new(p))
+        Some(p) => crate::onnx_scorer::OnnxScorer::from_file(std::path::Path::new(p))
             .map(Some)
             .map_err(|e| PyRuntimeError::new_err(format!("Failed to load ORF model: {}", e))),
     }
@@ -30,59 +30,12 @@ fn load_orf_model(path: Option<&str>) -> PyResult<Option<crate::orf_score_model:
 use crate::bellman_ford;
 use crate::codon_table;
 use crate::detect_table;
-use crate::gcfp::{max_idx, min_idx, GCframe};
+use crate::gcfp::GCframe;
 use crate::genome;
 use crate::graph::{Graph, Node};
 use crate::orf::{self, Orf};
 use crate::output::{self, Format};
 use crate::rbs_mode::RbsMode;
-
-// ---------------------------------------------------------------------------
-// Helper: decide whether a genome uses Shine-Dalgarno RBS signalling.
-// Mirrors main.rs.
-// ---------------------------------------------------------------------------
-fn detect_uses_sd(background: &[f64; 28], training: &[f64; 28]) -> bool {
-    let top_bins = [27, 26, 25, 24, 22, 20];
-    let signal: f64 = top_bins.iter().map(|&i| training[i] / background[i]).sum();
-    signal >= 2.0
-}
-
-// ---------------------------------------------------------------------------
-// Helper: extract the 21-bp upstream window of an ORF used for RBS scoring.
-// Mirrors main.rs.
-// ---------------------------------------------------------------------------
-fn upstream_window(dna: &[u8], rc_dna: &[u8], orf: &Orf) -> Vec<u8> {
-    if orf.frame > 0 {
-        crate::rbs_scanner::get_rbs(dna, orf.start)
-    } else {
-        let rbs_start = dna.len().saturating_sub(orf.start + 21);
-        let rbs_end = dna.len().saturating_sub(orf.start);
-        rc_dna[rbs_start..rbs_end].to_vec()
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Helper: build start-codon weights (mirrors main.rs)
-// ---------------------------------------------------------------------------
-fn build_start_weights(start_codons: &[Vec<u8>]) -> HashMap<Vec<u8>, f64> {
-    let mut map = HashMap::new();
-    for codon in start_codons {
-        let w = match codon.as_slice() {
-            b"atg" => 0.85,
-            b"gtg" => 0.10,
-            b"ttg" => 0.05,
-            _ => 1.0,
-        };
-        map.insert(codon.clone(), w);
-    }
-    let max_w = map.values().cloned().fold(0.0, f64::max);
-    if max_w > 0.0 {
-        for v in map.values_mut() {
-            *v /= max_w;
-        }
-    }
-    map
-}
 
 // ---------------------------------------------------------------------------
 // Helper: parse output format string
@@ -124,7 +77,7 @@ fn build_codon_sets(table: u8) -> (Vec<Vec<u8>>, HashMap<Vec<u8>, f64>, Vec<Vec<
     let (start_codons, start_codons_map) = match table {
         1 | 11 => {
             let codons: Vec<Vec<u8>> = vec![b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()];
-            let weights = build_start_weights(&codons);
+            let weights = crate::rbs_training::build_start_weights(&codons);
             (codons, weights)
         }
         _ => {
@@ -132,7 +85,7 @@ fn build_codon_sets(table: u8) -> (Vec<Vec<u8>>, HashMap<Vec<u8>, f64>, Vec<Vec<
                 .iter()
                 .map(|&c| c.to_vec())
                 .collect();
-            let weights = build_start_weights(&codons);
+            let weights = crate::rbs_training::build_start_weights(&codons);
             (codons, weights)
         }
     };
@@ -327,12 +280,10 @@ impl PyTableScore {
 ///     "sd", "non_sd", or "prodigal". "sd" forces Shine-Dalgarno scoring,
 ///     "non_sd" forces non-SD motif discovery, and "prodigal" uses
 ///     Prodigal-style SD bins with a non-SD fallback.
-/// dicodon : bool, optional
-///     If True, use a Prodigal-style 6-mer dicodon coding-potential model
-///     instead of the GC-frame hold score. Default is False.
 /// model : str, optional
-///     Path to a JSON ORF scoring model. When given, the model replaces the
-///     default PHANOTATE heuristic scoring function. Default is None.
+///     Path to an ONNX ORF scoring model. When given, the model replaces the
+///     default PHANOTATE heuristic scoring function and uses a Prodigal-style
+///     dicodon coding-potential score as a learned feature. Default is None.
 /// min_orf_len : int, optional
 ///     Minimum ORF length in nucleotides. Default is 90.
 ///
@@ -365,7 +316,6 @@ impl PyTableScore {
     mask_n = false,
     detect_table = false,
     rbs_mode = "auto",
-    dicodon = false,
     model = None,
     min_orf_len = 90,
 ))]
@@ -378,7 +328,6 @@ fn phanotate(
     mask_n: bool,
     detect_table: bool,
     rbs_mode: &str,
-    dicodon: bool,
     model: Option<&str>,
     min_orf_len: usize,
 ) -> PyResult<PyObject> {
@@ -440,7 +389,6 @@ fn phanotate(
         effective_table,
         min_orf_len,
         rbs_mode,
-        dicodon,
         orf_model.as_ref(),
     )?;
 
@@ -474,14 +422,12 @@ fn process_single_genome(
     table: u8,
     min_orf_len: usize,
     rbs_mode: RbsMode,
-    dicodon: bool,
-    orf_model: Option<&crate::orf_score_model::OrfScoreModel>,
+    orf_model: Option<&crate::onnx_scorer::OnnxScorer>,
 ) -> PyResult<(String, String, String, Vec<PyGene>, bool)> {
     let contig_length = dna.len();
 
     // --- Nucleotide frequencies and background RBS ---
     let mut freq = [0usize; 4];
-    let mut background_rbs = [1.0f64; 28];
     let mut frame_plot = GCframe::new();
     let len = dna.len();
 
@@ -507,27 +453,6 @@ fn process_single_genome(
             _ => {}
         }
 
-        let window = if i + 21 <= len {
-            &dna[i..i + 21]
-        } else {
-            &dna[i..]
-        };
-        let score = if rbs_mode.is_prodigal() {
-            crate::rbs_scanner::score_rbs_prodigal(window)
-        } else {
-            orf::score_rbs(window)
-        };
-        background_rbs[score] += 1.0;
-
-        let rc_start = len.saturating_sub(i + 21);
-        let rc_window = &rc_dna[rc_start..len - i];
-        let rc_score = if rbs_mode.is_prodigal() {
-            crate::rbs_scanner::score_rbs_prodigal(rc_window)
-        } else {
-            orf::score_rbs(rc_window)
-        };
-        background_rbs[rc_score] += 1.0;
-
         frame_plot.add_base(base);
     }
 
@@ -538,11 +463,6 @@ fn process_single_genome(
     let pa = freq[0] as f64 / total_bases;
     let pg = freq[3] as f64 / total_bases;
     let pstop = pt * pa * pa + pt * pg * pa + pt * pa * pg;
-
-    let bg_sum: f64 = background_rbs.iter().sum();
-    for v in &mut background_rbs {
-        *v /= bg_sum;
-    }
 
     // --- Find ORFs ---
     let mut orfs = orf::find_orfs_with_rc(
@@ -567,254 +487,35 @@ fn process_single_genome(
     }
 
     // --- Training RBS ---
-    let use_non_sd;
-    if rbs_mode.is_prodigal() {
-        use_non_sd = false;
+    let use_non_sd =
+        crate::rbs_training::train_rbs_scores(&mut orfs, dna, rc_dna, rbs_mode, start_codons_map);
 
-        // Train non-SD model once for the genome.
-        let non_sd_model =
-            crate::nonsd_motif::NonSdModel::train(&orfs, dna, rc_dna, start_codons_map);
+    // --- GC frame plot scoring + optional dicodon signal ---
+    crate::orf_signals::compute_orf_signals_with_plot(
+        &mut orfs,
+        dna,
+        rc_dna,
+        &gc_pos_freq,
+        orf_model.is_some(),
+        None,
+    );
 
-        // Training distribution from actual ORF upstream windows (Prodigal bins).
-        let mut training_rbs = [1.0f64; crate::rbs_scanner::NUM_RBS_BINS];
-        for orf in &orfs {
-            let upstream = upstream_window(dna, rc_dna, orf);
-            training_rbs[crate::rbs_scanner::score_rbs_prodigal(&upstream)] += 1.0;
-        }
-        let tr_sum: f64 = training_rbs.iter().sum();
-        for v in &mut training_rbs {
-            *v /= tr_sum;
-        }
-
-        for orf in &mut orfs {
-            let upstream = upstream_window(dna, rc_dna, orf);
-            let bin = crate::rbs_scanner::score_rbs_prodigal(&upstream);
-            if bin > 0 {
-                orf.rbs_score = bin;
-                orf.sd_rbs_score = training_rbs[bin] / background_rbs[bin];
-                orf.non_sd_rbs_score = 1.0;
-                orf.rbs_motif = crate::rbs_scanner::format_prodigal_rbs_motif(bin);
-            } else {
-                orf.rbs_score = 0;
-                orf.sd_rbs_score = 1.0;
-                orf.non_sd_rbs_score = 1.0;
-                // Record the best non-SD motif label for display, but do not
-                // let the non-SD score influence the graph path.  The model's
-                // absolute scale is not comparable to the per-bin SD weight.
-                orf.rbs_motif = non_sd_model
-                    .best_motif_label(orf, dna, rc_dna)
-                    .map(|m| format!("nonSD:{m}"));
-            }
-        }
-    } else {
-        // --- Existing legacy RBS training block ---
-        let mut training_rbs = [1.0f64; 28];
-        for orf in &orfs {
-            training_rbs[orf.rbs_score] += 1.0;
-        }
-        let tr_sum: f64 = training_rbs.iter().sum();
-        for v in &mut training_rbs {
-            *v /= tr_sum;
-        }
-        for orf in &mut orfs {
-            orf.sd_rbs_score = training_rbs[orf.rbs_score] / background_rbs[orf.rbs_score];
-        }
-
-        // --- Existing non-SD auto-detect block ---
-        use_non_sd = match rbs_mode {
-            RbsMode::NonSd => true,
-            RbsMode::Sd => false,
-            RbsMode::Auto => !detect_uses_sd(&background_rbs, &training_rbs),
-            RbsMode::Prodigal => unreachable!(),
-        };
-
-        // Train the non-SD model once; it is used for scoring in non-SD mode
-        // and for fallback motif labels in SD mode.
-        let non_sd_model =
-            crate::nonsd_motif::NonSdModel::train(&orfs, dna, rc_dna, start_codons_map);
-
-        if use_non_sd {
-            // Neutralize the SD-based RBS weight so the path is scored purely by
-            // the non-SD motif model and start-codon type weights.
-            for orf in &mut orfs {
-                orf.sd_rbs_score = 1.0;
-            }
-            for orf in &mut orfs {
-                orf.non_sd_rbs_score = non_sd_model.score_orf(orf, dna, rc_dna);
-                let (wseq, start) = crate::nonsd_motif::upstream_context(dna, rc_dna, orf);
-                let hit = if start >= 18 + crate::nonsd_motif::MIN_MOTIF_LEN {
-                    crate::nonsd_motif::find_best_motif(
-                        &non_sd_model.mot_wt,
-                        wseq,
-                        start,
-                        non_sd_model.no_mot,
-                    )
-                } else {
-                    crate::nonsd_motif::MotifHit::default()
-                };
-                orf.rbs_motif = crate::nonsd_motif::format_motif_hit(&hit);
-            }
-        } else {
-            // SD mode: if an ORF has no SD motif, display the best non-SD motif
-            // as a fallback label, but keep the SD-based weight unchanged.
-            for orf in &mut orfs {
-                if orf.rbs_motif.is_none() {
-                    orf.rbs_motif = non_sd_model
-                        .best_motif_label(orf, dna, rc_dna)
-                        .map(|m| format!("nonSD:{m}"));
-                }
-            }
-        }
-    }
-
-    // --- GC frame plot scoring ---
-    let mut pos_max = [1.0f64; 4];
-    let mut pos_min = [1.0f64; 4];
-
-    let mut by_stop: std::collections::BTreeMap<usize, Vec<&Orf>> =
-        std::collections::BTreeMap::new();
-    for orf in &orfs {
-        by_stop.entry(orf.stop).or_default().push(orf);
-    }
-
-    for (_, orfs_at_stop) in by_stop.iter_mut() {
-        if orfs_at_stop[0].frame > 0 {
-            orfs_at_stop.sort_by_key(|o| o.start);
-        } else {
-            orfs_at_stop.sort_by_key(|o| std::cmp::Reverse(o.start));
-        }
-    }
-
-    for (_, orfs_at_stop) in by_stop {
-        let mut selected = None;
-        for orf in orfs_at_stop {
-            if orf.start_codon() == b"atg" {
-                selected = Some(orf);
-                break;
-            }
-        }
-        let orf = match selected {
-            Some(o) => o,
-            None => continue,
-        };
-
-        let (start, stop) = (orf.start, orf.stop);
-        if start < stop {
-            let n = ((stop - start) / 8) * 3;
-            let mut base = start + n;
-            while base + 36 < stop && base < gc_pos_freq.len() {
-                let idx = max_idx(
-                    gc_pos_freq[base][0],
-                    gc_pos_freq[base][1],
-                    gc_pos_freq[base][2],
-                );
-                pos_max[idx] += 1.0;
-                let idx = min_idx(
-                    gc_pos_freq[base][0],
-                    gc_pos_freq[base][1],
-                    gc_pos_freq[base][2],
-                );
-                pos_min[idx] += 1.0;
-                base += 3;
-            }
-        } else {
-            let n = ((start - stop) / 8) * 3;
-            let mut base = start.saturating_sub(n);
-            while base > stop + 36 && base < gc_pos_freq.len() {
-                let idx = max_idx(
-                    gc_pos_freq[base][2],
-                    gc_pos_freq[base][1],
-                    gc_pos_freq[base][0],
-                );
-                pos_max[idx] += 1.0;
-                let idx = min_idx(
-                    gc_pos_freq[base][2],
-                    gc_pos_freq[base][1],
-                    gc_pos_freq[base][0],
-                );
-                pos_min[idx] += 1.0;
-                if base >= 3 {
-                    base -= 3;
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-
-    let max_max = pos_max.iter().cloned().fold(0.0, f64::max);
-    if max_max > 0.0 {
-        for v in &mut pos_max {
-            *v /= max_max;
-        }
-    }
-    let max_min = pos_min.iter().cloned().fold(0.0, f64::max);
-    if max_min > 0.0 {
-        for v in &mut pos_min {
-            *v /= max_min;
-        }
+    if orf_model.is_some() {
+        crate::ml_features::compute_extra_ml_features(&mut orfs, dna, rc_dna, stop_codons);
     }
 
     for orf in &mut orfs {
-        let (start, stop) = (orf.start, orf.stop);
-        let ln_pns = (1.0 - orf.pstop).ln();
-        let mut log_hold = 0.0f64;
-        if orf.frame > 0 {
-            let mut base = start;
-            while base < stop && base < gc_pos_freq.len() {
-                let ind_max = max_idx(
-                    gc_pos_freq[base][0],
-                    gc_pos_freq[base][1],
-                    gc_pos_freq[base][2],
-                );
-                let ind_min = min_idx(
-                    gc_pos_freq[base][0],
-                    gc_pos_freq[base][1],
-                    gc_pos_freq[base][2],
-                );
-                log_hold += ln_pns * pos_max[ind_max] * pos_min[ind_min];
-                base += 3;
-            }
-        } else {
-            let mut base = start;
-            while base > stop && base < gc_pos_freq.len() {
-                let ind_max = max_idx(
-                    gc_pos_freq[base][2],
-                    gc_pos_freq[base][1],
-                    gc_pos_freq[base][0],
-                );
-                let ind_min = min_idx(
-                    gc_pos_freq[base][2],
-                    gc_pos_freq[base][1],
-                    gc_pos_freq[base][0],
-                );
-                log_hold += ln_pns * pos_max[ind_max] * pos_min[ind_min];
-                if base >= 3 {
-                    base -= 3;
-                } else {
-                    break;
-                }
-            }
-        }
-        orf.hold = log_hold.exp();
-        if !dicodon {
-            orf.coding_potential = 1.0 / orf.hold;
-        }
-    }
-
-    if dicodon {
-        let model = crate::dicodon::DicodonModel::train(&orfs, dna, rc_dna);
-        for orf in &mut orfs {
-            orf.coding_potential = model.score_orf(orf);
-        }
-    }
-
-    for orf in &mut orfs {
-        orf.score(start_codons_map, orf_model);
+        orf.score(start_codons_map, orf_model, 1.0, 0.5);
     }
 
     // --- Build graph ---
-    let (graph, endpoints) = Graph::from_orfs(&orfs, contig_length, pstop);
+    let (gap_scale, overlap_scale) = if orf_model.is_some() {
+        crate::penalty_calibration::compute_model_penalty_scales(&orfs, pstop)
+    } else {
+        (1.0, 1.0)
+    };
+    let (graph, endpoints) =
+        Graph::from_orfs(&orfs, contig_length, pstop, gap_scale, overlap_scale);
     let source_idx = endpoints[0];
     let target_idx = endpoints[1];
 
@@ -949,12 +650,10 @@ fn process_single_genome(
 ///     "sd", "non_sd", or "prodigal". "sd" forces Shine-Dalgarno scoring,
 ///     "non_sd" forces non-SD motif discovery, and "prodigal" uses
 ///     Prodigal-style SD bins with a non-SD fallback.
-/// dicodon : bool, optional
-///     If True, use a Prodigal-style 6-mer dicodon coding-potential model
-///     instead of the GC-frame hold score. Default is False.
 /// model : str, optional
-///     Path to a JSON ORF scoring model. When given, the model replaces the
-///     default PHANOTATE heuristic scoring function. Default is None.
+///     Path to an ONNX ORF scoring model. When given, the model replaces the
+///     default PHANOTATE heuristic scoring function and uses a Prodigal-style
+///     dicodon coding-potential score as a learned feature. Default is None.
 ///
 /// Returns
 /// -------
@@ -977,7 +676,6 @@ fn process_single_genome(
     mask_n = false,
     min_orf_len = 90,
     rbs_mode = "auto",
-    dicodon = false,
     model = None,
 ))]
 fn find_orfs(
@@ -987,7 +685,6 @@ fn find_orfs(
     mask_n: bool,
     min_orf_len: usize,
     rbs_mode: &str,
-    dicodon: bool,
     model: Option<&str>,
 ) -> PyResult<Vec<PyOrf>> {
     let rbs_mode = parse_rbs_mode(rbs_mode)?;
@@ -1007,7 +704,7 @@ fn find_orfs(
         .iter()
         .map(|&c| c.to_vec())
         .collect();
-    let start_codons_map = build_start_weights(&start_codons);
+    let start_codons_map = crate::rbs_training::build_start_weights(&start_codons);
 
     let rc_dna = genome::rev_comp(&dna);
     let mut orfs = orf::find_orfs_with_rc(
@@ -1020,72 +717,18 @@ fn find_orfs(
         mask_n,
     );
 
-    if rbs_mode.is_prodigal() {
-        // Background distribution over all 21-nt windows.
-        let mut background_rbs = [1.0f64; crate::rbs_scanner::NUM_RBS_BINS];
-        let len = dna.len();
-        for i in 0..len {
-            let window = if i + 21 <= len {
-                &dna[i..i + 21]
-            } else {
-                &dna[i..]
-            };
-            background_rbs[crate::rbs_scanner::score_rbs_prodigal(window)] += 1.0;
+    crate::rbs_training::train_rbs_scores(&mut orfs, &dna, &rc_dna, rbs_mode, &start_codons_map);
 
-            let rc_start = len.saturating_sub(i + 21);
-            let rc_window = &rc_dna[rc_start..len - i];
-            background_rbs[crate::rbs_scanner::score_rbs_prodigal(rc_window)] += 1.0;
-        }
-        let bg_sum: f64 = background_rbs.iter().sum();
-        for v in &mut background_rbs {
-            *v /= bg_sum;
-        }
-
-        // Train non-SD model for the fallback branch.
-        let non_sd_model =
-            crate::nonsd_motif::NonSdModel::train(&orfs, &dna, &rc_dna, &start_codons_map);
-
-        // Training distribution from actual ORF upstream windows.
-        let mut training_rbs = [1.0f64; crate::rbs_scanner::NUM_RBS_BINS];
-        for orf in &orfs {
-            let upstream = upstream_window(&dna, &rc_dna, orf);
-            training_rbs[crate::rbs_scanner::score_rbs_prodigal(&upstream)] += 1.0;
-        }
-        let tr_sum: f64 = training_rbs.iter().sum();
-        for v in &mut training_rbs {
-            *v /= tr_sum;
-        }
-
-        for orf in &mut orfs {
-            let upstream = upstream_window(&dna, &rc_dna, orf);
-            let bin = crate::rbs_scanner::score_rbs_prodigal(&upstream);
-            if bin > 0 {
-                orf.rbs_score = bin;
-                orf.sd_rbs_score = training_rbs[bin] / background_rbs[bin];
-                orf.non_sd_rbs_score = 1.0;
-                orf.rbs_motif = crate::rbs_scanner::format_prodigal_rbs_motif(bin);
-            } else {
-                orf.rbs_score = 0;
-                orf.sd_rbs_score = 1.0;
-                orf.non_sd_rbs_score = 1.0;
-                // Record the best non-SD motif label for display only.
-                orf.rbs_motif = non_sd_model
-                    .best_motif_label(orf, &dna, &rc_dna)
-                    .map(|m| format!("nonSD:{m}"));
-            }
-        }
-    }
-
-    if dicodon {
-        let model = crate::dicodon::DicodonModel::train(&orfs, &dna, &rc_dna);
-        for orf in &mut orfs {
-            orf.coding_potential = model.score_orf(orf);
-        }
+    if orf_model.is_some() {
+        // For learned models, compute the GC-frame hold score and a
+        // Prodigal-style dicodon log-likelihood for every ORF.
+        crate::orf_signals::compute_orf_signals(&mut orfs, &dna, &rc_dna, true, None);
+        crate::ml_features::compute_extra_ml_features(&mut orfs, &dna, &rc_dna, &stop_codons);
     }
 
     if let Some(m) = orf_model.as_ref() {
         for orf in &mut orfs {
-            orf.score(&start_codons_map, Some(m));
+            orf.score(&start_codons_map, Some(m), 1.0, 0.5);
         }
     }
 
@@ -1326,7 +969,7 @@ mod tests {
     #[test]
     fn test_build_start_weights() {
         let codons = vec![b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()];
-        let weights = build_start_weights(&codons);
+        let weights = crate::rbs_training::build_start_weights(&codons);
         assert_eq!(weights.len(), 3);
         // ATG should have highest weight (0.85 normalized)
         assert!(weights[&b"atg".to_vec()] >= weights[&b"gtg".to_vec()]);
