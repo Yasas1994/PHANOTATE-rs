@@ -636,6 +636,11 @@ mod tests {
             truncation_penalty: 0.0,
             upstream_pwm_score: 0.0,
             rbs_spacer: 0.0,
+            best_alt_pwm_score: 0.0,
+            pwm_ratio: 1.0,
+            start_rank: 1.0,
+            num_alt_starts: 1.0,
+            start_codon_log_freq: 0.0,
         }];
         let (graph, endpoints) = Graph::from_orfs(&orfs, 100, 0.05, 1.0, 1.0);
         assert!(graph.nodes.len() >= 2);

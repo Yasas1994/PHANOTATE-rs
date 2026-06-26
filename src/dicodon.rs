@@ -98,6 +98,62 @@ impl DicodonModel {
         model
     }
 
+    /// Train an unsupervised dicodon model from all ORFs that are long enough
+    /// to be plausible genes, without requiring RBS signal.
+    ///
+    /// This is useful for feature export on FASTA inputs where no trusted gene
+    /// annotations are available.
+    pub fn train_unsupervised(orfs: &[Orf], dna: &[u8], rc_dna: &[u8]) -> Self {
+        let mut model = Self {
+            scores: [0.0; NUM_DICODONS],
+        };
+
+        let mean_len = if orfs.is_empty() {
+            0.0
+        } else {
+            orfs.iter().map(|o| o.seq.len() as f64).sum::<f64>() / orfs.len() as f64
+        };
+        let threshold = mean_len * 0.8;
+
+        let mut gene_counts = [0.0f64; NUM_DICODONS];
+        let mut bg_counts = [0.0f64; NUM_DICODONS];
+        let mut total_gene = 0.0;
+        let mut total_bg = 0.0;
+
+        // Background counts on both strands.
+        for seq in [dna, rc_dna] {
+            for i in 0..seq.len().saturating_sub(5) {
+                if let Some(ndx) = kmer_encode(seq, i, 6) {
+                    bg_counts[ndx] += 1.0;
+                    total_bg += 1.0;
+                }
+            }
+        }
+
+        // Gene counts from all long ORFs.
+        for orf in orfs {
+            if (orf.seq.len() as f64) < threshold {
+                continue;
+            }
+            let seq = orf.sequence();
+            for i in (0..seq.len().saturating_sub(5)).step_by(3) {
+                if let Some(ndx) = kmer_encode(seq, i, 6) {
+                    gene_counts[ndx] += 1.0;
+                    total_gene += 1.0;
+                }
+            }
+        }
+
+        // Smooth and convert to log-likelihoods.
+        for ndx in 0..NUM_DICODONS {
+            let g = (gene_counts[ndx] + 1.0) / (total_gene + NUM_DICODONS as f64);
+            let b = (bg_counts[ndx] + 1.0) / (total_bg + NUM_DICODONS as f64);
+            model.scores[ndx] = (g / b).ln().clamp(-4.0, 4.0);
+        }
+
+        model
+    }
+
     /// Train a dicodon model from a supplied set of trusted ORFs (e.g. annotated
     /// CDS). Gene dicodon counts are taken from the ORF sequences in frame;
     /// background counts are collected from both genome strands in all frames.
@@ -205,6 +261,24 @@ mod tests {
             non_sd_rbs_score: 1.0,
             coding_potential: 1.0,
             weight: 1.0,
+            cai: 0.0,
+            gc1: 0.0,
+            gc2: 0.0,
+            gc3: 0.0,
+            overlap_upstream_length: 0.0,
+            overlap_upstream_same_strand: 0.0,
+            overlap_downstream_length: 0.0,
+            overlap_downstream_same_strand: 0.0,
+            stop_sharing_count: 0.0,
+            gc_skew: 0.0,
+            truncation_penalty: 0.0,
+            upstream_pwm_score: 0.0,
+            rbs_spacer: 0.0,
+            best_alt_pwm_score: 0.0,
+            pwm_ratio: 1.0,
+            start_rank: 1.0,
+            num_alt_starts: 1.0,
+            start_codon_log_freq: 0.0,
         }];
         let model = DicodonModel::train(&orfs, &seq, &rc);
         assert!(model.scores.iter().all(|&s| s.is_finite()));
@@ -234,6 +308,24 @@ mod tests {
             non_sd_rbs_score: 1.0,
             coding_potential: 1.0,
             weight: 1.0,
+            cai: 0.0,
+            gc1: 0.0,
+            gc2: 0.0,
+            gc3: 0.0,
+            overlap_upstream_length: 0.0,
+            overlap_upstream_same_strand: 0.0,
+            overlap_downstream_length: 0.0,
+            overlap_downstream_same_strand: 0.0,
+            stop_sharing_count: 0.0,
+            gc_skew: 0.0,
+            truncation_penalty: 0.0,
+            upstream_pwm_score: 0.0,
+            rbs_spacer: 0.0,
+            best_alt_pwm_score: 0.0,
+            pwm_ratio: 1.0,
+            start_rank: 1.0,
+            num_alt_starts: 1.0,
+            start_codon_log_freq: 0.0,
         }];
         let model = DicodonModel::train(&orfs, &seq, &rc);
         let s = model.score_orf(&orfs[0]);
@@ -264,6 +356,24 @@ mod tests {
             non_sd_rbs_score: 1.0,
             coding_potential: 1.0,
             weight: 1.0,
+            cai: 0.0,
+            gc1: 0.0,
+            gc2: 0.0,
+            gc3: 0.0,
+            overlap_upstream_length: 0.0,
+            overlap_upstream_same_strand: 0.0,
+            overlap_downstream_length: 0.0,
+            overlap_downstream_same_strand: 0.0,
+            stop_sharing_count: 0.0,
+            gc_skew: 0.0,
+            truncation_penalty: 0.0,
+            upstream_pwm_score: 0.0,
+            rbs_spacer: 0.0,
+            best_alt_pwm_score: 0.0,
+            pwm_ratio: 1.0,
+            start_rank: 1.0,
+            num_alt_starts: 1.0,
+            start_codon_log_freq: 0.0,
         };
         let model = DicodonModel::from_annotated_orfs(&[&orf], &seq, &rc);
         assert!(model.scores.iter().all(|&s| s.is_finite()));
