@@ -38,7 +38,7 @@ End-to-end experimental pipeline:
 
 ## Feature Description
 
-The 15 features extracted per ORF (from `src/ml_features.rs`):
+The 34 features extracted per ORF (from `src/ml_features.rs`):
 
 | Feature | Description | Range |
 |---------|-------------|-------|
@@ -57,6 +57,25 @@ The 15 features extracted per ORF (from `src/ml_features.rs`):
 | `frame_3` | 1 if \|frame\| == 3, else 0 | 0 or 1 |
 | `non_sd_rbs_score` | Non-SD motif score | varies |
 | `dicodon_log_likelihood` | Natural log of Prodigal-style dicodon coding potential | varies |
+| `cai` | Codon adaptation index vs. genome-wide usage | 0–1 |
+| `gc1` | GC content at codon position 1 | 0–1 |
+| `gc2` | GC content at codon position 2 | 0–1 |
+| `gc3` | GC content at codon position 3 | 0–1 |
+| `overlap_upstream_length` | Bases overlapping nearest upstream ORF | ≥0 |
+| `overlap_upstream_same_strand` | 1 if overlapping upstream ORF is same strand | 0 or 1 |
+| `overlap_downstream_length` | Bases overlapping nearest downstream ORF | ≥0 |
+| `overlap_downstream_same_strand` | 1 if overlapping downstream ORF is same strand | 0 or 1 |
+| `stop_sharing_count` | Number of ORFs sharing this stop codon | ≥1 |
+| `gc_skew` | (G−C)/(G+C) of the ORF sequence | −1–1 |
+| `truncation_penalty` | Prodigal-style sharpening penalty | varies |
+| `upstream_pwm_score` | Log-likelihood of start upstream region | varies |
+| `rbs_spacer` | Bases between detected RBS motif and start codon | varies |
+| `heuristic_score` | PHANOTATE-style heuristic score | varies |
+| `best_alt_pwm_score` | Highest PWM score among alternative starts for the same stop | varies |
+| `pwm_ratio` | `upstream_pwm_score / best_alt_pwm_score` | ≥0 |
+| `start_rank` | Rank of chosen start by PWM among alternatives (1 = best) | ≥1 |
+| `num_alt_starts` | Number of alternative starts considered | ≥1 |
+| `start_codon_log_freq` | Log frequency of start codon among high-confidence ORFs | ≤0 |
 
 ## Training Data
 

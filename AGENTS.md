@@ -45,8 +45,8 @@
 | Parallelism | `rayon` + `indicatif` | Multi-threaded contig processing with progress bars |
 | Big integers | `num-bigint` | Graph edge weights (prevents overflow on long ORFs) |
 | Python bindings | `pyo3` 0.22 (optional, feature `python`) | `import phanotate_rs` |
-| ONNX inference | `ort` 2.0.0-rc.12 (optional, feature `ml`) | ONNX runtime for learned ORF scoring |
-| Tensor arrays | `ndarray` 0.15 (optional, feature `ml`) | Input tensors for the ONNX session |
+| ONNX inference | `ort` 2.0.0-rc.12 | ONNX runtime for learned ORF scoring |
+| Tensor arrays | `ndarray` 0.15 | Input tensors for the ONNX session |
 | Dev benchmarks | `criterion` | Criterion.rs benchmark harness |
 | Dev assertions | `pretty_assertions`, `tempfile` | Integration test helpers |
 | Python packaging | `maturin` | Wheel builds for PyPI |
@@ -99,7 +99,6 @@ pytest tests/test_python_bindings.py -v
 |---------|----------------------|--------------|
 | `default` | none | CLI + library only |
 | `python` | `pyo3` | Python bindings via PyO3 |
-| `ml` | `ort`, `ndarray` | ONNX-based ORF scorer |
 
 ---
 
@@ -119,8 +118,8 @@ pytest tests/test_python_bindings.py -v
 | `gcfp.rs` | 221 | GC Frame Plot computation. Sliding 120-bp window (40 codons) over 3 frames to compute per-position GC content arrays. |
 | `output.rs` | 543 | Output formatting: GenBank (`gbk`), GFF3 (`gff`), and SCO (`sco`) formats. Also writes protein and nucleotide FASTA side outputs. |
 | `weights.rs` | 133 | Edge weight formulas: `score_overlap()` and `score_gap()` for graph edges. Includes unit tests. |
-| `ml_features.rs` | 233 | Feature extraction for training. `OrfFeatures` is a fixed 15-feature vector (`NUM_FEATURES = 15`). Includes TSV export (`write_features_tsv()`) for training data generation. |
-| `orf_score_model.rs` | ~120 | Lightweight learned ORF scoring model. Loads a JSON logistic-regression model and returns a negative log-odds edge weight for `Orf::score()`. |
+| `ml_features.rs` | ~350 | Feature extraction for training. `OrfFeatures` is a fixed 34-feature vector (`NUM_FEATURES = 34`). Includes TSV export (`write_features_tsv()`) for training data generation. |
+| `onnx_scorer.rs` | ~120 | ONNX inference wrapper for `--model`. Loads an `.onnx` model and returns a negative log-odds edge weight for `Orf::score()`. |
 
 ---
 
@@ -130,9 +129,9 @@ The project uses a **three-tier testing** approach. The exact number of compiled
 
 ### Tier 1 — Unit tests (inline in source files)
 * Located in `#[cfg(test)]` modules inside `src/` files.
-* With default features, `cargo test --lib -- --skip debug_ --skip regression_ --skip lambda_ --skip table4_` runs **166 tests**.
-* With the `python` feature enabled, the total unit-test count rises to roughly **170+** (some tests are defined in `lib_python.rs`).
-* Running `cargo test --lib` without skips currently yields **166 passed; 3 failed** — the failures are `regression_crass_table15_wins`, `regression_spv4_table4_wins`, and `table4_genome_table4_signal_high`, which require files from an external `../PHANOTATE/` directory.
+* With default features, `cargo test --lib -- --skip debug_ --skip regression_ --skip lambda_ --skip table4_` runs **175 tests**.
+* With the `python` feature enabled, the total unit-test count rises to roughly **180+** (some tests are defined in `lib_python.rs`).
+* Running `cargo test --lib` without skips currently yields **175 passed; 3 failed** — the failures are `regression_crass_table15_wins`, `regression_spv4_table4_signal_high`, and `table4_genome_table4_signal_high`, which require files from an external `../PHANOTATE/` directory.
 * Examples: `weights.rs` has 12 tests for overlap/gap scoring; `genome.rs` has tests for `rev_comp()` and `normalize_seq()`; `bellman_ford.rs` has tests for linear and cyclic graphs; `output.rs` has 28 tests for formatters.
 * Run with: `cargo test --lib -- --skip debug_ --skip regression_ --skip lambda_ --skip table4_`
 
@@ -164,7 +163,7 @@ The project uses a **three-tier testing** approach. The exact number of compiled
 * **Naming**: Follow standard Rust conventions (`snake_case` for functions/variables, `PascalCase` for types/structs, `SCREAMING_SNAKE_CASE` for constants).
 * **BigInt weights**: Graph edge weights use `num_bigint::BigInt` to prevent overflow on very long ORFs. Conversion helper `f64_to_bigint_weight()` is in `graph.rs`.
 * **Parallelism**: Use `rayon` parallel iterators (`par_iter()`) for multi-genome processing. The `indicatif` progress bar integrates with Rayon when `--progress` is used.
-* **Learned ORF scoring**: The optional `--model` JSON file is loaded once and used to replace the default heuristic ORF edge weight. The scorer is a lightweight logistic regression over `OrfFeatures` (`src/orf_score_model.rs`) and is thread-safe by value.
+* **Learned ORF scoring**: The optional `--model` ONNX file is loaded once and used to replace the default heuristic ORF edge weight. The scorer is an ONNX inference session over `OrfFeatures` (`src/onnx_scorer.rs`) and is thread-safe via a `Mutex`.
 
 ---
 
@@ -204,27 +203,20 @@ After bumping, commit, tag (`git tag v0.1.4`), and push. GitHub Actions triggers
 
 `--export-features` writes a TSV of per-ORF features without running annotation. This is useful for training external scoring models:
 
-1. **Feature extraction** (`src/ml_features.rs`): 15 features per ORF (log length, RBS score, log hold, P(stop), log SD RBS score, start-codon one-hot, GC content, frame indicators, log non-SD RBS score, log dicodon coding potential).
+1. **Feature extraction** (`src/ml_features.rs`): 34 features per ORF (log length, RBS score, log hold, P(stop), SD/non-SD RBS scores, start-codon one-hot, GC content, frame indicators, CAI, per-position GC, overlap features, stop sharing, GC skew, truncation penalty, upstream PWM score, RBS spacer, heuristic score, and relative start-site PWM features).
 2. **Export** (`--export-features features.tsv`): Generates the TSV from the input genome.
-3. **Training script** (`scripts/train_orf_score_model.py`): Parses annotated GenBank files, enumerates ORFs, labels them by overlap with CDS features, trains a `LogisticRegression(class_weight="balanced")` or an XGBoost classifier, and exports the standardised coefficients as JSON or ONNX.
-4. **Runtime scoring** (`--model model.json|model.onnx`): Loads the model and replaces the default PHANOTATE heuristic ORF edge weight with a learned negative log-odds score. The file format is auto-detected (JSON first, then ONNX). ONNX support requires building with `--features ml`.
+3. **Training script** (`scripts/train_orf_score_model.py`): Parses annotated GenBank files, enumerates ORFs, labels them by overlap with CDS features, trains a `LogisticRegression(class_weight="balanced")` or an XGBoost classifier, and exports the model to ONNX.
+4. **Runtime scoring** (`--model model.onnx`): Loads the ONNX model and replaces the default PHANOTATE heuristic ORF edge weight with a learned negative log-odds score.
 
 Usage:
 ```bash
-# Build with ONNX support (optional)
-cargo build --release --features ml
-
 # Export features for training data generation
 ./target/release/phanotate-rs -i genome.fasta --export-features features.tsv
 
-# Train a JSON logistic-regression model from annotated GenBank files
-python scripts/train_orf_score_model.py -i tests/golden/NC_001365.gb -o model.json
-
 # Train and export an ONNX model (requires skl2onnx / onnxmltools)
-python scripts/train_orf_score_model.py -i tests/golden/NC_001365.gb --model-type logistic --onnx -o model.json
+python scripts/train_orf_score_model.py -i tests/golden/NC_001365.gb -o model.onnx
 
-# Use either model for annotation
-./target/release/phanotate-rs -i genome.fasta --model model.json -f sco
+# Use the model for annotation
 ./target/release/phanotate-rs -i genome.fasta --model model.onnx -f sco
 ```
 
@@ -281,8 +273,8 @@ python scripts/train_orf_score_model.py -i tests/golden/NC_001365.gb --model-typ
 | Annotate a genome | `./target/release/phanotate-rs -i genome.fasta -f sco` |
 | Detect genetic code | `./target/release/phanotate-rs -i genome.fasta --detect-table --yes` |
 | Export features | `./target/release/phanotate-rs -i genome.fasta --export-features features.tsv` |
-| Train ORF score model | `python scripts/train_orf_score_model.py -i annotated_genomes/ -o model.json` |
-| Annotate with learned model | `./target/release/phanotate-rs -i genome.fasta --model model.json -f sco` |
+| Train ORF score model | `python scripts/train_orf_score_model.py -i annotated_genomes/ -o model.onnx` |
+| Annotate with learned model | `./target/release/phanotate-rs -i genome.fasta --model model.onnx -f sco` |
 | Compare predictions to reference | `python scripts/compare_predictions.py -p preds.sco -r ref.gb` |
 | Compare Prodigal-gv to reference | `python scripts/compare_prodigal_gv.py -i ref.gb -r ref.gb -g 4` |
 | Bump version | `./bump-version.sh 0.1.4` |
