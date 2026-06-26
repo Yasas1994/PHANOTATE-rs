@@ -18,10 +18,10 @@ use phanotate_rs::output;
 use phanotate_rs::rbs_mode::RbsMode;
 
 use codon_table::is_supported_table;
-use gcfp::{max_idx, min_idx, GCframe};
+use gcfp::GCframe;
 use genome::{read_fasta_data, read_genbank, Genome};
 use graph::{Graph, Node};
-use orf::{find_orfs_with_rc, Orf};
+use orf::find_orfs_with_rc;
 use output::Format;
 
 #[derive(Parser, Debug)]
@@ -91,7 +91,7 @@ struct Cli {
     #[arg(
         long = "export-features",
         value_name = "FILE",
-        conflicts_with_all = ["detect_table", "detect_table_batch", "dicodon"]
+        conflicts_with_all = ["detect_table", "detect_table_batch"]
     )]
     export_features: Option<PathBuf>,
 
@@ -99,43 +99,32 @@ struct Cli {
     #[arg(long, value_enum, default_value = "auto")]
     rbs_mode: RbsMode,
 
-    /// Use a Prodigal-style 6-mer dicodon coding-potential model instead of
-    /// the default GC-frame hold score.
-    #[arg(long = "dicodon")]
-    dicodon: bool,
-
-    /// Path to a learned ORF scoring model. Accepts:
-    ///   * JSON logistic-regression models produced by scripts/train_orf_score_model.py
-    ///   * ONNX models when PHANOTATE-rs is built with `--features ml`
+    /// Path to an ONNX ORF scoring model.
     ///
     /// When given, the model replaces the default PHANOTATE heuristic scoring
     /// function and uses a Prodigal-style dicodon coding-potential score as a
     /// learned feature.
     #[arg(long = "model", value_name = "FILE")]
     model: Option<PathBuf>,
-}
 
-/// Build start-codon weights from a list of codons.
-/// ATG gets weight 0.85, GTG gets 0.10, TTG gets 0.05, all others get 1.0.
-/// Weights are normalised to the maximum.
-fn build_start_weights(start_codons: &[Vec<u8>]) -> HashMap<Vec<u8>, f64> {
-    let mut map = HashMap::new();
-    for codon in start_codons {
-        let w = match codon.as_slice() {
-            b"atg" => 0.85,
-            b"gtg" => 0.10,
-            b"ttg" => 0.05,
-            _ => 1.0,
-        };
-        map.insert(codon.clone(), w);
-    }
-    let max_w = map.values().cloned().fold(0.0, f64::max);
-    if max_w > 0.0 {
-        for v in map.values_mut() {
-            *v /= max_w;
-        }
-    }
-    map
+    /// Scale factor applied to the ONNX model's log-odds score before it is
+    /// used as a graph edge weight. Values > 1 make the model more decisive;
+    /// values < 1 make it more conservative.
+    #[arg(long = "model-scale", value_name = "FLOAT", default_value_t = 1.0)]
+    model_scale: f64,
+
+    /// Probability threshold that separates ORF "reward" from "penalty".
+    /// An ORF whose predicted probability is below this value gets a positive
+    /// weight (discouraged); above it gets a negative weight (encouraged).
+    /// The default 0.5 is the natural logit decision boundary.
+    #[arg(long = "model-threshold", value_name = "FLOAT", default_value_t = 0.5)]
+    model_threshold: f64,
+
+    /// Write the ORF graph to FILE in Graphviz DOT format, highlighting the
+    /// nodes and edges on the shortest-path chosen by the algorithm.
+    /// The primary output is still produced normally.
+    #[arg(long = "visualize-dag", value_name = "FILE")]
+    visualize_dag: Option<PathBuf>,
 }
 
 /// Load genomes from file or stdin, auto-detecting format.
@@ -174,25 +163,6 @@ fn load_genomes(input: &Option<PathBuf>) -> Result<Vec<Genome>> {
     }
 }
 
-/// Decide whether the genome uses Shine–Dalgarno RBS signalling by comparing
-/// the high-score tail of the training distribution to the background.
-fn detect_uses_sd(background: &[f64; 28], training: &[f64; 28]) -> bool {
-    let top_bins = [27, 26, 25, 24, 22, 20];
-    let signal: f64 = top_bins.iter().map(|&i| training[i] / background[i]).sum();
-    signal >= 2.0
-}
-
-/// Extract the 21-bp upstream window of an ORF used for RBS scoring.
-fn upstream_window(dna: &[u8], rc_dna: &[u8], orf: &Orf) -> Vec<u8> {
-    if orf.frame > 0 {
-        phanotate_rs::rbs_scanner::get_rbs(dna, orf.start)
-    } else {
-        let rbs_start = dna.len().saturating_sub(orf.start + 21);
-        let rbs_end = dna.len().saturating_sub(orf.start);
-        rc_dna[rbs_start..rbs_end].to_vec()
-    }
-}
-
 /// Process a single genome through the full PHANOTATE pipeline.
 #[allow(clippy::too_many_arguments)]
 fn process_genome(
@@ -205,21 +175,21 @@ fn process_genome(
     mask_n: bool,
     table: u8,
     rbs_mode: RbsMode,
-    dicodon: bool,
-    orf_model: Option<&phanotate_rs::orf_score_model::OrfModel>,
+    orf_model: Option<&phanotate_rs::onnx_scorer::OnnxScorer>,
+    model_scale: f64,
+    model_threshold: f64,
+    visualize_dag: Option<&std::path::Path>,
+    is_single_input: bool,
 ) -> Result<(String, String, String)> {
     let contig_length = genome.seq.len();
     let dna = &genome.seq;
 
-    // --- Nucleotide frequencies and background RBS ---
+    // --- Nucleotide frequencies and GC frame plot ---
     let mut freq = [0usize; 4];
-    let mut background_rbs = [1.0f64; phanotate_rs::rbs_scanner::NUM_RBS_BINS];
     let mut frame_plot = GCframe::new();
     let rc_dna = &genome.rc_seq;
-    let len = dna.len();
 
-    for i in 0..len {
-        let base = dna[i];
+    for &base in dna {
         match base {
             b'a' => {
                 freq[0] += 1;
@@ -240,28 +210,6 @@ fn process_genome(
             _ => {}
         }
 
-        let window = if i + 21 <= len {
-            &dna[i..i + 21]
-        } else {
-            &dna[i..]
-        };
-        let score = if rbs_mode.is_prodigal() {
-            phanotate_rs::rbs_scanner::score_rbs_prodigal(window)
-        } else {
-            phanotate_rs::rbs_scanner::score_rbs_legacy(window)
-        };
-        background_rbs[score] += 1.0;
-
-        // Reverse-strand window from pre-computed RC genome
-        let rc_start = len.saturating_sub(i + 21);
-        let rc_window = &rc_dna[rc_start..len - i];
-        let rc_score = if rbs_mode.is_prodigal() {
-            phanotate_rs::rbs_scanner::score_rbs_prodigal(rc_window)
-        } else {
-            phanotate_rs::rbs_scanner::score_rbs_legacy(rc_window)
-        };
-        background_rbs[rc_score] += 1.0;
-
         frame_plot.add_base(base);
     }
 
@@ -272,11 +220,6 @@ fn process_genome(
     let pt = freq[1] as f64 / total_bases;
     let pg = freq[2] as f64 / total_bases;
     let pstop = pt * pa * pa + pt * pg * pa + pt * pa * pg;
-
-    let bg_sum: f64 = background_rbs.iter().sum();
-    for v in &mut background_rbs {
-        *v /= bg_sum;
-    }
 
     // --- Find ORFs ---
     let mut orfs = find_orfs_with_rc(
@@ -295,253 +238,20 @@ fn process_genome(
     }
 
     // --- Training RBS ---
-    let use_non_sd;
-    if rbs_mode.is_prodigal() {
-        use_non_sd = false;
+    let use_non_sd = phanotate_rs::rbs_training::train_rbs_scores(
+        &mut orfs,
+        dna,
+        rc_dna,
+        rbs_mode,
+        start_codons_map,
+    );
 
-        // Train non-SD model once for the genome.
-        let non_sd_model =
-            phanotate_rs::nonsd_motif::NonSdModel::train(&orfs, dna, rc_dna, start_codons_map);
-
-        // Training distribution from actual ORF upstream windows (Prodigal bins).
-        let mut training_rbs = [1.0f64; phanotate_rs::rbs_scanner::NUM_RBS_BINS];
-        for orf in &orfs {
-            let upstream = upstream_window(dna, rc_dna, orf);
-            training_rbs[phanotate_rs::rbs_scanner::score_rbs_prodigal(&upstream)] += 1.0;
-        }
-        let tr_sum: f64 = training_rbs.iter().sum();
-        for v in &mut training_rbs {
-            *v /= tr_sum;
-        }
-
-        for orf in &mut orfs {
-            let upstream = upstream_window(dna, rc_dna, orf);
-            let bin = phanotate_rs::rbs_scanner::score_rbs_prodigal(&upstream);
-            if bin > 0 {
-                orf.rbs_score = bin;
-                orf.sd_rbs_score = training_rbs[bin] / background_rbs[bin];
-                orf.non_sd_rbs_score = 1.0;
-                orf.rbs_motif = phanotate_rs::rbs_scanner::format_prodigal_rbs_motif(bin);
-            } else {
-                orf.rbs_score = 0;
-                orf.sd_rbs_score = 1.0;
-                orf.non_sd_rbs_score = 1.0;
-                // Keep the best non-SD motif label for display, but do not let
-                // the non-SD score influence the graph path.  The non-SD model
-                // is trained globally and its absolute scale is not comparable
-                // to the per-bin SD weight, so using it as a fallback multiplier
-                // produces many false positives.
-                orf.rbs_motif = non_sd_model
-                    .best_motif_label(orf, dna, rc_dna)
-                    .map(|m| format!("nonSD:{m}"));
-            }
-        }
-    } else {
-        // --- Existing legacy RBS training block ---
-        let mut training_rbs = [1.0f64; phanotate_rs::rbs_scanner::NUM_RBS_BINS];
-        for orf in &orfs {
-            training_rbs[orf.rbs_score] += 1.0;
-        }
-        let tr_sum: f64 = training_rbs.iter().sum();
-        for v in &mut training_rbs {
-            *v /= tr_sum;
-        }
-        for orf in &mut orfs {
-            orf.sd_rbs_score = training_rbs[orf.rbs_score] / background_rbs[orf.rbs_score];
-        }
-
-        // --- Existing non-SD auto-detect block ---
-        use_non_sd = match rbs_mode {
-            RbsMode::NonSd => true,
-            RbsMode::Sd => false,
-            RbsMode::Auto => !detect_uses_sd(&background_rbs, &training_rbs),
-            RbsMode::Prodigal => unreachable!(),
-        };
-
-        // Train the non-SD model once; it is used for scoring in non-SD mode
-        // and for fallback motif labels in SD mode.
-        let non_sd_model =
-            phanotate_rs::nonsd_motif::NonSdModel::train(&orfs, dna, rc_dna, start_codons_map);
-
-        if use_non_sd {
-            // Neutralize the SD-based RBS weight so the path is scored purely by
-            // the non-SD motif model and start-codon type weights.
-            for orf in &mut orfs {
-                orf.sd_rbs_score = 1.0;
-            }
-            for orf in &mut orfs {
-                orf.non_sd_rbs_score = non_sd_model.score_orf(orf, dna, rc_dna);
-                let (wseq, start) = phanotate_rs::nonsd_motif::upstream_context(dna, rc_dna, orf);
-                let hit = if start >= 18 + phanotate_rs::nonsd_motif::MIN_MOTIF_LEN {
-                    phanotate_rs::nonsd_motif::find_best_motif(
-                        &non_sd_model.mot_wt,
-                        wseq,
-                        start,
-                        non_sd_model.no_mot,
-                    )
-                } else {
-                    phanotate_rs::nonsd_motif::MotifHit::default()
-                };
-                orf.rbs_motif = phanotate_rs::nonsd_motif::format_motif_hit(&hit);
-            }
-        } else {
-            // SD mode: if an ORF has no SD motif, display the best non-SD motif
-            // as a fallback label, but keep the SD-based weight unchanged.
-            for orf in &mut orfs {
-                if orf.rbs_motif.is_none() {
-                    orf.rbs_motif = non_sd_model
-                        .best_motif_label(orf, dna, rc_dna)
-                        .map(|m| format!("nonSD:{m}"));
-                }
-            }
-        }
-    }
-
-    // --- GC frame plot scoring ---
-    let mut pos_max = [1.0f64; 4];
-    let mut pos_min = [1.0f64; 4];
-
-    let mut by_stop: std::collections::BTreeMap<usize, Vec<&Orf>> =
-        std::collections::BTreeMap::new();
-    for orf in &orfs {
-        by_stop.entry(orf.stop).or_default().push(orf);
-    }
-
-    for (_, orfs_at_stop) in by_stop.iter_mut() {
-        if orfs_at_stop[0].frame > 0 {
-            orfs_at_stop.sort_by_key(|o| o.start);
-        } else {
-            orfs_at_stop.sort_by_key(|o| std::cmp::Reverse(o.start));
-        }
-    }
-
-    for (_, orfs_at_stop) in by_stop {
-        let mut selected = None;
-        for orf in orfs_at_stop {
-            if orf.start_codon() == b"atg" {
-                selected = Some(orf);
-                break;
-            }
-        }
-        let orf = match selected {
-            Some(o) => o,
-            None => continue,
-        };
-
-        let (start, stop) = (orf.start, orf.stop);
-        if start < stop {
-            let n = ((stop - start) / 8) * 3;
-            let mut base = start + n;
-            while base + 36 < stop && base < gc_pos_freq.len() {
-                let idx = max_idx(
-                    gc_pos_freq[base][0],
-                    gc_pos_freq[base][1],
-                    gc_pos_freq[base][2],
-                );
-                pos_max[idx] += 1.0;
-                let idx = min_idx(
-                    gc_pos_freq[base][0],
-                    gc_pos_freq[base][1],
-                    gc_pos_freq[base][2],
-                );
-                pos_min[idx] += 1.0;
-                base += 3;
-            }
-        } else {
-            let n = ((start - stop) / 8) * 3;
-            let mut base = start.saturating_sub(n);
-            while base > stop + 36 && base < gc_pos_freq.len() {
-                let idx = max_idx(
-                    gc_pos_freq[base][2],
-                    gc_pos_freq[base][1],
-                    gc_pos_freq[base][0],
-                );
-                pos_max[idx] += 1.0;
-                let idx = min_idx(
-                    gc_pos_freq[base][2],
-                    gc_pos_freq[base][1],
-                    gc_pos_freq[base][0],
-                );
-                pos_min[idx] += 1.0;
-                if base >= 3 {
-                    base -= 3;
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-
-    let max_max = pos_max.iter().cloned().fold(0.0, f64::max);
-    if max_max > 0.0 {
-        for v in &mut pos_max {
-            *v /= max_max;
-        }
-    }
-    let max_min = pos_min.iter().cloned().fold(0.0, f64::max);
-    if max_min > 0.0 {
-        for v in &mut pos_min {
-            *v /= max_min;
-        }
-    }
-
-    // Compute hold in log-space to avoid underflow on long ORFs.
-    // hold = product of pns^(pos_max * pos_min) per codon
-    // ln(hold) = sum of ln(pns) * pos_max * pos_min per codon
-    for orf in &mut orfs {
-        let (start, stop) = (orf.start, orf.stop);
-        let ln_pns = (1.0 - orf.pstop).ln();
-        let mut log_hold = 0.0f64;
-        if orf.frame > 0 {
-            let mut base = start;
-            while base < stop && base < gc_pos_freq.len() {
-                let ind_max = max_idx(
-                    gc_pos_freq[base][0],
-                    gc_pos_freq[base][1],
-                    gc_pos_freq[base][2],
-                );
-                let ind_min = min_idx(
-                    gc_pos_freq[base][0],
-                    gc_pos_freq[base][1],
-                    gc_pos_freq[base][2],
-                );
-                log_hold += ln_pns * pos_max[ind_max] * pos_min[ind_min];
-                base += 3;
-            }
-        } else {
-            let mut base = start;
-            while base > stop && base < gc_pos_freq.len() {
-                let ind_max = max_idx(
-                    gc_pos_freq[base][2],
-                    gc_pos_freq[base][1],
-                    gc_pos_freq[base][0],
-                );
-                let ind_min = min_idx(
-                    gc_pos_freq[base][2],
-                    gc_pos_freq[base][1],
-                    gc_pos_freq[base][0],
-                );
-                log_hold += ln_pns * pos_max[ind_max] * pos_min[ind_min];
-                if base >= 3 {
-                    base -= 3;
-                } else {
-                    break;
-                }
-            }
-        }
-        orf.hold = log_hold.exp();
-        if !dicodon {
-            // Default mode: GC-frame hold is the coding-potential multiplier.
-            orf.coding_potential = 1.0 / orf.hold;
-        }
-    }
-
-    if dicodon {
-        let annotated: Vec<&Orf> = if genome.cds.is_empty() {
-            Vec::new()
-        } else {
+    // --- GC frame plot scoring + optional dicodon signal ---
+    let annotated: Option<Vec<usize>> = if orf_model.is_some() && !genome.cds.is_empty() {
+        Some(
             orfs.iter()
-                .filter(|o| {
+                .enumerate()
+                .filter(|(_, o)| {
                     genome.cds.iter().any(|(s, e, strand)| {
                         if *strand > 0 {
                             // Forward: ORF start == CDS start, stop codon ends at CDS end.
@@ -552,35 +262,49 @@ fn process_genome(
                         }
                     })
                 })
-                .collect()
-        };
+                .map(|(i, _)| i)
+                .collect(),
+        )
+    } else {
+        None
+    };
 
-        let model = if annotated.is_empty() {
-            phanotate_rs::dicodon::DicodonModel::train(&orfs, dna, rc_dna)
-        } else {
-            phanotate_rs::dicodon::DicodonModel::from_annotated_orfs(&annotated, dna, rc_dna)
-        };
+    phanotate_rs::orf_signals::compute_orf_signals_with_plot(
+        &mut orfs,
+        dna,
+        rc_dna,
+        &gc_pos_freq,
+        orf_model.is_some(),
+        annotated.as_deref(),
+    );
 
-        for orf in &mut orfs {
-            orf.coding_potential = model.score_orf(orf);
-        }
+    if orf_model.is_some() {
+        phanotate_rs::ml_features::compute_extra_ml_features(&mut orfs, dna, rc_dna, stop_codons);
     }
 
     // --- Score ORFs ---
     for orf in &mut orfs {
-        orf.score(start_codons_map, orf_model);
+        orf.score(start_codons_map, orf_model, model_scale, model_threshold);
     }
 
     // --- Build graph ---
-    let (graph, endpoints) = Graph::from_orfs(&orfs, contig_length, pstop);
+    let (gap_scale, overlap_scale) = if orf_model.is_some() {
+        phanotate_rs::penalty_calibration::compute_model_penalty_scales(&orfs, pstop)
+    } else {
+        (1.0, 1.0)
+    };
+    let (graph, endpoints) =
+        Graph::from_orfs(&orfs, contig_length, pstop, gap_scale, overlap_scale);
     let source_idx = endpoints[0];
     let target_idx = endpoints[1];
 
     // --- Shortest path ---
     let path = bellman_ford::shortest_path(&graph, source_idx, target_idx);
+    let _source_idx = endpoints[0];
+    let _target_idx = endpoints[1];
 
     let mut path_edges: Vec<(Node, Node, f64)> = Vec::new();
-    if let Some(path_indices) = path {
+    if let Some(ref path_indices) = path {
         for i in 0..path_indices.len() - 1 {
             let u = path_indices[i];
             let v = path_indices[i + 1];
@@ -614,6 +338,28 @@ fn process_genome(
             };
             path_edges.push((*left, *right, weight));
         }
+    }
+
+    // --- Visualize DAG ---
+    if let Some(dag_base) = visualize_dag {
+        let dot_path = if is_single_input {
+            dag_base.to_path_buf()
+        } else {
+            let mut p = dag_base.to_path_buf();
+            let stem = p
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "dag".to_string());
+            let ext = p
+                .extension()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "dot".to_string());
+            p.set_file_name(format!("{}_{}.{}", stem, genome.id, ext));
+            p
+        };
+        let dot = graph.to_dot(path.as_deref(), &endpoints);
+        fs::write(&dot_path, dot)
+            .with_context(|| format!("Failed to write DAG visualization to {:?}", dot_path))?;
     }
 
     // --- Primary output ---
@@ -687,13 +433,14 @@ fn main() -> Result<()> {
                 .map(|&c| c.to_vec())
                 .collect(),
         };
+        let start_codons_map = phanotate_rs::rbs_training::build_start_weights(&start_codons);
 
         let mut file = fs::File::create(features_path)
             .with_context(|| format!("Failed to create features file: {:?}", features_path))?;
         let mut header_written = false;
 
         for genome in genomes {
-            let orfs = find_orfs_with_rc(
+            let mut orfs = find_orfs_with_rc(
                 &genome.seq,
                 &genome.rc_seq,
                 &start_codons,
@@ -702,6 +449,54 @@ fn main() -> Result<()> {
                 cli.closed_ends,
                 cli.mask_n,
             );
+
+            // Train RBS scores so that sd_rbs_score / non_sd_rbs_score features
+            // are meaningful in exported feature vectors.
+            phanotate_rs::rbs_training::train_rbs_scores(
+                &mut orfs,
+                &genome.seq,
+                &genome.rc_seq,
+                cli.rbs_mode,
+                &start_codons_map,
+            );
+
+            // Compute GC-frame hold and a Prodigal-style dicodon log-likelihood
+            // so that exported feature vectors are useful for model training.
+            let annotated: Option<Vec<usize>> = if genome.cds.is_empty() {
+                Some(Vec::new()) // triggers unsupervised dicodon training
+            } else {
+                Some(
+                    orfs.iter()
+                        .enumerate()
+                        .filter(|(_, o)| {
+                            genome.cds.iter().any(|(s, e, strand)| {
+                                if *strand > 0 {
+                                    o.frame > 0 && o.start == *s && o.stop + 2 == *e
+                                } else {
+                                    o.frame < 0 && o.stop == *s && o.start + 2 == *e
+                                }
+                            })
+                        })
+                        .map(|(i, _)| i)
+                        .collect(),
+                )
+            };
+
+            phanotate_rs::orf_signals::compute_orf_signals(
+                &mut orfs,
+                &genome.seq,
+                &genome.rc_seq,
+                true,
+                annotated.as_deref(),
+            );
+
+            phanotate_rs::ml_features::compute_extra_ml_features(
+                &mut orfs,
+                &genome.seq,
+                &genome.rc_seq,
+                &stop_codons,
+            );
+
             phanotate_rs::ml_features::write_features_tsv(&mut file, &orfs, !header_written)
                 .context("Failed to write features")?;
             header_written = true;
@@ -782,7 +577,7 @@ fn main() -> Result<()> {
     let (start_codons, start_codons_map) = match effective_table {
         1 | 11 => {
             let codons: Vec<Vec<u8>> = vec![b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()];
-            let weights = build_start_weights(&codons);
+            let weights = phanotate_rs::rbs_training::build_start_weights(&codons);
             (codons, weights)
         }
         _ => {
@@ -790,17 +585,17 @@ fn main() -> Result<()> {
                 .iter()
                 .map(|&c| c.to_vec())
                 .collect();
-            let weights = build_start_weights(&codons);
+            let weights = phanotate_rs::rbs_training::build_start_weights(&codons);
             (codons, weights)
         }
     };
 
-    // Load learned ORF scoring model if provided
-    let orf_model: Option<phanotate_rs::orf_score_model::OrfModel> = cli
+    // Load learned ORF scoring model if provided.
+    let orf_model: Option<phanotate_rs::onnx_scorer::OnnxScorer> = cli
         .model
         .as_ref()
         .map(|p| {
-            phanotate_rs::orf_score_model::OrfModel::from_file(p)
+            phanotate_rs::onnx_scorer::OnnxScorer::from_file(p)
                 .with_context(|| format!("Failed to load ORF scoring model from {:?}", p))
         })
         .transpose()?;
@@ -814,6 +609,7 @@ fn main() -> Result<()> {
                 .unwrap()
                 .progress_chars("#>-"),
         );
+        let single = genomes.len() == 1;
         genomes
             .into_par_iter()
             .progress_with(pb)
@@ -828,12 +624,16 @@ fn main() -> Result<()> {
                     cli.mask_n,
                     effective_table,
                     cli.rbs_mode,
-                    cli.dicodon,
                     orf_model.as_ref(),
+                    cli.model_scale,
+                    cli.model_threshold,
+                    cli.visualize_dag.as_deref(),
+                    single,
                 )
             })
             .collect::<Result<Vec<_>>>()?
     } else {
+        let single = genomes.len() == 1;
         genomes
             .into_par_iter()
             .map(|genome| {
@@ -847,8 +647,11 @@ fn main() -> Result<()> {
                     cli.mask_n,
                     effective_table,
                     cli.rbs_mode,
-                    cli.dicodon,
                     orf_model.as_ref(),
+                    cli.model_scale,
+                    cli.model_threshold,
+                    cli.visualize_dag.as_deref(),
+                    single,
                 )
             })
             .collect::<Result<Vec<_>>>()?
