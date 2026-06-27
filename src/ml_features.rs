@@ -13,6 +13,11 @@ pub const NUM_FEATURES: usize = 34;
 pub struct OrfFeatures(pub [f32; NUM_FEATURES]);
 
 impl OrfFeatures {
+    /// Build a feature vector from an ORF.
+    pub fn from_orf(orf: &Orf) -> Self {
+        orf.extract_features()
+    }
+
     /// Return the feature vector as a slice.
     pub fn as_slice(&self) -> &[f32] {
         &self.0
