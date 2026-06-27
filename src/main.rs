@@ -16,6 +16,7 @@ use phanotate_rs::graph;
 use phanotate_rs::orf;
 use phanotate_rs::output;
 use phanotate_rs::rbs_mode::RbsMode;
+use phanotate_rs::threshold_calibration::{compute_effective_model_threshold, AutoThresholdMode};
 
 use codon_table::is_supported_table;
 use gcfp::GCframe;
@@ -120,6 +121,10 @@ struct Cli {
     #[arg(long = "model-threshold", value_name = "FLOAT", default_value_t = 0.5)]
     model_threshold: f64,
 
+    /// Automatically calibrate the model decision threshold per genome.
+    #[arg(long = "auto-threshold", value_enum, default_value = "none")]
+    auto_threshold: AutoThresholdMode,
+
     /// Write the ORF graph to FILE in Graphviz DOT format, highlighting the
     /// nodes and edges on the shortest-path chosen by the algorithm.
     /// The primary output is still produced normally.
@@ -178,6 +183,7 @@ fn process_genome(
     orf_model: Option<&phanotate_rs::onnx_scorer::OnnxScorer>,
     model_scale: f64,
     model_threshold: f64,
+    auto_threshold: AutoThresholdMode,
     visualize_dag: Option<&std::path::Path>,
     is_single_input: bool,
 ) -> Result<(String, String, String)> {
@@ -283,8 +289,16 @@ fn process_genome(
     }
 
     // --- Score ORFs ---
+    let effective_model_threshold = orf_model.map_or(model_threshold, |m| {
+        compute_effective_model_threshold(&orfs, m, contig_length, auto_threshold, model_threshold)
+    });
     for orf in &mut orfs {
-        orf.score(start_codons_map, orf_model, model_scale, model_threshold);
+        orf.score(
+            start_codons_map,
+            orf_model,
+            model_scale,
+            effective_model_threshold,
+        );
     }
 
     // --- Build graph ---
@@ -497,7 +511,7 @@ fn main() -> Result<()> {
                 &stop_codons,
             );
 
-            phanotate_rs::ml_features::write_features_tsv(&mut file, &orfs, !header_written)
+            phanotate_rs::ml_features::write_features_tsv(&mut file, &orfs, !header_written, None)
                 .context("Failed to write features")?;
             header_written = true;
         }
@@ -627,6 +641,7 @@ fn main() -> Result<()> {
                     orf_model.as_ref(),
                     cli.model_scale,
                     cli.model_threshold,
+                    cli.auto_threshold,
                     cli.visualize_dag.as_deref(),
                     single,
                 )
@@ -650,6 +665,7 @@ fn main() -> Result<()> {
                     orf_model.as_ref(),
                     cli.model_scale,
                     cli.model_threshold,
+                    cli.auto_threshold,
                     cli.visualize_dag.as_deref(),
                     single,
                 )
