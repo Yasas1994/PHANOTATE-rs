@@ -1,0 +1,20 @@
+{
+  "model": "models/model_best.onnx",
+  "source_model": "models/model_lr.onnx",
+  "model_scale": 2.0,
+  "model_threshold": 0.75,
+  "auto_threshold": null,
+  "benchmark": {
+    "genomes": 100,
+    "heuristic": {
+      "precision": 0.793098,
+      "recall": 0.959369,
+      "f1": 0.862256
+    },
+    "best_model": {
+      "precision": 0.839376,
+      "recall": 0.914813,
+      "f1": 0.867874
+    }
+  }
+}
