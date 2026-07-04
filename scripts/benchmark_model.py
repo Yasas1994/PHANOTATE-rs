@@ -43,6 +43,58 @@ def _parse_location_segments(loc: str) -> tuple[list[tuple[int, int]], int]:
     return segments, strand
 
 
+def parse_genbank_table(path: Path, default: int = 11) -> int:
+    """Return the majority ``/transl_table`` value among CDS features.
+
+    Falls back to ``default`` when no transl_table qualifier is present.
+    This mirrors the parsing logic in ``train_orf_score_model_v2.py``.
+    """
+    features_blocks: list[list[str]] = []
+    current_block: list[str] = []
+    in_features = False
+
+    with path.open() as fh:
+        for raw in fh:
+            line = raw.rstrip("\n")
+            stripped = line.strip()
+            if stripped.startswith("FEATURES"):
+                in_features = True
+                continue
+            if stripped.startswith("ORIGIN") or stripped.startswith("//"):
+                if current_block:
+                    features_blocks.append(current_block)
+                    current_block = []
+                in_features = False
+                continue
+            if not in_features:
+                continue
+            if len(line) > 5 and line[:5] == "     " and line[5] != " ":
+                if current_block:
+                    features_blocks.append(current_block)
+                    current_block = []
+                current_block.append(line)
+            elif current_block:
+                current_block.append(line)
+        if current_block:
+            features_blocks.append(current_block)
+
+    tables: list[int] = []
+    for block in features_blocks:
+        key = block[0][5:21].strip()
+        if key != "CDS":
+            continue
+        for line in block:
+            s = line.strip()
+            if s.startswith("/transl_table"):
+                try:
+                    tables.append(int(s.split("=", 1)[-1].strip().strip('"')))
+                except ValueError:
+                    pass
+    if not tables:
+        return default
+    return max(set(tables), key=tables.count)
+
+
 def parse_genbank_cds(path: Path) -> set[tuple[int, int]]:
     """Return the set of CDS coordinates from a GenBank file.
 
@@ -97,11 +149,25 @@ def parse_genbank_cds(path: Path) -> set[tuple[int, int]]:
     return coords
 
 
-def run_phanotate(genome: Path, binary: Path, table: int, model: Path | None = None) -> set[tuple[int, int]]:
+def run_phanotate(
+    genome: Path,
+    binary: Path,
+    table: int,
+    model: Path | None = None,
+    model_scale: float | None = None,
+    model_threshold: float | None = None,
+    auto_threshold: str | None = None,
+) -> set[tuple[int, int]]:
     """Run phanotate-rs on ``genome`` and return normalized SCO coordinates."""
     cmd = [str(binary), "-i", str(genome), "-g", str(table), "-f", "sco"]
     if model:
         cmd.extend(["--model", str(model)])
+    if model_scale is not None:
+        cmd.extend(["--model-scale", str(model_scale)])
+    if model_threshold is not None:
+        cmd.extend(["--model-threshold", str(model_threshold)])
+    if auto_threshold is not None:
+        cmd.extend(["--auto-threshold", auto_threshold])
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     preds: set[tuple[int, int]] = set()
     for line in result.stdout.splitlines():
@@ -206,8 +272,27 @@ def main() -> int:
     parser.add_argument(
         "--table",
         type=int,
-        default=11,
-        help="NCBI translation table to use for all genomes",
+        default=None,
+        help="NCBI translation table to use for all genomes (default: parse from GenBank)",
+    )
+    parser.add_argument(
+        "--model-scale",
+        type=float,
+        default=None,
+        help="Scale factor for the ONNX model score",
+    )
+    parser.add_argument(
+        "--model-threshold",
+        type=float,
+        default=None,
+        help="Probability threshold for the ONNX model",
+    )
+    parser.add_argument(
+        "--auto-threshold",
+        type=str,
+        choices=["none", "length", "percentile"],
+        default=None,
+        help="Auto-calibrate the model threshold per genome",
     )
     args = parser.parse_args()
 
@@ -235,22 +320,30 @@ def main() -> int:
     heuristic_rows: list[dict] = []
     model_rows: dict[str, list[dict]] = {m.name: [] for m in args.models}
 
+    model_kwargs = {
+        "model_scale": args.model_scale,
+        "model_threshold": args.model_threshold,
+        "auto_threshold": args.auto_threshold,
+    }
+
     for genome_path in gb_files:
         true_coords = parse_genbank_cds(genome_path)
         if not true_coords:
             warnings.warn(f"Skipping {genome_path.name}: no annotated CDS")
             continue
 
+        table = args.table if args.table is not None else parse_genbank_table(genome_path)
+
         record = {
             "genome": genome_path.stem,
-            "table": args.table,
+            "table": table,
             "n_true": len(true_coords),
             "heuristic": None,
             "models": {},
         }
 
         try:
-            pred = run_phanotate(genome_path, args.binary, args.table)
+            pred = run_phanotate(genome_path, args.binary, table)
         except subprocess.CalledProcessError as e:
             print(
                 f"Warning: heuristic run failed for {genome_path.name}: {e}",
@@ -262,7 +355,7 @@ def main() -> int:
 
         for model in args.models:
             try:
-                pred = run_phanotate(genome_path, args.binary, args.table, model)
+                pred = run_phanotate(genome_path, args.binary, table, model, **model_kwargs)
             except subprocess.CalledProcessError as e:
                 print(
                     f"Warning: model {model.name} failed for {genome_path.name}: {e}",
@@ -289,9 +382,12 @@ def main() -> int:
     results = {
         "config": {
             "binary": str(args.binary),
-            "table": args.table,
+            "table_override": args.table,
             "max_genomes": args.max_genomes,
             "models": [str(m) for m in args.models],
+            "model_scale": args.model_scale,
+            "model_threshold": args.model_threshold,
+            "auto_threshold": args.auto_threshold,
         },
         "summary": summary,
         "per_genome": per_genome,
@@ -318,7 +414,8 @@ def main() -> int:
             "f1": metrics["f1"],
         })
     df = pd.DataFrame(table_rows)
-    print(f"\nBenchmarked {len(per_genome)} genome(s) (table={args.table}):")
+    table_info = args.table if args.table is not None else "per-genome"
+    print(f"\nBenchmarked {len(per_genome)} genome(s) (table={table_info}):")
     print(df.to_string(index=False))
 
     return 0
