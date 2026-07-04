@@ -793,6 +793,7 @@ mod tests {
                 non_sd_rbs_score: 1.0,
                 rbs_motif: None,
                 weight: 1.0,
+                ..Orf::default()
             });
         }
 
@@ -820,6 +821,7 @@ mod tests {
                 non_sd_rbs_score: 1.0,
                 rbs_motif: None,
                 weight: 1.0,
+                ..Orf::default()
             });
         }
 
@@ -888,6 +890,7 @@ mod tests {
                 non_sd_rbs_score: 1.0,
                 rbs_motif: None,
                 weight: 1.0,
+                ..Orf::default()
             });
         }
 
@@ -920,6 +923,7 @@ mod tests {
             non_sd_rbs_score: 1.0,
             rbs_motif: None,
             weight: 1.0,
+            ..Orf::default()
         };
         let dna = vec![b'a'; 100];
         let rc = dna.clone();
@@ -961,6 +965,7 @@ mod tests {
             non_sd_rbs_score: 1.0,
             rbs_motif: None,
             weight: 1.0,
+            ..Orf::default()
         };
         let rc = crate::genome::rev_comp(&seq);
 
@@ -993,6 +998,7 @@ mod tests {
             non_sd_rbs_score: 1.0,
             rbs_motif: None,
             weight: 1.0,
+            ..Orf::default()
         };
         let rc = crate::genome::rev_comp(&seq);
 

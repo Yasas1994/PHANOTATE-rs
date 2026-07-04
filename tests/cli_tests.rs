@@ -161,6 +161,38 @@ fn test_flag_g_table25() {
 }
 
 #[test]
+fn test_flag_g_table2() {
+    let (stdout, _stderr, code) = run(&["-i", PHIX174, "-g", "2", "-f", "sco"], None);
+    assert_eq!(code, 0);
+    assert!(!stdout.is_empty());
+}
+
+#[test]
+fn test_flag_g_table5() {
+    let (stdout, _stderr, code) = run(&["-i", PHIX174, "-g", "5", "-f", "sco"], None);
+    assert_eq!(code, 0);
+    assert!(!stdout.is_empty());
+}
+
+#[test]
+fn test_flag_g_table22() {
+    let (stdout, _stderr, code) = run(&["-i", PHIX174, "-g", "22", "-f", "sco"], None);
+    assert_eq!(code, 0);
+    assert!(!stdout.is_empty());
+}
+
+#[test]
+fn test_flag_g_invalid7() {
+    let (_stdout, stderr, code) = run(&["-i", PHIX174, "-g", "7"], None);
+    assert_ne!(code, 0, "invalid table 7 should fail");
+    assert!(
+        stderr.contains("table"),
+        "error should mention table: {}",
+        stderr
+    );
+}
+
+#[test]
 fn test_flag_g_invalid() {
     let (_stdout, stderr, code) = run(&["-i", PHIX174, "-g", "99"], None);
     assert_ne!(code, 0, "invalid table should fail");

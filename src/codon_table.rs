@@ -1,332 +1,148 @@
-//! NCBI Translation Tables relevant to bacteriophages.
+//! NCBI Translation Tables.
 //!
-//! All functions accept a lowercase nucleotide byte slice and return a protein
+//! All functions accept a byte slice (lowercase or uppercase) and return a protein
 //! string where '*' denotes a stop codon and 'X' denotes an unknown/incomplete
 //! codon.
 //!
-//! Tables included and their single-sentence rationale:
-//!
-//!  Table  1  Standard                    — baseline; some eukaryotic phages
-//!  Table  4  Mold/Mycoplasma/Spiroplasma — Mycoplasma & Spiroplasma phages; TGA→Trp
-//!  Table  6  Ciliate nuclear             — phages infecting Tetrahymena/Paramecium; TAA/TAG→Gln
-//!  Table 11  Bacterial/Archaeal          — default for all bacteriophages
-//!  Table 15  Blepharisma nuclear         — some Crassvirales; TAG→Gln
-//!  Table 25  SR1/Gracilibacteria         — Gracilibacteria phages; TGA→Gly
-//!
-//! Differences from Table 11 are marked with // [DIFF] comments.
+//! Supports NCBI translation tables 1-6, 9-16, and 21-31. Tables 0, 7, 8, 17-20,
+//! and >31 are not supported.
 
 // ---------------------------------------------------------------------------
-// Table 1 — The Standard Code
-// ---------------------------------------------------------------------------
-// Differences from Table 11:
-//   Identical amino-acid assignments. Narrower start-codon set (ATG, TTG, CTG
-//   vs. the broader set in Table 11). Included for completeness when annotating
-//   eukaryotic viruses.
-pub fn translate_table1(seq: &[u8]) -> String {
-    seq.chunks(3)
-        .map(|codon| {
-            if codon.len() < 3 {
-                return 'X';
-            }
-            match codon {
-                b"ttt" | b"ttc" => 'F',
-                b"tta" | b"ttg" | b"ctt" | b"ctc" | b"cta" | b"ctg" => 'L',
-                b"att" | b"atc" | b"ata" => 'I',
-                b"atg" => 'M',
-                b"gtt" | b"gtc" | b"gta" | b"gtg" => 'V',
-                b"tct" | b"tcc" | b"tca" | b"tcg" | b"agt" | b"agc" => 'S',
-                b"cct" | b"ccc" | b"cca" | b"ccg" => 'P',
-                b"act" | b"acc" | b"aca" | b"acg" => 'T',
-                b"gct" | b"gcc" | b"gca" | b"gcg" => 'A',
-                b"tat" | b"tac" => 'Y',
-                b"taa" | b"tag" | b"tga" => '*',
-                b"cat" | b"cac" => 'H',
-                b"caa" | b"cag" => 'Q',
-                b"aat" | b"aac" => 'N',
-                b"aaa" | b"aag" => 'K',
-                b"gat" | b"gac" => 'D',
-                b"gaa" | b"gag" => 'E',
-                b"tgt" | b"tgc" => 'C',
-                b"tgg" => 'W',
-                b"cgt" | b"cgc" | b"cga" | b"cgg" | b"aga" | b"agg" => 'R',
-                b"ggt" | b"ggc" | b"gga" | b"ggg" => 'G',
-                _ => 'X',
-            }
-        })
-        .collect()
-}
-
-// ---------------------------------------------------------------------------
-// Table 4 — Mold, Protozoan, Coelenterate Mitochondrial +
-//            Mycoplasma / Spiroplasma Code
-// ---------------------------------------------------------------------------
-// Differences from Table 11:
-//   TGA → Trp  (instead of stop)
-//
-// Phage relevance:
-//   All phages infecting Mycoplasma and Spiroplasma species use this table.
-//   These are the genomes explicitly excluded from PHANOTATE's 2133-genome
-//   benchmark. Using Table 11 on these genomes causes TGA codons in the middle
-//   of real genes to be misread as stops, producing hundreds of spuriously
-//   truncated CDSs.
-pub fn translate_table4(seq: &[u8]) -> String {
-    seq.chunks(3)
-        .map(|codon| {
-            if codon.len() < 3 {
-                return 'X';
-            }
-            match codon {
-                b"ttt" | b"ttc" => 'F',
-                b"tta" | b"ttg" | b"ctt" | b"ctc" | b"cta" | b"ctg" => 'L',
-                b"att" | b"atc" | b"ata" => 'I',
-                b"atg" => 'M',
-                b"gtt" | b"gtc" | b"gta" | b"gtg" => 'V',
-                b"tct" | b"tcc" | b"tca" | b"tcg" | b"agt" | b"agc" => 'S',
-                b"cct" | b"ccc" | b"cca" | b"ccg" => 'P',
-                b"act" | b"acc" | b"aca" | b"acg" => 'T',
-                b"gct" | b"gcc" | b"gca" | b"gcg" => 'A',
-                b"tat" | b"tac" => 'Y',
-                b"taa" | b"tag" => '*',
-                b"tga" => 'W', // [DIFF] TGA is Trp, not a stop
-                b"cat" | b"cac" => 'H',
-                b"caa" | b"cag" => 'Q',
-                b"aat" | b"aac" => 'N',
-                b"aaa" | b"aag" => 'K',
-                b"gat" | b"gac" => 'D',
-                b"gaa" | b"gag" => 'E',
-                b"tgt" | b"tgc" => 'C',
-                b"tgg" => 'W',
-                b"cgt" | b"cgc" | b"cga" | b"cgg" | b"aga" | b"agg" => 'R',
-                b"ggt" | b"ggc" | b"gga" | b"ggg" => 'G',
-                _ => 'X',
-            }
-        })
-        .collect()
-}
-
-// ---------------------------------------------------------------------------
-// Table 6 — Ciliate, Dasycladacean and Hexamita Nuclear Code
-// ---------------------------------------------------------------------------
-// Differences from Table 11:
-//   TAA → Gln  (instead of stop)
-//   TAG → Gln  (instead of stop)
-//   TGA remains the only stop codon.
-//
-// Phage relevance:
-//   Phages that infect ciliates such as Tetrahymena and Paramecium. Rare in
-//   typical phage surveys but present in metagenomic datasets from aquatic
-//   environments where ciliates are abundant.
-pub fn translate_table6(seq: &[u8]) -> String {
-    seq.chunks(3)
-        .map(|codon| {
-            if codon.len() < 3 {
-                return 'X';
-            }
-            match codon {
-                b"ttt" | b"ttc" => 'F',
-                b"tta" | b"ttg" | b"ctt" | b"ctc" | b"cta" | b"ctg" => 'L',
-                b"att" | b"atc" | b"ata" => 'I',
-                b"atg" => 'M',
-                b"gtt" | b"gtc" | b"gta" | b"gtg" => 'V',
-                b"tct" | b"tcc" | b"tca" | b"tcg" | b"agt" | b"agc" => 'S',
-                b"cct" | b"ccc" | b"cca" | b"ccg" => 'P',
-                b"act" | b"acc" | b"aca" | b"acg" => 'T',
-                b"gct" | b"gcc" | b"gca" | b"gcg" => 'A',
-                b"tat" | b"tac" => 'Y',
-                b"taa" => 'Q', // [DIFF] TAA is Gln, not a stop
-                b"tag" => 'Q', // [DIFF] TAG is Gln, not a stop
-                b"tga" => '*',
-                b"cat" | b"cac" => 'H',
-                b"caa" | b"cag" => 'Q',
-                b"aat" | b"aac" => 'N',
-                b"aaa" | b"aag" => 'K',
-                b"gat" | b"gac" => 'D',
-                b"gaa" | b"gag" => 'E',
-                b"tgt" | b"tgc" => 'C',
-                b"tgg" => 'W',
-                b"cgt" | b"cgc" | b"cga" | b"cgg" | b"aga" | b"agg" => 'R',
-                b"ggt" | b"ggc" | b"gga" | b"ggg" => 'G',
-                _ => 'X',
-            }
-        })
-        .collect()
-}
-
-// ---------------------------------------------------------------------------
-// Table 11 — Bacterial, Archaeal and Plant Plastid Code
-// ---------------------------------------------------------------------------
-// This is the default table for all bacteriophages.
-// Amino-acid assignments are identical to Table 1; the difference is a broader
-// set of allowed start codons handled separately by the gene caller
-// (TTG, CTG, ATT, ATC, ATA, ATG, GTG).
-pub fn translate_table11(seq: &[u8]) -> String {
-    seq.chunks(3)
-        .map(|codon| {
-            if codon.len() < 3 {
-                return 'X';
-            }
-            match codon {
-                b"ttt" | b"ttc" => 'F',
-                b"tta" | b"ttg" | b"ctt" | b"ctc" | b"cta" | b"ctg" => 'L',
-                b"att" | b"atc" | b"ata" => 'I',
-                b"atg" => 'M',
-                b"gtt" | b"gtc" | b"gta" | b"gtg" => 'V',
-                b"tct" | b"tcc" | b"tca" | b"tcg" | b"agt" | b"agc" => 'S',
-                b"cct" | b"ccc" | b"cca" | b"ccg" => 'P',
-                b"act" | b"acc" | b"aca" | b"acg" => 'T',
-                b"gct" | b"gcc" | b"gca" | b"gcg" => 'A',
-                b"tat" | b"tac" => 'Y',
-                b"taa" | b"tag" | b"tga" => '*',
-                b"cat" | b"cac" => 'H',
-                b"caa" | b"cag" => 'Q',
-                b"aat" | b"aac" => 'N',
-                b"aaa" | b"aag" => 'K',
-                b"gat" | b"gac" => 'D',
-                b"gaa" | b"gag" => 'E',
-                b"tgt" | b"tgc" => 'C',
-                b"tgg" => 'W',
-                b"cgt" | b"cgc" | b"cga" | b"cgg" | b"aga" | b"agg" => 'R',
-                b"ggt" | b"ggc" | b"gga" | b"ggg" => 'G',
-                _ => 'X',
-            }
-        })
-        .collect()
-}
-
-// ---------------------------------------------------------------------------
-// Table 15 — Blepharisma Nuclear Code
-// ---------------------------------------------------------------------------
-// Differences from Table 11:
-//   TAG → Gln  (instead of stop)
-//   TAA and TGA remain stops.
-//
-// Phage relevance:
-//   Used by a subset of Crassvirales (crAss-like phages), a globally abundant
-//   gut phage family. TAG reassignment has been confirmed by tRNA anticodon
-//   analysis in several crAss-like genomes. Annotating these with Table 11
-//   causes TAG-terminated ORFs to appear spuriously short.
-pub fn translate_table15(seq: &[u8]) -> String {
-    seq.chunks(3)
-        .map(|codon| {
-            if codon.len() < 3 {
-                return 'X';
-            }
-            match codon {
-                b"ttt" | b"ttc" => 'F',
-                b"tta" | b"ttg" | b"ctt" | b"ctc" | b"cta" | b"ctg" => 'L',
-                b"att" | b"atc" | b"ata" => 'I',
-                b"atg" => 'M',
-                b"gtt" | b"gtc" | b"gta" | b"gtg" => 'V',
-                b"tct" | b"tcc" | b"tca" | b"tcg" | b"agt" | b"agc" => 'S',
-                b"cct" | b"ccc" | b"cca" | b"ccg" => 'P',
-                b"act" | b"acc" | b"aca" | b"acg" => 'T',
-                b"gct" | b"gcc" | b"gca" | b"gcg" => 'A',
-                b"tat" | b"tac" => 'Y',
-                b"taa" | b"tga" => '*',
-                b"tag" => 'Q', // [DIFF] TAG is Gln, not a stop
-                b"cat" | b"cac" => 'H',
-                b"caa" | b"cag" => 'Q',
-                b"aat" | b"aac" => 'N',
-                b"aaa" | b"aag" => 'K',
-                b"gat" | b"gac" => 'D',
-                b"gaa" | b"gag" => 'E',
-                b"tgt" | b"tgc" => 'C',
-                b"tgg" => 'W',
-                b"cgt" | b"cgc" | b"cga" | b"cgg" | b"aga" | b"agg" => 'R',
-                b"ggt" | b"ggc" | b"gga" | b"ggg" => 'G',
-                _ => 'X',
-            }
-        })
-        .collect()
-}
-
-// ---------------------------------------------------------------------------
-// Table 25 — Candidate Division SR1 and Gracilibacteria Code
-// ---------------------------------------------------------------------------
-// Differences from Table 11:
-//   TGA → Gly  (instead of stop)
-//   TAA and TAG remain stops.
-//
-// Phage relevance:
-//   Phages infecting Gracilibacteria and SR1 bacteria, found primarily in oral
-//   and gut microbiomes. TGA recoding to Gly is confirmed by tRNA anticodon
-//   analysis. These genomes are increasingly appearing in human microbiome
-//   phage surveys and are mis-annotated at scale when Table 11 is used.
-pub fn translate_table25(seq: &[u8]) -> String {
-    seq.chunks(3)
-        .map(|codon| {
-            if codon.len() < 3 {
-                return 'X';
-            }
-            match codon {
-                b"ttt" | b"ttc" => 'F',
-                b"tta" | b"ttg" | b"ctt" | b"ctc" | b"cta" | b"ctg" => 'L',
-                b"att" | b"atc" | b"ata" => 'I',
-                b"atg" => 'M',
-                b"gtt" | b"gtc" | b"gta" | b"gtg" => 'V',
-                b"tct" | b"tcc" | b"tca" | b"tcg" | b"agt" | b"agc" => 'S',
-                b"cct" | b"ccc" | b"cca" | b"ccg" => 'P',
-                b"act" | b"acc" | b"aca" | b"acg" => 'T',
-                b"gct" | b"gcc" | b"gca" | b"gcg" => 'A',
-                b"tat" | b"tac" => 'Y',
-                b"taa" | b"tag" => '*',
-                b"tga" => 'G', // [DIFF] TGA is Gly, not a stop
-                b"cat" | b"cac" => 'H',
-                b"caa" | b"cag" => 'Q',
-                b"aat" | b"aac" => 'N',
-                b"aaa" | b"aag" => 'K',
-                b"gat" | b"gac" => 'D',
-                b"gaa" | b"gag" => 'E',
-                b"tgt" | b"tgc" => 'C',
-                b"tgg" => 'W',
-                b"cgt" | b"cgc" | b"cga" | b"cgg" | b"aga" | b"agg" => 'R',
-                b"ggt" | b"ggc" | b"gga" | b"ggg" => 'G',
-                _ => 'X',
-            }
-        })
-        .collect()
-}
-
-// ---------------------------------------------------------------------------
-// Dispatch helper
+// Codon lookup table
 // ---------------------------------------------------------------------------
 
-/// Select a translation function by NCBI table number and translate `seq`.
+/// 2-bit base encoding: A=00, C=01, G=10, T=11.  Any other base maps to 4.
+const BASE_INDEX: [u8; 256] = {
+    let mut t = [4u8; 256];
+    t[b'A' as usize] = 0;
+    t[b'C' as usize] = 1;
+    t[b'G' as usize] = 2;
+    t[b'T' as usize] = 3;
+    t[b'a' as usize] = 0;
+    t[b'c' as usize] = 1;
+    t[b'g' as usize] = 2;
+    t[b't' as usize] = 3;
+    t
+};
+
+/// Lookup table indexed by `[table][codon]`, where codon index is
+/// `base1 * 16 + base2 * 4 + base3` using the encoding above.
 ///
-/// Returns `Err` for any table number not implemented here. The caller should
-/// validate the table number at CLI-parse time (before any pipeline work) using
-/// `is_supported_table()` so that errors surface immediately.
-pub fn translate(seq: &[u8], table: u8) -> Result<String, String> {
-    match table {
-        1 => Ok(translate_table1(seq)),
-        4 => Ok(translate_table4(seq)),
-        6 => Ok(translate_table6(seq)),
-        11 => Ok(translate_table11(seq)),
-        15 => Ok(translate_table15(seq)),
-        25 => Ok(translate_table25(seq)),
-        n => Err(format!(
-            "Translation table {} is not implemented. \
-             Supported tables for phage annotation: 1, 4, 6, 11, 15, 25.",
-            n
-        )),
+/// Invalid table rows are filled with `b'?'`; they are never accessed because
+/// `is_supported_table` rejects them.
+const CODONS: [[u8; 64]; 32] = [
+    [b'?'; 64],                                                           // 0 invalid
+    *b"KNKNTTTTRSRSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVV*Y*YSSSS*CWCLFLF", // 1 Standard
+    *b"KNKNTTTT*S*SMIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVV*Y*YSSSSWCWCLFLF", // 2 Vertebrate Mitochondrial
+    *b"KNKNTTTTRSRSMIMIQHQHPPPPRRRRTTTTEDEDAAAAGGGGVVVV*Y*YSSSSWCWCLFLF", // 3 Yeast Mitochondrial
+    *b"KNKNTTTTRSRSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVV*Y*YSSSSWCWCLFLF", // 4 Mold/Protozoan/Coelenterate Mitochondrial + Mycoplasma/Spiroplasma
+    *b"KNKNTTTTSSSSMIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVV*Y*YSSSSWCWCLFLF", // 5 Invertebrate Mitochondrial
+    *b"KNKNTTTTRSRSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVVQYQYSSSS*CWCLFLF", // 6 Ciliate Nuclear
+    [b'?'; 64],                                                           // 7 invalid
+    [b'?'; 64],                                                           // 8 invalid
+    *b"NNKNTTTTSSSSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVV*Y*YSSSSWCWCLFLF", // 9 Echinoderm and Flatworm Mitochondrial
+    *b"KNKNTTTTRSRSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVV*Y*YSSSSCCWCLFLF", // 10 Euplotid Nuclear
+    *b"KNKNTTTTRSRSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVV*Y*YSSSS*CWCLFLF", // 11 Bacterial/Archaeal/Plant Plastid
+    *b"KNKNTTTTRSRSIIMIQHQHPPPPRRRRLLSLEDEDAAAAGGGGVVVV*Y*YSSSS*CWCLFLF", // 12 Alternative Yeast Nuclear
+    *b"KNKNTTTTGSGSMIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVV*Y*YSSSSWCWCLFLF", // 13 Ascidian Mitochondrial
+    *b"NNKNTTTTSSSSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVVYY*YSSSSWCWCLFLF", // 14 Alternative Flatworm Mitochondrial
+    *b"KNKNTTTTRSRSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVV*YQYSSSS*CWCLFLF", // 15 Blepharisma Nuclear
+    *b"KNKNTTTTRSRSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVV*YLYSSSS*CWCLFLF", // 16 Chlorophycean Mitochondrial
+    [b'?'; 64],                                                           // 17 invalid
+    [b'?'; 64],                                                           // 18 invalid
+    [b'?'; 64],                                                           // 19 invalid
+    [b'?'; 64],                                                           // 20 invalid
+    *b"NNKNTTTTSSSSMIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVV*Y*YSSSSWCWCLFLF", // 21 Trematode Mitochondrial
+    *b"KNKNTTTTRSRSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVV*YLY*SSS*CWCLFLF", // 22 Scenedesmus obliquus Mitochondrial
+    *b"KNKNTTTTRSRSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVV*Y*YSSSS*CWC*FLF", // 23 Thraustochytrium Mitochondrial
+    *b"KNKNTTTTSSKSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVV*Y*YSSSSWCWCLFLF", // 24 Rhabdopleuridae Mitochondrial
+    *b"KNKNTTTTRSRSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVV*Y*YSSSSGCWCLFLF", // 25 Candidate Division SR1 and Gracilibacteria
+    *b"KNKNTTTTRSRSIIMIQHQHPPPPRRRRLLALEDEDAAAAGGGGVVVV*Y*YSSSS*CWCLFLF", // 26 Pachysolen tannophilus Nuclear
+    *b"KNKNTTTTRSRSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVVQYQYSSSSWCWCLFLF", // 27 Karyorelict Nuclear
+    *b"KNKNTTTTRSRSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVVQYQYSSSSWCWCLFLF", // 28 Condylostoma Nuclear
+    *b"KNKNTTTTRSRSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVVYYYYSSSS*CWCLFLF", // 29 Mesodinium Nuclear
+    *b"KNKNTTTTRSRSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVVEYEYSSSS*CWCLFLF", // 30 Peritrich Nuclear
+    *b"KNKNTTTTRSRSIIMIQHQHPPPPRRRRLLLLEDEDAAAAGGGGVVVVEYEYSSSSWCWCLFLF", // 31 Blastocrithidia Nuclear
+];
+
+/// Map a 3-mer to its CODONS table index, or `None` if it contains an
+/// invalid base.
+fn codon_index(codon: &[u8]) -> Option<usize> {
+    if codon.len() < 3 {
+        return None;
     }
+    let mut idx = 0usize;
+    for i in 0..3 {
+        let v = BASE_INDEX[codon[i] as usize];
+        if v == 4 {
+            return None;
+        }
+        idx = idx * 4 + v as usize;
+    }
+    Some(idx)
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/// Translate `seq` using the NCBI translation table `table`.
+pub fn translate(seq: &[u8], table: u8) -> Result<String, String> {
+    if !is_supported_table(table) {
+        return Err(format!(
+            "Translation table {} is not supported. Supported tables: 1-6, 9-16, 21-31.",
+            table
+        ));
+    }
+    let table_aa = &CODONS[table as usize];
+    let protein: String = seq
+        .chunks(3)
+        .map(|codon| {
+            if codon.len() < 3 {
+                return 'X';
+            }
+            match codon_index(codon) {
+                Some(idx) => table_aa[idx] as char,
+                None => 'X',
+            }
+        })
+        .collect();
+    Ok(protein)
 }
 
 /// Return true if `table` is supported by this module.
 pub fn is_supported_table(table: u8) -> bool {
-    matches!(table, 1 | 4 | 6 | 11 | 15 | 25)
+    matches!(table, 1..=6 | 9..=16 | 21..=31)
 }
 
 /// Return the canonical NCBI name for a table number.
-#[allow(dead_code)]
 pub fn table_name(table: u8) -> &'static str {
     match table {
-        1 => "Standard",
-        4 => "Mold/Protozoan/Coelenterate Mitochondrial + Mycoplasma/Spiroplasma",
-        6 => "Ciliate, Dasycladacean and Hexamita Nuclear",
-        11 => "Bacterial, Archaeal and Plant Plastid",
-        15 => "Blepharisma Nuclear",
-        25 => "Candidate Division SR1 and Gracilibacteria",
+        1 => "The Standard Code",
+        2 => "The Vertebrate Mitochondrial Code",
+        3 => "The Yeast Mitochondrial Code",
+        4 => "The Mold, Protozoan, and Coelenterate Mitochondrial Code and the Mycoplasma/Spiroplasma Code",
+        5 => "The Invertebrate Mitochondrial Code",
+        6 => "The Ciliate, Dasycladacean and Hexamita Nuclear Code",
+        9 => "The Echinoderm and Flatworm Mitochondrial Code",
+        10 => "The Euplotid Nuclear Code",
+        11 => "The Bacterial, Archaeal and Plant Plastid Code",
+        12 => "The Alternative Yeast Nuclear Code",
+        13 => "The Ascidian Mitochondrial Code",
+        14 => "The Alternative Flatworm Mitochondrial Code",
+        15 => "Blepharisma Nuclear Code",
+        16 => "Chlorophycean Mitochondrial Code",
+        21 => "Trematode Mitochondrial Code",
+        22 => "Scenedesmus obliquus Mitochondrial Code",
+        23 => "Thraustochytrium Mitochondrial Code",
+        24 => "Rhabdopleuridae Mitochondrial Code",
+        25 => "Candidate Division SR1 and Gracilibacteria Code",
+        26 => "Pachysolen tannophilus Nuclear Code",
+        27 => "Karyorelict Nuclear Code",
+        28 => "Condylostoma Nuclear Code",
+        29 => "Mesodinium Nuclear Code",
+        30 => "Peritrich Nuclear Code",
+        31 => "Blastocrithidia Nuclear Code",
         _ => "Unknown",
     }
 }
@@ -335,29 +151,43 @@ pub fn table_name(table: u8) -> &'static str {
 pub fn stop_codons(table: u8) -> &'static [&'static [u8]] {
     match table {
         1 | 11 => &[b"taa", b"tag", b"tga"],
-        4 => &[b"taa", b"tag"],  // TGA is Trp
-        6 => &[b"tga"],          // TAA/TAG are Gln
-        15 => &[b"taa", b"tga"], // TAG is Gln
-        25 => &[b"taa", b"tag"], // TGA is Gly
-        _ => &[b"taa", b"tag", b"tga"],
+        2 => &[b"taa", b"tag", b"aga", b"agg"],
+        3 | 4 | 5 | 9 | 10 | 21 | 24 | 25 => &[b"taa", b"tag"],
+        6 | 27 | 29 | 30 => &[b"tga"],
+        12 | 26 => &[b"taa", b"tag", b"tga"],
+        13 => &[b"taa", b"tag"],
+        14 | 15 | 16 | 31 => &[b"taa", b"tga"],
+        22 => &[b"tca", b"taa", b"tga"],
+        23 => &[b"tta", b"taa", b"tag", b"tga"],
+        28 => &[b"taa", b"tag", b"tga"],
+        _ => &[],
     }
 }
 
 /// Return the set of start codons (lowercase) for a given table.
-/// These are the codons that PHANOTATE should consider as valid ORF starts.
 pub fn start_codons(table: u8) -> &'static [&'static [u8]] {
     match table {
-        1 => &[b"atg", b"ttg", b"ctg"],
+        1 => &[b"ttg", b"ctg", b"atg"],
+        2 => &[b"att", b"atc", b"ata", b"atg", b"gtg"],
+        3 => &[b"ata", b"atg", b"gtg"],
         4 => &[
             b"tta", b"ttg", b"ctg", b"att", b"atc", b"ata", b"atg", b"gtg",
         ],
-        6 => &[b"atg"],
+        5 => &[b"ttg", b"att", b"atc", b"ata", b"atg", b"gtg"],
+        6 | 10 | 14 | 15 | 16 | 22 | 27 | 28 | 29 | 30 | 31 => &[b"atg"],
+        9 | 21 => &[b"atg", b"gtg"],
         11 => &[b"ttg", b"ctg", b"att", b"atc", b"ata", b"atg", b"gtg"],
-        15 => &[b"atg"],
-        25 => &[b"ttg", b"atg", b"gtg"],
+        12 | 26 => &[b"ctg", b"atg"],
+        13 => &[b"ttg", b"ata", b"atg", b"gtg"],
+        23 => &[b"att", b"atg", b"gtg"],
+        24 | 25 => &[b"ttg", b"ctg", b"atg", b"gtg"],
         _ => &[b"atg"],
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -367,6 +197,7 @@ mod tests {
     fn test_translate_atg() {
         assert_eq!(translate(b"atg", 1).unwrap(), "M");
         assert_eq!(translate(b"atg", 11).unwrap(), "M");
+        assert_eq!(translate(b"ATG", 11).unwrap(), "M");
     }
 
     #[test]
@@ -412,24 +243,74 @@ mod tests {
     }
 
     #[test]
+    fn test_translate_table2() {
+        assert_eq!(translate(b"tga", 2).unwrap(), "W"); // UGA -> Trp
+        assert_eq!(translate(b"aga", 2).unwrap(), "*"); // AGA -> stop
+        assert_eq!(translate(b"agg", 2).unwrap(), "*"); // AGG -> stop
+        assert_eq!(translate(b"ata", 2).unwrap(), "M"); // AUA -> Met
+    }
+
+    #[test]
+    fn test_translate_table3_cun_is_thr() {
+        assert_eq!(translate(b"ctt", 3).unwrap(), "T");
+        assert_eq!(translate(b"ctc", 3).unwrap(), "T");
+        assert_eq!(translate(b"cta", 3).unwrap(), "T");
+        assert_eq!(translate(b"ctg", 3).unwrap(), "T");
+    }
+
+    #[test]
+    fn test_translate_table5_aga_agg_are_ser() {
+        assert_eq!(translate(b"aga", 5).unwrap(), "S");
+        assert_eq!(translate(b"agg", 5).unwrap(), "S");
+    }
+
+    #[test]
+    fn test_translate_table22_tag_is_leu_and_tca_is_stop() {
+        assert_eq!(translate(b"tag", 22).unwrap(), "L");
+        assert_eq!(translate(b"tca", 22).unwrap(), "*");
+    }
+
+    #[test]
+    fn test_translate_table26_ctg_is_ala() {
+        assert_eq!(translate(b"ctg", 26).unwrap(), "A");
+    }
+
+    #[test]
     fn test_translate_short() {
         assert_eq!(translate(b"at", 1).unwrap(), "X");
     }
 
     #[test]
+    fn test_translate_invalid_base() {
+        assert_eq!(translate(b"atn", 1).unwrap(), "X");
+    }
+
+    #[test]
     fn test_unsupported_table() {
-        assert!(translate(b"atg", 99).is_err());
+        for &t in &[0u8, 7, 8, 17, 18, 19, 20, 32, 99] {
+            assert!(
+                translate(b"atg", t).is_err(),
+                "table {} should be rejected",
+                t
+            );
+        }
     }
 
     #[test]
     fn test_is_supported_table() {
-        assert!(is_supported_table(1));
-        assert!(is_supported_table(4));
-        assert!(is_supported_table(6));
-        assert!(is_supported_table(11));
-        assert!(is_supported_table(15));
-        assert!(is_supported_table(25));
-        assert!(!is_supported_table(99));
+        for t in [
+            1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+            30, 31,
+        ] {
+            assert!(is_supported_table(t), "table {} should be supported", t);
+        }
+        for t in [0, 7, 8, 17, 18, 19, 20, 32, 99] {
+            assert!(
+                !is_supported_table(t),
+                "table {} should not be supported",
+                t
+            );
+        }
     }
 
     #[test]
@@ -439,14 +320,17 @@ mod tests {
         assert_eq!(stop_codons(6), &[b"tga"]);
         assert_eq!(stop_codons(15), &[b"taa", b"tga"]);
         assert_eq!(stop_codons(25), &[b"taa", b"tag"]);
+        assert_eq!(stop_codons(2), &[b"taa", b"tag", b"aga", b"agg"]);
+        assert_eq!(stop_codons(22), &[b"tca", b"taa", b"tga"]);
     }
 
     #[test]
     fn test_start_codons() {
-        assert_eq!(start_codons(1), &[b"atg", b"ttg", b"ctg"]);
+        assert_eq!(start_codons(1), &[b"ttg", b"ctg", b"atg"]);
         assert_eq!(
             start_codons(11),
             &[b"ttg", b"ctg", b"att", b"atc", b"ata", b"atg", b"gtg"]
         );
+        assert_eq!(start_codons(2), &[b"att", b"atc", b"ata", b"atg", b"gtg"]);
     }
 }

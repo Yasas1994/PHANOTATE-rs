@@ -33,6 +33,7 @@ optional = true
 default = []
 python = ["dep:pyo3"]
 ml = []
+dev = []
 
 [lib]
 name = "phanotate_rs"

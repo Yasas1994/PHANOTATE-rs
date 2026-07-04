@@ -58,7 +58,7 @@ fn parse_format(format: &str) -> PyResult<Format> {
 fn validate_table(table: u8) -> PyResult<()> {
     if !codon_table::is_supported_table(table) {
         return Err(PyValueError::new_err(format!(
-            "Invalid translation table: {}. Supported: 1, 4, 6, 11, 15, 25",
+            "Invalid translation table: {}. Supported: 1-6, 9-16, 21-31",
             table
         )));
     }
@@ -853,10 +853,12 @@ fn translate(sequence: &str, table: u8) -> PyResult<String> {
 /// Returns
 /// -------
 /// list[int]
-///     Supported table numbers: [1, 4, 6, 11, 15, 25].
+///     Supported table numbers: 1-6, 9-16, 21-31.
 #[pyfunction]
 fn supported_tables() -> Vec<u8> {
-    vec![1, 4, 6, 11, 15, 25]
+    vec![
+        1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+    ]
 }
 
 /// Return the stop codons for a given translation table.

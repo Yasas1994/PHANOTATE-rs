@@ -45,7 +45,8 @@ class TestUtilityFunctions:
     def test_supported_tables(self):
         tables = phanotate_rs.supported_tables()
         assert isinstance(tables, list)
-        assert set(tables) == {1, 4, 6, 11, 15, 25}
+        assert set(tables) == {1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16,
+                               21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31}
 
     def test_table_name(self):
         assert "Bacterial" in phanotate_rs.table_name(11)

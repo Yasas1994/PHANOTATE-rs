@@ -15,6 +15,7 @@ use phanotate_rs::genome;
 use phanotate_rs::graph;
 use phanotate_rs::orf;
 use phanotate_rs::output;
+use phanotate_rs::overlap_rescue;
 use phanotate_rs::rbs_mode::RbsMode;
 use phanotate_rs::threshold_calibration::{compute_effective_model_threshold, AutoThresholdMode};
 
@@ -125,6 +126,40 @@ struct Cli {
     #[arg(long = "auto-threshold", value_enum, default_value = "none")]
     auto_threshold: AutoThresholdMode,
 
+    /// Find high-confidence overlapping genes excluded by the primary shortest
+    /// path. Requires `--model`.
+    #[cfg(feature = "dev")]
+    #[arg(long = "find-overlaps", default_value_t = false)]
+    find_overlaps: bool,
+
+    /// Per-rescued-gene DP penalty used by overlap rescue.
+    #[cfg(feature = "dev")]
+    #[arg(long = "overlap-lambda", value_name = "FLOAT", default_value_t = 0.0)]
+    overlap_lambda: f64,
+
+    /// Minimum rescue score to include an overlapping ORF.
+    #[cfg(feature = "dev")]
+    #[arg(
+        long = "overlap-threshold",
+        value_name = "FLOAT",
+        default_value_t = 0.7
+    )]
+    overlap_threshold: f64,
+
+    /// Weight applied to the overlap-ratio penalty when computing rescue scores.
+    #[cfg(feature = "dev")]
+    #[arg(
+        long = "overlap-penalty-weight",
+        value_name = "FLOAT",
+        default_value_t = 0.3
+    )]
+    overlap_penalty_weight: f64,
+
+    /// Minimum ORF length (in bp) to be considered for overlap rescue.
+    #[cfg(feature = "dev")]
+    #[arg(long = "min-rescue-orf-len", value_name = "N", default_value_t = 90)]
+    min_rescue_orf_len: usize,
+
     /// Write the ORF graph to FILE in Graphviz DOT format, highlighting the
     /// nodes and edges on the shortest-path chosen by the algorithm.
     /// The primary output is still produced normally.
@@ -169,7 +204,7 @@ fn load_genomes(input: &Option<PathBuf>) -> Result<Vec<Genome>> {
 }
 
 /// Process a single genome through the full PHANOTATE pipeline.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, unused_variables)]
 fn process_genome(
     genome: Genome,
     start_codons_map: &HashMap<Vec<u8>, f64>,
@@ -186,6 +221,11 @@ fn process_genome(
     auto_threshold: AutoThresholdMode,
     visualize_dag: Option<&std::path::Path>,
     is_single_input: bool,
+    find_overlaps: bool,
+    overlap_lambda: f64,
+    overlap_threshold: f64,
+    overlap_penalty_weight: f64,
+    min_rescue_orf_len: usize,
 ) -> Result<(String, String, String)> {
     let contig_length = genome.seq.len();
     let dna = &genome.seq;
@@ -376,6 +416,24 @@ fn process_genome(
             .with_context(|| format!("Failed to write DAG visualization to {:?}", dot_path))?;
     }
 
+    // --- Overlap rescue (dev only) ---
+    if find_overlaps {
+        if let Some(scorer) = orf_model {
+            let rescues = overlap_rescue::find_overlapping_genes(
+                &path_edges,
+                &orfs,
+                scorer,
+                overlap_threshold,
+                overlap_penalty_weight,
+                min_rescue_orf_len,
+                overlap_lambda,
+            );
+            for (idx, score) in rescues {
+                path_edges.push(overlap_rescue::orf_to_path_edge(&orfs[idx], -score));
+            }
+        }
+    }
+
     // --- Primary output ---
     let primary = output::write_primary(
         &genome.id,
@@ -415,7 +473,7 @@ fn main() -> Result<()> {
     // Validate translation table
     if !is_supported_table(cli.table) {
         anyhow::bail!(
-            "Invalid translation table: {}. Supported: 1, 4, 6, 11, 15, 25",
+            "Invalid translation table: {}. Supported: 1-6, 9-16, 21-31",
             cli.table
         );
     }
@@ -614,6 +672,33 @@ fn main() -> Result<()> {
         })
         .transpose()?;
 
+    // Overlap-rescue tuning parameters (dev feature only).
+    #[cfg(feature = "dev")]
+    let (
+        find_overlaps,
+        overlap_lambda,
+        overlap_threshold,
+        overlap_penalty_weight,
+        min_rescue_orf_len,
+    ) = (
+        cli.find_overlaps,
+        cli.overlap_lambda,
+        cli.overlap_threshold,
+        cli.overlap_penalty_weight,
+        cli.min_rescue_orf_len,
+    );
+    #[cfg(not(feature = "dev"))]
+    let (
+        find_overlaps,
+        overlap_lambda,
+        overlap_threshold,
+        overlap_penalty_weight,
+        min_rescue_orf_len,
+    ) = (false, 0.0, 0.7, 0.3, 90_usize);
+    if find_overlaps && cli.model.is_none() {
+        anyhow::bail!("--find-overlaps requires --model");
+    }
+
     // Process each contig in parallel
     let results: Vec<(String, String, String)> = if cli.progress {
         let pb = ProgressBar::new(genomes.len() as u64);
@@ -644,6 +729,11 @@ fn main() -> Result<()> {
                     cli.auto_threshold,
                     cli.visualize_dag.as_deref(),
                     single,
+                    find_overlaps,
+                    overlap_lambda,
+                    overlap_threshold,
+                    overlap_penalty_weight,
+                    min_rescue_orf_len,
                 )
             })
             .collect::<Result<Vec<_>>>()?
@@ -668,6 +758,11 @@ fn main() -> Result<()> {
                     cli.auto_threshold,
                     cli.visualize_dag.as_deref(),
                     single,
+                    find_overlaps,
+                    overlap_lambda,
+                    overlap_threshold,
+                    overlap_penalty_weight,
+                    min_rescue_orf_len,
                 )
             })
             .collect::<Result<Vec<_>>>()?
