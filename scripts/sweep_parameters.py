@@ -21,7 +21,7 @@ def run_benchmark(
     *,
     binary: Path,
     genome_dir: Path,
-    model: Path,
+    model: Path | None,
     output: Path,
     max_genomes: int,
     scale: float | None = None,
@@ -38,10 +38,11 @@ def run_benchmark(
         "scripts/benchmark_model.py",
         "--binary", str(binary),
         "--genome-dir", str(genome_dir),
-        "--models", str(model),
         "--output", str(output),
         "--max-genomes", str(max_genomes),
     ]
+    if model is not None:
+        cmd.extend(["--models", str(model)])
     if scale is not None:
         cmd.extend(["--model-scale", str(scale)])
     if threshold is not None:
@@ -106,7 +107,7 @@ def main() -> int:
     data = run_benchmark(
         binary=args.binary,
         genome_dir=args.genome_dir,
-        model=args.model,
+        model=None,
         output=tmp_output,
         max_genomes=args.max_genomes,
         scale=None,
@@ -179,7 +180,10 @@ def main() -> int:
 
     df = pd.DataFrame(rows)
     best_idx = df["f1"].idxmax()
-    best = df.loc[best_idx].to_dict()
+    best = {
+        k: (None if isinstance(v, float) and pd.isna(v) else v)
+        for k, v in df.loc[best_idx].to_dict().items()
+    }
 
     results = {
         "heuristic": heuristic,
