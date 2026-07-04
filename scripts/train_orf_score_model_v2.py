@@ -7,18 +7,18 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Iterable
 
 import joblib
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import f1_score, precision_recall_curve, roc_auc_score
+from sklearn.metrics import precision_recall_curve, roc_auc_score
 from sklearn.model_selection import KFold
 from xgboost import XGBClassifier
 
@@ -36,6 +36,7 @@ FEATURE_NAMES = [
     "num_alt_starts", "start_codon_log_freq",
 ]
 NUM_FEATURES = len(FEATURE_NAMES)
+SUPPORTED_TABLES = {"1", "4", "6", "11", "15", "25"}
 
 XGB_GRID = {
     "max_depth": [3, 4, 6],
@@ -45,40 +46,108 @@ XGB_GRID = {
 }
 
 
+def _parse_location_segments(loc: str) -> tuple[list[tuple[int, int]], int]:
+    """Parse a GenBank location string into linear segments and strand.
+
+    Supports simple ranges (``100..200``), ``join(...)``, and
+    ``complement(join(...))``. Wrapping locations such as
+    ``join(7492..8273,1..232)`` are returned as two ascending segments.
+    """
+    loc = loc.strip()
+    strand = -1 if loc.startswith("complement(") else 1
+    if strand == -1:
+        # Strip the outer "complement(" ... ")" wrapper.
+        inner = loc[len("complement("):-1]
+    else:
+        inner = loc
+
+    if inner.startswith("join(") and inner.endswith(")"):
+        content = inner[5:-1]
+        segment_strs = [s.strip() for s in content.split(",")]
+    else:
+        segment_strs = [inner]
+
+    segments: list[tuple[int, int]] = []
+    for seg in segment_strs:
+        if ".." not in seg:
+            continue
+        a_str, b_str = seg.split("..", 1)
+        a = int(a_str.strip().strip("<>"))
+        b = int(b_str.strip().strip("<>"))
+        segments.append((a, b))
+    return segments, strand
+
+
 def parse_genbank(path: str) -> tuple[str, list[tuple[int, int, int, str]]]:
     """Return (sequence, [(start, end, strand, transl_table), ...])."""
     seq_parts: list[str] = []
-    entries: list[tuple[int, int, int, str]] = []
+    features_blocks: list[list[str]] = []
+    current_block: list[str] = []
     in_features = False
     in_origin = False
-    current_table = "11"
 
     with open(path) as fh:
-        for line in fh:
+        for raw in fh:
+            line = raw.rstrip("\n")
             stripped = line.strip()
             if stripped.startswith("FEATURES"):
                 in_features = True
                 in_origin = False
-            elif stripped.startswith("ORIGIN"):
+                continue
+            if stripped.startswith("ORIGIN"):
+                if current_block:
+                    features_blocks.append(current_block)
+                    current_block = []
                 in_features = False
                 in_origin = True
-            elif stripped.startswith("//"):
+                continue
+            if stripped.startswith("//"):
+                if current_block:
+                    features_blocks.append(current_block)
+                    current_block = []
+                in_features = False
                 in_origin = False
-            elif in_origin:
+                continue
+            if in_origin:
                 parts = stripped.split()
                 seq_parts.extend(parts[1:])
-            elif in_features and (stripped.startswith("CDS") or stripped.startswith("/transl_table")):
-                if stripped.startswith("/transl_table"):
-                    current_table = stripped.split("=")[-1].strip('"')
-                else:
-                    loc = stripped[3:].strip()
-                    strand = -1 if loc.startswith("complement(") else 1
-                    inner = loc.removeprefix("complement(").removesuffix(")")
-                    if ".." in inner and "join" not in inner:
-                        a, b = inner.split("..")
-                        a = int(a.strip("<").strip(">"))
-                        b = int(b.strip("<").strip(">"))
-                        entries.append((a, b, strand, current_table))
+                continue
+            if not in_features:
+                continue
+            # Feature key lines have a key in the first 16 chars after the 5-space margin.
+            if len(line) > 5 and line[:5] == "     " and line[5] != " ":
+                if current_block:
+                    features_blocks.append(current_block)
+                    current_block = []
+                current_block.append(line)
+            elif current_block:
+                current_block.append(line)
+        if current_block:
+            features_blocks.append(current_block)
+
+    entries: list[tuple[int, int, int, str]] = []
+    for block in features_blocks:
+        key = block[0][5:21].strip()
+        if key != "CDS":
+            continue
+        # Location may start on the first line after the feature key and can
+        # theoretically continue onto subsequent non-qualifier lines.
+        loc_line = block[0][21:].strip()
+        for extra in block[1:]:
+            if extra.strip().startswith("/"):
+                break
+            loc_line += extra.strip()
+
+        table = "11"
+        for line in block:
+            s = line.strip()
+            if s.startswith("/transl_table"):
+                table = s.split("=", 1)[-1].strip().strip('"')
+
+        segments, strand = _parse_location_segments(loc_line)
+        for a, b in segments:
+            entries.append((a, b, strand, table))
+
     return "".join(seq_parts).lower(), entries
 
 
@@ -86,7 +155,7 @@ def _any_segment_matches(start: int, stop: int, ann_set: set[tuple[int, int]], g
     """Check whether any annotated CDS segment overlaps (start, stop) within tolerance."""
     lo, hi = (start, stop) if start <= stop else (stop, start)
     for a, b in ann_set:
-        if max(lo, a) - tol <= min(hi, b) + tol:
+        if max(lo, a) <= min(hi, b) + tol:
             return True
     return False
 
@@ -94,6 +163,21 @@ def _any_segment_matches(start: int, stop: int, ann_set: set[tuple[int, int]], g
 def _majority_table(entries: list[tuple[int, int, int, str]]) -> str:
     tables = [t for _, _, _, t in entries if t]
     return max(set(tables), key=tables.count) if tables else "11"
+
+
+def _run_phanotate(cmd: list[str], *, stdout=None, what: str) -> None:
+    """Run a PHANOTATE-rs subprocess, suppressing stdout and reporting failures."""
+    try:
+        subprocess.run(
+            cmd,
+            check=True,
+            stdout=stdout if stdout is not None else subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+    except subprocess.CalledProcessError as e:
+        stderr = (e.stderr or b"").decode("utf-8", errors="replace")
+        print(f"Error: PHANOTATE-rs failed during {what}.\n{stderr}", file=sys.stderr)
+        raise SystemExit(1) from e
 
 
 def extract_genome_features(
@@ -108,16 +192,23 @@ def extract_genome_features(
     genome_table = table_override or _majority_table(entries)
 
     ann_set = {(s, e) for s, e, _, _ in entries}
+    rows: list[list[float]] = []
+    labels: list[int] = []
+    coords: list[tuple[int, int]] = []
+    hard_negs: list[int] = []
 
-    pred_fp_set: set[tuple[int, int]] = set()
-    if hard_negatives:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".sco", delete=False) as sco_tmp:
-            subprocess.run(
-                [str(binary), "-i", str(path), "-g", genome_table, "-f", "sco"],
-                stdout=sco_tmp.file,
-                check=True,
-            )
-            with open(sco_tmp.name) as fh:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        pred_fp_set: set[tuple[int, int]] = set()
+        if hard_negatives:
+            sco_path = tmp / "pred.sco"
+            with sco_path.open("w") as sco_fh:
+                _run_phanotate(
+                    [str(binary), "-i", str(path), "-g", genome_table, "-f", "sco"],
+                    stdout=sco_fh,
+                    what="predicting ORFs for hard negatives",
+                )
+            with sco_path.open() as fh:
                 for line in fh:
                     if line.startswith("#"):
                         continue
@@ -127,13 +218,12 @@ def extract_genome_features(
                         if not _any_segment_matches(s, e, ann_set, genome_len, 3):
                             pred_fp_set.add((s, e))
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".tsv", delete=False) as feat_tmp:
-        subprocess.run(
-            [str(binary), "-i", str(path), "-g", genome_table, "--export-features", feat_tmp.name],
-            check=True,
+        feat_path = tmp / "features.tsv"
+        _run_phanotate(
+            [str(binary), "-i", str(path), "-g", genome_table, "--export-features", str(feat_path)],
+            what="exporting features",
         )
-        rows, labels, coords, hard_negs = [], [], [], []
-        with open(feat_tmp.name) as fh:
+        with feat_path.open() as fh:
             reader = csv.DictReader(fh, delimiter="\t")
             for row in reader:
                 start, stop = int(row["start"]), int(row["stop"])
@@ -161,7 +251,7 @@ def extract_genome_features(
     }
 
 
-def genome_stats(path: Path, binary: Path, table_override: str | None = None) -> dict:
+def genome_stats(path: Path, table_override: str | None = None) -> dict:
     seq, entries = parse_genbank(str(path))
     gc = (seq.count("g") + seq.count("c")) / len(seq) if seq else 0.0
     table = table_override or _majority_table(entries)
@@ -177,10 +267,9 @@ def sample_genomes(
     seed: int = 42,
 ) -> tuple[list[Path], list[Path]]:
     """Stratified sample of table-11 genomes + random table-4 genomes."""
-    rng = np.random.default_rng(seed)
-    stats = [genome_stats(p, binary) for p in genome_dir.glob("*.gb")]
+    stats = [genome_stats(p) for p in genome_dir.glob("*.gb")]
     df = pd.DataFrame(stats)
-    df = df[df["table"].isin({"1", "4", "6", "11", "15", "25"})]
+    df = df[df["table"].isin(SUPPORTED_TABLES)]
 
     table11 = df[df["table"] == "11"].copy()
     table11["length_bin"] = (table11["length"] // table11_length_bin) * table11_length_bin
@@ -281,10 +370,23 @@ def cv_train(records: list[dict], n_splits: int = 3, seed: int = 42) -> pd.DataF
         xgb.fit(X_train_xgb, y_train_xgb)
         val_prob_xgb = xgb.predict_proba(X_val)[:, 1]
 
+        lr_thr = tune_threshold(y_val, val_prob_lr)
+        xgb_thr = tune_threshold(y_val, val_prob_xgb)
+        print(
+            f"Fold {fold}: LR thr={lr_thr['best_f1_threshold']:.4f} "
+            f"F1={lr_thr['best_f1']:.4f}; "
+            f"XGB thr={xgb_thr['best_f1_threshold']:.4f} F1={xgb_thr['best_f1']:.4f}"
+        )
         results.append({
             "fold": fold,
             "lr_auc": roc_auc_score(y_val, val_prob_lr),
             "xgb_auc": roc_auc_score(y_val, val_prob_xgb),
+            "lr_best_f1_threshold": lr_thr["best_f1_threshold"],
+            "lr_best_f1": lr_thr["best_f1"],
+            "xgb_best_f1_threshold": xgb_thr["best_f1_threshold"],
+            "xgb_best_f1": xgb_thr["best_f1"],
+            "lr_rec95_threshold": lr_thr["rec95_threshold"],
+            "xgb_rec95_threshold": xgb_thr["rec95_threshold"],
         })
     return pd.DataFrame(results)
 
@@ -408,8 +510,13 @@ def train_final_and_export(
     lr = LogisticRegression(max_iter=1000, class_weight="balanced", solver="lbfgs")
     lr.fit((X_all - mean) / std, y_all)
     export_linear_to_onnx(lr, mean, std, out_dir / "model_lr.onnx")
+    lr_prob = lr.predict_proba((X_all - mean) / std)[:, 1]
+    lr_thr = tune_threshold(y_all, lr_prob)
+    print(
+        f"LR best-F1 threshold: {lr_thr['best_f1_threshold']:.4f} "
+        f"(F1={lr_thr['best_f1']:.4f}), rec95 threshold: {lr_thr['rec95_threshold']:.4f}"
+    )
 
-    X_xgb, y_xgb = sample_for_xgboost(X_all, y_all, df["hard_neg"].values, neg_per_pos=10, seed=seed)
     if tune:
         from sklearn.model_selection import train_test_split
         X_tr, X_val, y_tr, y_val, h_tr, _ = train_test_split(
@@ -417,7 +524,10 @@ def train_final_and_export(
         )
         xgb, params = grid_search_xgb(X_tr, y_tr, h_tr, X_val, y_val, XGB_GRID, seed=seed)
         json.dump(params, (out_dir / "xgb_best_params.json").open("w"), indent=2)
+        xgb_prob = xgb.predict_proba(X_val)[:, 1]
+        xgb_thr = tune_threshold(y_val, xgb_prob)
     else:
+        X_xgb, y_xgb = sample_for_xgboost(X_all, y_all, df["hard_neg"].values, neg_per_pos=10, seed=seed)
         xgb = XGBClassifier(
             n_estimators=200,
             max_depth=4,
@@ -430,42 +540,74 @@ def train_final_and_export(
             eval_metric="logloss",
         )
         xgb.fit(X_xgb, y_xgb)
+        xgb_prob = xgb.predict_proba(X_all)[:, 1]
+        xgb_thr = tune_threshold(y_all, xgb_prob)
+    print(
+        f"XGB best-F1 threshold: {xgb_thr['best_f1_threshold']:.4f} "
+        f"(F1={xgb_thr['best_f1']:.4f}), rec95 threshold: {xgb_thr['rec95_threshold']:.4f}"
+    )
     export_xgboost_to_onnx(xgb, out_dir / "model_xgb.onnx")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Train and tune an ORF scoring model for PHANOTATE-rs.")
-    parser.add_argument("--genome-dir", type=Path, default=Path("tests/golden/annotgenomes_gb"))
-    parser.add_argument("--binary", type=Path, default=Path("./target/release/phanotate-rs"))
-    parser.add_argument("--cache", type=Path, default=Path("models/feature_cache.pkl"))
-    parser.add_argument("--output-dir", type=Path, default=Path("models"))
-    parser.add_argument("--smoke", action="store_true")
-    parser.add_argument("--cv", action="store_true")
-    parser.add_argument("--tune", action="store_true", help="Run XGBoost hyperparameter grid search")
-    parser.add_argument("--export", action="store_true")
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--genome-dir", type=Path, default=Path("tests/golden/annotgenomes_gb"), help="Directory containing annotated GenBank files (*.gb)")
+    parser.add_argument("--binary", type=Path, default=Path("./target/release/phanotate-rs"), help="Path to the phanotate-rs binary")
+    parser.add_argument("--cache", type=Path, default=Path("models/feature_cache.pkl"), help="Base path for the cached feature file")
+    parser.add_argument("--output-dir", type=Path, default=Path("models"), help="Directory to write ONNX models and metadata")
+    parser.add_argument("--smoke", action="store_true", help="Run on a small subset without overwriting the full feature cache")
+    parser.add_argument("--cv", action="store_true", help="Run genome-stratified cross-validation")
+    parser.add_argument("--tune", action="store_true", help="Run XGBoost hyperparameter grid search before exporting")
+    parser.add_argument("--export", action="store_true", help="Train final models and export them to ONNX")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     args = parser.parse_args()
 
     if not args.binary.exists():
         print(f"Error: binary not found: {args.binary}", file=sys.stderr)
         return 1
 
-    if args.cache.exists() and not args.smoke:
-        print(f"Loading cached features from {args.cache}")
-        records = joblib.load(args.cache)
+    if not args.genome_dir.exists():
+        print(f"Error: genome directory not found: {args.genome_dir}", file=sys.stderr)
+        return 1
+    if not any(args.genome_dir.glob("*.gb")):
+        print(f"Error: no *.gb files found in {args.genome_dir}", file=sys.stderr)
+        return 1
+
+    cache_hash = hashlib.md5(f"{args.genome_dir}:{args.binary}".encode()).hexdigest()[:8]
+    cache_base = f"{args.cache.stem}_{cache_hash}"
+    if args.smoke:
+        cache_base += ".smoke"
+    cache_path = args.cache.parent / f"{cache_base}{args.cache.suffix}"
+
+    if cache_path.exists():
+        print(f"Loading cached features from {cache_path}")
+        records = joblib.load(cache_path)
     else:
         train_paths, _ = sample_genomes(args.genome_dir, args.binary, seed=args.seed)
         if args.smoke:
             train_paths = train_paths[:3]
         print(f"Extracting features for {len(train_paths)} genome(s)...")
         records = [extract_genome_features(p, args.binary, hard_negatives=True) for p in train_paths]
-        args.cache.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump(records, args.cache)
-        print(f"Cached features to {args.cache}")
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump(records, cache_path)
+        print(f"Cached features to {cache_path}")
+
+    # Drop unsupported translation tables.
+    supported_records = [r for r in records if r["table"] in SUPPORTED_TABLES]
+    dropped = len(records) - len(supported_records)
+    if dropped:
+        print(f"Warning: dropped {dropped} genome(s) with unsupported translation tables")
+    if not supported_records:
+        print("Error: no genomes with supported translation tables remain", file=sys.stderr)
+        return 1
+    records = supported_records
 
     total_orfs = sum(len(r["y"]) for r in records)
     total_pos = sum(int(r["y"].sum()) for r in records)
     print(f"Genomes: {len(records)} | ORFs: {total_orfs} | Positives: {total_pos}")
+    if total_pos == 0:
+        print("Error: no positive labels found in training data", file=sys.stderr)
+        return 1
 
     if args.smoke:
         for r in records:
