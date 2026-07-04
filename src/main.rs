@@ -41,6 +41,10 @@ struct Cli {
     #[arg(short = 'c')]
     closed_ends: bool,
 
+    /// Treat the input as a circular genome; allow genes to wrap around the origin.
+    #[arg(long, conflicts_with_all = ["closed_ends", "export_features"])]
+    circular: bool,
+
     /// Write nucleotide sequences of genes to FILE
     #[arg(short = 'd', value_name = "FILE")]
     nuc_out: Option<PathBuf>,
@@ -213,6 +217,7 @@ fn process_genome(
     format: Format,
     closed_ends: bool,
     mask_n: bool,
+    circular: bool,
     table: u8,
     rbs_mode: RbsMode,
     orf_model: Option<&phanotate_rs::onnx_scorer::OnnxScorer>,
@@ -228,12 +233,30 @@ fn process_genome(
     min_rescue_orf_len: usize,
 ) -> Result<(String, String, String)> {
     let contig_length = genome.seq.len();
-    let dna = &genome.seq;
+    let original_seq = genome.seq.clone();
+    let original_rc = genome.rc_seq.clone();
+
+    // For circular genomes, operate on the doubled sequence so ORFs that cross
+    // the origin appear as contiguous intervals.
+    let (doubled_seq, doubled_rc, _original_len) = if circular {
+        genome::circular_sequences(&original_seq, &original_rc)
+    } else {
+        (
+            original_seq.clone(),
+            original_rc.clone(),
+            original_seq.len(),
+        )
+    };
+    let dna = if circular {
+        &doubled_seq
+    } else {
+        &original_seq
+    };
+    let rc_dna = if circular { &doubled_rc } else { &original_rc };
 
     // --- Nucleotide frequencies and GC frame plot ---
     let mut freq = [0usize; 4];
     let mut frame_plot = GCframe::new();
-    let rc_dna = &genome.rc_seq;
 
     for &base in dna {
         match base {
@@ -270,7 +293,7 @@ fn process_genome(
     // --- Find ORFs ---
     let mut orfs = find_orfs_with_rc(
         dna,
-        &genome.rc_seq,
+        rc_dna,
         start_codons,
         stop_codons,
         90,
@@ -348,8 +371,11 @@ fn process_genome(
     } else {
         (1.0, 1.0)
     };
-    let (graph, endpoints) =
-        Graph::from_orfs(&orfs, contig_length, pstop, gap_scale, overlap_scale);
+    let (graph, endpoints) = if circular {
+        Graph::from_orfs_circular(&orfs, contig_length, pstop, gap_scale, overlap_scale)
+    } else {
+        Graph::from_orfs(&orfs, contig_length, pstop, gap_scale, overlap_scale)
+    };
     let source_idx = endpoints[0];
     let target_idx = endpoints[1];
 
@@ -395,6 +421,19 @@ fn process_genome(
         }
     }
 
+    // --- Map circular coordinates back to the original genome ---
+    if circular {
+        for (left, right, _) in &mut path_edges {
+            if left.position > contig_length && left.position != contig_length + 1 {
+                left.position -= contig_length;
+            }
+            if right.position > contig_length && right.position != contig_length + 1 {
+                right.position -= contig_length;
+            }
+        }
+        orf::map_orfs_to_circular(&mut orfs, contig_length);
+    }
+
     // --- Visualize DAG ---
     if let Some(dag_base) = visualize_dag {
         let dot_path = if is_single_input {
@@ -438,7 +477,7 @@ fn process_genome(
     // --- Primary output ---
     let primary = output::write_primary(
         &genome.id,
-        dna,
+        &original_seq,
         &path_edges,
         &orfs,
         contig_length,
@@ -723,6 +762,7 @@ fn main() -> Result<()> {
                     format,
                     cli.closed_ends,
                     cli.mask_n,
+                    cli.circular,
                     effective_table,
                     cli.rbs_mode,
                     orf_model.as_ref(),
@@ -752,6 +792,7 @@ fn main() -> Result<()> {
                     format,
                     cli.closed_ends,
                     cli.mask_n,
+                    cli.circular,
                     effective_table,
                     cli.rbs_mode,
                     orf_model.as_ref(),

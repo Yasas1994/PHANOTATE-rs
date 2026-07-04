@@ -125,6 +125,8 @@ pub struct PyOrf {
     pub sequence: String,
     #[pyo3(get)]
     pub features: Vec<f64>,
+    #[pyo3(get)]
+    pub wraps_origin: bool,
 }
 
 impl From<&Orf> for PyOrf {
@@ -144,6 +146,7 @@ impl From<&Orf> for PyOrf {
             start_codon: String::from_utf8_lossy(orf.start_codon()).to_string(),
             sequence: String::from_utf8_lossy(&orf.seq).to_string(),
             features: features.0.iter().map(|&v| f64::from(v)).collect(),
+            wraps_origin: orf.wraps_origin,
         }
     }
 }
@@ -286,6 +289,11 @@ impl PyTableScore {
 ///     hexamer cscore log-odds as a learned feature. Default is None.
 /// min_orf_len : int, optional
 ///     Minimum ORF length in nucleotides. Default is 90.
+/// circular : bool, optional
+///     If True, treat the genome as circular and allow genes to wrap the
+///     origin. The sequence is doubled internally, the pipeline is run on the
+///     doubled sequence, and coordinates are mapped back to the original
+///     genome. Default is False.
 ///
 /// Returns
 /// -------
@@ -318,6 +326,7 @@ impl PyTableScore {
     rbs_mode = "auto",
     model = None,
     min_orf_len = 90,
+    circular = false,
 ))]
 fn phanotate(
     sequence: &str,
@@ -330,6 +339,7 @@ fn phanotate(
     rbs_mode: &str,
     model: Option<&str>,
     min_orf_len: usize,
+    circular: bool,
 ) -> PyResult<PyObject> {
     let rbs_mode = parse_rbs_mode(rbs_mode)?;
     let orf_model = load_orf_model(model)?;
@@ -390,6 +400,7 @@ fn phanotate(
         min_orf_len,
         rbs_mode,
         orf_model.as_ref(),
+        circular,
     )?;
 
     // Build Python dict return
@@ -423,8 +434,30 @@ fn process_single_genome(
     min_orf_len: usize,
     rbs_mode: RbsMode,
     orf_model: Option<&crate::onnx_scorer::OnnxScorer>,
+    circular: bool,
 ) -> PyResult<(String, String, String, Vec<PyGene>, bool)> {
     let contig_length = dna.len();
+    let original_dna = dna;
+    let original_rc_dna = rc_dna;
+
+    // For circular genomes, operate on the doubled sequence so ORFs that cross
+    // the origin appear as contiguous intervals.
+    let (doubled_seq, doubled_rc) = if circular {
+        let (ds, drc, _) = genome::circular_sequences(original_dna, original_rc_dna);
+        (Some(ds), Some(drc))
+    } else {
+        (None, None)
+    };
+    let dna: &[u8] = if let Some(ref ds) = doubled_seq {
+        ds
+    } else {
+        original_dna
+    };
+    let rc_dna: &[u8] = if let Some(ref drc) = doubled_rc {
+        drc
+    } else {
+        original_rc_dna
+    };
 
     // --- Nucleotide frequencies and background RBS ---
     let mut freq = [0usize; 4];
@@ -515,8 +548,11 @@ fn process_single_genome(
     } else {
         (1.0, 1.0)
     };
-    let (graph, endpoints) =
-        Graph::from_orfs(&orfs, contig_length, pstop, gap_scale, overlap_scale);
+    let (graph, endpoints) = if circular {
+        Graph::from_orfs_circular(&orfs, contig_length, pstop, gap_scale, overlap_scale)
+    } else {
+        Graph::from_orfs(&orfs, contig_length, pstop, gap_scale, overlap_scale)
+    };
     let source_idx = endpoints[0];
     let target_idx = endpoints[1];
 
@@ -558,6 +594,19 @@ fn process_single_genome(
             };
             path_edges.push((*left, *right, weight));
         }
+    }
+
+    // --- Map circular coordinates back to the original genome ---
+    if circular {
+        for (left, right, _) in &mut path_edges {
+            if left.position > contig_length && left.position != contig_length + 1 {
+                left.position -= contig_length;
+            }
+            if right.position > contig_length && right.position != contig_length + 1 {
+                right.position -= contig_length;
+            }
+        }
+        orf::map_orfs_to_circular(&mut orfs, contig_length);
     }
 
     // --- Collect structured gene results ---
@@ -609,7 +658,7 @@ fn process_single_genome(
     // --- Primary output ---
     let primary = output::write_primary(
         id,
-        dna,
+        original_dna,
         &path_edges,
         &orfs,
         contig_length,
@@ -655,13 +704,18 @@ fn process_single_genome(
 ///     Path to an ONNX ORF scoring model. When given, the model replaces the
 ///     default PHANOTATE heuristic scoring function and uses a Prodigal-style
 ///     hexamer cscore log-odds as a learned feature. Default is None.
+/// circular : bool, optional
+///     If True, treat the genome as circular and find ORFs that may wrap the
+///     origin. The sequence is doubled internally, ORFs are enumerated on the
+///     doubled sequence, and coordinates are mapped back to the original genome.
+///     ORFs that cross the origin will have `wraps_origin=True`. Default is False.
 ///
 /// Returns
 /// -------
 /// list[Orf]
 ///     A list of Orf objects, each with attributes:
 ///     start, stop, frame, rbs_score, pstop, sd_rbs_score, non_sd_rbs_score,
-///     rbs_motif, hold, weight, start_codon, sequence.
+///     rbs_motif, hold, weight, start_codon, sequence, wraps_origin.
 ///
 /// Examples
 /// --------
@@ -678,6 +732,7 @@ fn process_single_genome(
     min_orf_len = 90,
     rbs_mode = "auto",
     model = None,
+    circular = false,
 ))]
 fn find_orfs(
     sequence: &str,
@@ -687,6 +742,7 @@ fn find_orfs(
     min_orf_len: usize,
     rbs_mode: &str,
     model: Option<&str>,
+    circular: bool,
 ) -> PyResult<Vec<PyOrf>> {
     let rbs_mode = parse_rbs_mode(rbs_mode)?;
     let orf_model = load_orf_model(model)?;
@@ -696,6 +752,7 @@ fn find_orfs(
     if dna.is_empty() {
         return Err(PyValueError::new_err("Empty DNA sequence."));
     }
+    let original_len = dna.len();
 
     let stop_codons: Vec<Vec<u8>> = codon_table::stop_codons(table)
         .iter()
@@ -708,9 +765,29 @@ fn find_orfs(
     let start_codons_map = crate::rbs_training::build_start_weights(&start_codons);
 
     let rc_dna = genome::rev_comp(&dna);
+
+    // For circular genomes, operate on the doubled sequence so ORFs that cross
+    // the origin appear as contiguous intervals.
+    let (doubled_seq, doubled_rc) = if circular {
+        let (ds, drc, _) = genome::circular_sequences(&dna, &rc_dna);
+        (Some(ds), Some(drc))
+    } else {
+        (None, None)
+    };
+    let dna_ref: &[u8] = if let Some(ref ds) = doubled_seq {
+        ds
+    } else {
+        &dna
+    };
+    let rc_dna_ref: &[u8] = if let Some(ref drc) = doubled_rc {
+        drc
+    } else {
+        &rc_dna
+    };
+
     let mut orfs = orf::find_orfs_with_rc(
-        &dna,
-        &rc_dna,
+        dna_ref,
+        rc_dna_ref,
         &start_codons,
         &stop_codons,
         min_orf_len,
@@ -719,19 +796,29 @@ fn find_orfs(
         rbs_mode,
     );
 
-    crate::rbs_training::train_rbs_scores(&mut orfs, &dna, &rc_dna, rbs_mode, &start_codons_map);
+    crate::rbs_training::train_rbs_scores(
+        &mut orfs,
+        dna_ref,
+        rc_dna_ref,
+        rbs_mode,
+        &start_codons_map,
+    );
 
     if orf_model.is_some() {
         // For learned models, compute the GC-frame hold score and a
         // Prodigal-style hexamer cscore for every ORF.
-        crate::orf_signals::compute_orf_signals(&mut orfs, &dna, &rc_dna, true, None);
-        crate::ml_features::compute_extra_ml_features(&mut orfs, &dna, &rc_dna, &stop_codons);
+        crate::orf_signals::compute_orf_signals(&mut orfs, dna_ref, rc_dna_ref, true, None);
+        crate::ml_features::compute_extra_ml_features(&mut orfs, dna_ref, rc_dna_ref, &stop_codons);
     }
 
     if let Some(m) = orf_model.as_ref() {
         for orf in &mut orfs {
             orf.score(&start_codons_map, Some(m), 1.0, 0.5);
         }
+    }
+
+    if circular {
+        orf::map_orfs_to_circular(&mut orfs, original_len);
     }
 
     Ok(orfs.iter().map(|o| PyOrf::from(o)).collect())

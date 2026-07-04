@@ -445,6 +445,27 @@ class TestIntegration:
         tables = [s.table for s in scores]
         assert 4 in tables
 
+    def test_circular_genome_detects_wrapping_gene(self):
+        """The circular flag should allow a gene to wrap around the origin."""
+        path = os.path.join(
+            os.path.dirname(__file__), "golden", "NC_001365.fa"
+        )
+        with open(path) as fh:
+            fasta = fh.read()
+
+        result = phanotate_rs.phanotate(
+            fasta, seq_id="NC_001365", table=4, circular=True, format="gbk"
+        )
+        primary = result["primary"]
+        assert "join(" in primary, "circular output should contain a wrapping CDS"
+        assert "1..232)" in primary, "wrapping CDS should span the origin segment 1..232"
+
+        # Linear mode should not emit a wrapping join.
+        linear = phanotate_rs.phanotate(
+            fasta, seq_id="NC_001365", table=4, circular=False, format="gbk"
+        )
+        assert "join(" not in linear["primary"], "linear output should not wrap"
+
     def test_protein_translation_no_internal_stops(self):
         """Translated proteins should not have internal stop codons."""
         seq = "ATG" + "A" * 500 + "TAA"

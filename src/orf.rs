@@ -38,6 +38,9 @@ pub struct Orf {
     pub start_rank: f64,
     pub num_alt_starts: f64,
     pub start_codon_log_freq: f64,
+
+    /// True if this ORF crosses the origin of a circular genome.
+    pub wraps_origin: bool,
 }
 
 impl Orf {
@@ -92,6 +95,39 @@ impl Orf {
         s *= self.sd_rbs_score;
         s *= self.non_sd_rbs_score;
         self.weight = -s;
+    }
+}
+
+/// Map doubled-sequence ORF coordinates back to circular coordinates.
+///
+/// The input ORFs were enumerated on a sequence of length `2 * original_len`,
+/// so each coordinate may lie in the first copy (`<= original_len`) or the
+/// second copy (`> original_len`). After mapping:
+///
+/// * Both coordinates in the second copy: subtract `original_len` from both
+///   (no wrapping).
+/// * One coordinate in each copy: subtract `original_len` from the coordinate
+///   in the second copy and mark the ORF as `wraps_origin = true`.
+/// * Both coordinates in the first copy: leave unchanged.
+///
+/// This handles forward and reverse strand ORFs symmetrically, including the
+/// case where a reverse-strand ORF has its start in the second copy and its
+/// stop in the first copy.
+pub fn map_orfs_to_circular(orfs: &mut [Orf], original_len: usize) {
+    for orf in orfs.iter_mut() {
+        let start_in_first = orf.start <= original_len;
+        let stop_in_first = orf.stop <= original_len;
+        if !start_in_first && !stop_in_first {
+            orf.start -= original_len;
+            orf.stop -= original_len;
+        } else if start_in_first != stop_in_first {
+            if !start_in_first {
+                orf.start -= original_len;
+            } else {
+                orf.stop -= original_len;
+            }
+            orf.wraps_origin = true;
+        }
     }
 }
 
@@ -209,6 +245,7 @@ pub fn find_orfs_with_rc(
                         start_rank: 1.0,
                         num_alt_starts: 1.0,
                         start_codon_log_freq: 0.0,
+                        wraps_origin: false,
                     });
                 }
             }
@@ -279,6 +316,7 @@ pub fn find_orfs_with_rc(
                         start_rank: 1.0,
                         num_alt_starts: 1.0,
                         start_codon_log_freq: 0.0,
+                        wraps_origin: false,
                     });
                 }
             }
@@ -336,6 +374,7 @@ pub fn find_orfs_with_rc(
                         start_rank: 1.0,
                         num_alt_starts: 1.0,
                         start_codon_log_freq: 0.0,
+                        wraps_origin: false,
                     });
                 }
             }
@@ -400,6 +439,7 @@ pub fn find_orfs_with_rc(
                         start_rank: 1.0,
                         num_alt_starts: 1.0,
                         start_codon_log_freq: 0.0,
+                        wraps_origin: false,
                     });
                 }
             }
@@ -713,6 +753,7 @@ mod tests {
             start_rank: 1.0,
             num_alt_starts: 1.0,
             start_codon_log_freq: 0.0,
+            wraps_origin: false,
         };
         let start_codons = std::collections::HashMap::new();
         orf.score(&start_codons, None, 1.0, 0.5);
@@ -721,6 +762,69 @@ mod tests {
         orf.non_sd_rbs_score = 2.0;
         orf.score(&start_codons, None, 1.0, 0.5);
         assert!((orf.weight - base_weight * 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_map_orfs_to_circular() {
+        let original_len = 100;
+        let mut orfs = vec![
+            Orf {
+                start: 10,
+                stop: 30,
+                frame: 1,
+                wraps_origin: false,
+                ..Default::default()
+            },
+            Orf {
+                start: 110,
+                stop: 130,
+                frame: 1,
+                wraps_origin: false,
+                ..Default::default()
+            },
+            Orf {
+                start: 80,
+                stop: 120,
+                frame: 1,
+                wraps_origin: false,
+                ..Default::default()
+            },
+            // Reverse-strand ORF whose start is in the second copy and stop is
+            // in the first copy: must map only the start down and flag the ORF
+            // as wrapping.
+            Orf {
+                start: 130,
+                stop: 70,
+                frame: -1,
+                wraps_origin: false,
+                ..Default::default()
+            },
+        ];
+
+        map_orfs_to_circular(&mut orfs, original_len);
+
+        // ORF entirely in the first copy is unchanged.
+        assert_eq!(orfs[0].start, 10);
+        assert_eq!(orfs[0].stop, 30);
+        assert!(!orfs[0].wraps_origin);
+
+        // ORF entirely in the second copy is mapped back by original_len.
+        assert_eq!(orfs[1].start, 10);
+        assert_eq!(orfs[1].stop, 30);
+        assert!(!orfs[1].wraps_origin);
+
+        // Forward-strand wrapping ORF keeps its start, wraps its stop, and is flagged.
+        assert_eq!(orfs[2].start, 80);
+        assert_eq!(orfs[2].stop, 20);
+        assert!(orfs[2].wraps_origin);
+
+        // Reverse-strand wrapping ORF maps its start from the second copy down
+        // to the first copy and keeps its stop; the coordinate relation inverts
+        // because the start codon is now before the stop codon in linear order.
+        assert_eq!(orfs[3].start, 30);
+        assert_eq!(orfs[3].stop, 70);
+        assert!(orfs[3].start < orfs[3].stop);
+        assert!(orfs[3].wraps_origin);
     }
 }
 

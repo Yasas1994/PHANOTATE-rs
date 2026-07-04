@@ -188,6 +188,24 @@ pub fn rev_comp(seq: &[u8]) -> Vec<u8> {
         .collect()
 }
 
+/// Build doubled sequences for circular-genome annotation.
+///
+/// Returns `(doubled_seq, doubled_rc, original_length)`. The doubled sequence
+/// is `seq || seq`; its reverse complement is `rc_seq || rc_seq`. This lets the
+/// ORF finder discover genes that cross the origin.
+pub fn circular_sequences(seq: &[u8], rc_seq: &[u8]) -> (Vec<u8>, Vec<u8>, usize) {
+    let n = seq.len();
+    let mut doubled_seq = Vec::with_capacity(n * 2);
+    doubled_seq.extend_from_slice(seq);
+    doubled_seq.extend_from_slice(seq);
+
+    let mut doubled_rc = Vec::with_capacity(n * 2);
+    doubled_rc.extend_from_slice(rc_seq);
+    doubled_rc.extend_from_slice(rc_seq);
+
+    (doubled_seq, doubled_rc, n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,6 +243,16 @@ mod tests {
     #[test]
     fn test_parse_cds_location_join_skipped() {
         assert_eq!(parse_cds_location("join(1..50,60..100)"), None);
+    }
+
+    #[test]
+    fn test_circular_sequences() {
+        let seq = b"atgc";
+        let rc = rev_comp(seq);
+        let (doubled_seq, doubled_rc, original_len) = circular_sequences(seq, &rc);
+        assert_eq!(doubled_seq, b"atgcatgc");
+        assert_eq!(doubled_rc, b"gcatgcat");
+        assert_eq!(original_len, 4);
     }
 }
 

@@ -98,9 +98,19 @@ fn write_gbk(
     out.push_str("FEATURES             Location/Qualifiers\n");
     out.push_str(&format!("     source          1..{}\n", last_position));
 
-    for (start, stop, strand, weight, _orf) in collect_orf_edges(path, orfs) {
+    for (start, stop, strand, weight, orf) in collect_orf_edges(path, orfs) {
         out.push_str("     CDS             ");
-        if strand == '+' {
+        if orf.wraps_origin {
+            let last = last_position;
+            if strand == '+' {
+                out.push_str(&format!("join({}..{},1..{})\n", start, last, stop));
+            } else {
+                out.push_str(&format!(
+                    "complement(join({}..{},1..{}))\n",
+                    start, last, stop
+                ));
+            }
+        } else if strand == '+' {
             out.push_str(&format!("{}..{}\n", start, stop));
         } else {
             out.push_str(&format!("complement({}..{})\n", start, stop));
@@ -136,9 +146,14 @@ fn write_gff(id: &str, path: &[(Node, Node, f64)], orfs: &[Orf], uses_sd: bool) 
     out.push_str("##gff-version 3\n");
     out.push_str(&format!("# uses_sd: {}\n", if uses_sd { 1 } else { 0 }));
 
-    for (start, stop, strand, weight, _orf) in collect_orf_edges(path, orfs) {
+    for (start, stop, strand, weight, orf) in collect_orf_edges(path, orfs) {
+        let note = if orf.wraps_origin {
+            ";circular=true"
+        } else {
+            ""
+        };
         out.push_str(&format!(
-            "{}\tphanotate\tCDS\t{}\t{}\t{:.2E}\t{}\t0\tID=CDS_{}_{};score={:.2E}\n",
+            "{}\tphanotate\tCDS\t{}\t{}\t{:.2E}\t{}\t0\tID=CDS_{}_{};score={:.2E}{}\n",
             id.trim_start_matches('>'),
             start,
             stop,
@@ -146,7 +161,8 @@ fn write_gff(id: &str, path: &[(Node, Node, f64)], orfs: &[Orf], uses_sd: bool) 
             strand,
             start,
             stop,
-            weight
+            weight,
+            note
         ));
     }
 
@@ -264,6 +280,7 @@ mod tests {
             start_rank: 1.0,
             num_alt_starts: 1.0,
             start_codon_log_freq: 0.0,
+            wraps_origin: false,
         }
     }
 

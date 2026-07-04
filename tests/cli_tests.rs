@@ -1,4 +1,3 @@
-use std::io::Write;
 use std::process::Command;
 
 const PHANOTATE_RS: &str = env!("CARGO_BIN_EXE_phanotate-rs");
@@ -662,5 +661,46 @@ fn model_flag_rejects_invalid_model() {
     assert!(
         stderr.to_lowercase().contains("model") || stderr.to_lowercase().contains("onnx"),
         "error should mention model: {stderr}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Circular genome (--circular)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_circular_flag_detects_wrapping_gene() {
+    let (stdout, _stderr, code) = run(
+        &[
+            "--circular",
+            "-i",
+            "tests/golden/NC_001365.fa",
+            "-g",
+            "4",
+            "-f",
+            "gbk",
+        ],
+        None,
+    );
+    assert_eq!(code, 0, "--circular should exit successfully");
+    // The reference uses ATG at 7492, but PHANOTATE may choose an alternative
+    // table-4 start codon (e.g. ATA at 7489).  Accept any wrapping CDS that
+    // spans the origin with the reference stop (8273) and origin segment 1..232.
+    assert!(
+        stdout.contains("join(") && stdout.contains("..8273,1..232)"),
+        "circular output should contain a wrapping CDS join(X..8273,1..232):\n{stdout}"
+    );
+}
+
+#[test]
+fn test_linear_flag_no_wrapping_gene() {
+    let (stdout, _stderr, code) = run(
+        &["-i", "tests/golden/NC_001365.fa", "-g", "4", "-f", "gbk"],
+        None,
+    );
+    assert_eq!(code, 0, "linear run should exit successfully");
+    assert!(
+        !stdout.contains("join("),
+        "linear output should not contain a wrapping CDS:\n{stdout}"
     );
 }

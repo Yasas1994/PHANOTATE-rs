@@ -272,6 +272,7 @@ mod tests {
             start_rank: 1.0,
             num_alt_starts: 1.0,
             start_codon_log_freq: 0.0,
+            wraps_origin: false,
         }];
         let model = HexamerModel::train(&orfs, &seq, &rc);
         assert!(model.log_odds.iter().all(|&s| s.is_finite()));
@@ -320,6 +321,7 @@ mod tests {
             start_rank: 1.0,
             num_alt_starts: 1.0,
             start_codon_log_freq: 0.0,
+            wraps_origin: false,
         }];
         let model = HexamerModel::train(&orfs, &seq, &rc);
         let s = model.score_orf(&orfs[0]);
@@ -369,6 +371,7 @@ mod tests {
             start_rank: 1.0,
             num_alt_starts: 1.0,
             start_codon_log_freq: 0.0,
+            wraps_origin: false,
         };
         let model = HexamerModel::from_annotated_orfs(&[&orf], &seq, &rc);
         assert!(model.log_odds.iter().all(|&s| s.is_finite()));
@@ -419,6 +422,7 @@ mod tests {
             start_rank: 1.0,
             num_alt_starts: 1.0,
             start_codon_log_freq: 0.0,
+            wraps_origin: false,
         };
         let model = HexamerModel::from_annotated_orfs(&[&orf], &seq, &rc);
         let s = model.cscore(&orf);

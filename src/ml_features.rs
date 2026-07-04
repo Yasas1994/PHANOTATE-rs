@@ -730,6 +730,7 @@ mod tests {
             start_rank: 1.0,
             num_alt_starts: 1.0,
             start_codon_log_freq: 0.0,
+            wraps_origin: false,
         }
     }
 
