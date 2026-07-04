@@ -27,8 +27,12 @@ def run_benchmark(
     scale: float | None = None,
     threshold: float | None = None,
     auto_threshold: str | None = None,
-) -> dict:
-    """Run benchmark_model.py for a single parameter set and return the summary."""
+    timeout: int = 180,
+) -> dict | None:
+    """Run benchmark_model.py for a single parameter set and return the summary.
+
+    Returns ``None`` if the run times out or the subprocess is killed (e.g. OOM).
+    """
     cmd = [
         sys.executable,
         "scripts/benchmark_model.py",
@@ -45,7 +49,12 @@ def run_benchmark(
     if auto_threshold is not None:
         cmd.extend(["--auto-threshold", auto_threshold])
 
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(cmd, check=True, timeout=timeout)
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as e:
+        label = f"scale={scale} threshold={threshold} auto={auto_threshold}"
+        print(f"  {label} failed: {e}", file=sys.stderr)
+        return None
     with output.open() as fh:
         data = json.load(fh)
     return data
@@ -104,6 +113,9 @@ def main() -> int:
         threshold=None,
         auto_threshold=None,
     )
+    if data is None:
+        print("Error: baseline heuristic run failed", file=sys.stderr)
+        return 1
     heuristic = data["summary"]["heuristic"]
     print(f"heuristic: precision={heuristic['precision']:.4f} recall={heuristic['recall']:.4f} f1={heuristic['f1']:.4f}")
 
@@ -122,6 +134,8 @@ def main() -> int:
             threshold=threshold,
             auto_threshold=None,
         )
+        if data is None:
+            continue
         model_metrics = data["summary"]["models"][args.model.name]
         row = {
             "scale": scale,
@@ -145,6 +159,8 @@ def main() -> int:
             threshold=None,
             auto_threshold=auto,
         )
+        if data is None:
+            continue
         model_metrics = data["summary"]["models"][args.model.name]
         row = {
             "scale": None,
@@ -156,6 +172,10 @@ def main() -> int:
         print(f"  precision={row['precision']:.4f} recall={row['recall']:.4f} f1={row['f1']:.4f}")
 
     tmp_output.unlink(missing_ok=True)
+
+    if not rows:
+        print("Error: all model configurations failed", file=sys.stderr)
+        return 1
 
     df = pd.DataFrame(rows)
     best_idx = df["f1"].idxmax()
