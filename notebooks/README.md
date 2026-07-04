@@ -56,7 +56,7 @@ The 34 features extracted per ORF (from `src/ml_features.rs`):
 | `frame_2` | 1 if \|frame\| == 2, else 0 | 0 or 1 |
 | `frame_3` | 1 if \|frame\| == 3, else 0 | 0 or 1 |
 | `non_sd_rbs_score` | Non-SD motif score | varies |
-| `dicodon_log_likelihood` | Natural log of Prodigal-style dicodon coding potential | varies |
+| `cscore` | Natural log of Prodigal-style hexamer coding potential | varies |
 | `cai` | Codon adaptation index vs. genome-wide usage | 0–1 |
 | `gc1` | GC content at codon position 1 | 0–1 |
 | `gc2` | GC content at codon position 2 | 0–1 |

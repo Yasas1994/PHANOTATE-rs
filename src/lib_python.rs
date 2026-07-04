@@ -283,7 +283,7 @@ impl PyTableScore {
 /// model : str, optional
 ///     Path to an ONNX ORF scoring model. When given, the model replaces the
 ///     default PHANOTATE heuristic scoring function and uses a Prodigal-style
-///     dicodon coding-potential score as a learned feature. Default is None.
+///     hexamer cscore log-odds as a learned feature. Default is None.
 /// min_orf_len : int, optional
 ///     Minimum ORF length in nucleotides. Default is 90.
 ///
@@ -490,7 +490,7 @@ fn process_single_genome(
     let use_non_sd =
         crate::rbs_training::train_rbs_scores(&mut orfs, dna, rc_dna, rbs_mode, start_codons_map);
 
-    // --- GC frame plot scoring + optional dicodon signal ---
+    // --- GC frame plot scoring + optional hexamer cscore signal ---
     crate::orf_signals::compute_orf_signals_with_plot(
         &mut orfs,
         dna,
@@ -653,7 +653,7 @@ fn process_single_genome(
 /// model : str, optional
 ///     Path to an ONNX ORF scoring model. When given, the model replaces the
 ///     default PHANOTATE heuristic scoring function and uses a Prodigal-style
-///     dicodon coding-potential score as a learned feature. Default is None.
+///     hexamer cscore log-odds as a learned feature. Default is None.
 ///
 /// Returns
 /// -------
@@ -721,7 +721,7 @@ fn find_orfs(
 
     if orf_model.is_some() {
         // For learned models, compute the GC-frame hold score and a
-        // Prodigal-style dicodon log-likelihood for every ORF.
+        // Prodigal-style hexamer cscore for every ORF.
         crate::orf_signals::compute_orf_signals(&mut orfs, &dna, &rc_dna, true, None);
         crate::ml_features::compute_extra_ml_features(&mut orfs, &dna, &rc_dna, &stop_codons);
     }

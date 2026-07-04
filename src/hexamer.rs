@@ -1,8 +1,8 @@
-//! Prodigal-style dicodon (6-mer) coding-potential scorer.
+//! Prodigal-style hexamer (6-mer) coding-potential scorer.
 
 use crate::orf::Orf;
 
-pub const NUM_DICODONS: usize = 4096;
+pub const NUM_HEXAMERS: usize = 4096;
 
 /// 2-bit encode a single base: A=0, C=1, G=2, T=3.
 fn encode_base(b: u8) -> Option<usize> {
@@ -28,24 +28,24 @@ pub fn kmer_encode(seq: &[u8], pos: usize, len: usize) -> Option<usize> {
     Some(ndx)
 }
 
-/// Prodigal-style dicodon (6-mer) coding-potential model.
+/// Prodigal-style hexamer (6-mer) coding-potential model.
 #[derive(Debug, Clone)]
-pub struct DicodonModel {
-    pub scores: [f64; NUM_DICODONS],
+pub struct HexamerModel {
+    pub log_odds: [f64; NUM_HEXAMERS],
 }
 
-impl DicodonModel {
-    /// Train a dicodon model from a set of seed ORFs.
+impl HexamerModel {
+    /// Train a hexamer model from a set of seed ORFs.
     ///
     /// Seed genes are ORFs that are at least 80% of the mean ORF length and
     /// that have some start-codon signal (either an RBS or a non-SD motif).
-    /// Gene dicodon counts are collected in the translational reading frame
+    /// Gene hexamer counts are collected in the translational reading frame
     /// from each selected ORF; background counts are collected on both strands
     /// in all three forward frames.  Counts are smoothed with a pseudocount of
-    /// one and converted to log-likelihood ratios.
+    /// one and converted to log-odds ratios.
     pub fn train(orfs: &[Orf], dna: &[u8], rc_dna: &[u8]) -> Self {
         let mut model = Self {
-            scores: [0.0; NUM_DICODONS],
+            log_odds: [0.0; NUM_HEXAMERS],
         };
 
         // Seed-gene selection: ORFs at least 80% of mean length with some start signal.
@@ -56,8 +56,8 @@ impl DicodonModel {
         };
         let threshold = mean_len * 0.8;
 
-        let mut gene_counts = [0.0f64; NUM_DICODONS];
-        let mut bg_counts = [0.0f64; NUM_DICODONS];
+        let mut gene_counts = [0.0f64; NUM_HEXAMERS];
+        let mut bg_counts = [0.0f64; NUM_HEXAMERS];
         let mut total_gene = 0.0;
         let mut total_bg = 0.0;
 
@@ -88,24 +88,24 @@ impl DicodonModel {
             }
         }
 
-        // Smooth and convert to log-likelihoods.
-        for ndx in 0..NUM_DICODONS {
-            let g = (gene_counts[ndx] + 1.0) / (total_gene + NUM_DICODONS as f64);
-            let b = (bg_counts[ndx] + 1.0) / (total_bg + NUM_DICODONS as f64);
-            model.scores[ndx] = (g / b).ln().clamp(-4.0, 4.0);
+        // Smooth and convert to log-odds.
+        for ndx in 0..NUM_HEXAMERS {
+            let g = (gene_counts[ndx] + 1.0) / (total_gene + NUM_HEXAMERS as f64);
+            let b = (bg_counts[ndx] + 1.0) / (total_bg + NUM_HEXAMERS as f64);
+            model.log_odds[ndx] = (g / b).ln().clamp(-4.0, 4.0);
         }
 
         model
     }
 
-    /// Train an unsupervised dicodon model from all ORFs that are long enough
+    /// Train an unsupervised hexamer model from all ORFs that are long enough
     /// to be plausible genes, without requiring RBS signal.
     ///
     /// This is useful for feature export on FASTA inputs where no trusted gene
     /// annotations are available.
     pub fn train_unsupervised(orfs: &[Orf], dna: &[u8], rc_dna: &[u8]) -> Self {
         let mut model = Self {
-            scores: [0.0; NUM_DICODONS],
+            log_odds: [0.0; NUM_HEXAMERS],
         };
 
         let mean_len = if orfs.is_empty() {
@@ -115,8 +115,8 @@ impl DicodonModel {
         };
         let threshold = mean_len * 0.8;
 
-        let mut gene_counts = [0.0f64; NUM_DICODONS];
-        let mut bg_counts = [0.0f64; NUM_DICODONS];
+        let mut gene_counts = [0.0f64; NUM_HEXAMERS];
+        let mut bg_counts = [0.0f64; NUM_HEXAMERS];
         let mut total_gene = 0.0;
         let mut total_bg = 0.0;
 
@@ -144,26 +144,26 @@ impl DicodonModel {
             }
         }
 
-        // Smooth and convert to log-likelihoods.
-        for ndx in 0..NUM_DICODONS {
-            let g = (gene_counts[ndx] + 1.0) / (total_gene + NUM_DICODONS as f64);
-            let b = (bg_counts[ndx] + 1.0) / (total_bg + NUM_DICODONS as f64);
-            model.scores[ndx] = (g / b).ln().clamp(-4.0, 4.0);
+        // Smooth and convert to log-odds.
+        for ndx in 0..NUM_HEXAMERS {
+            let g = (gene_counts[ndx] + 1.0) / (total_gene + NUM_HEXAMERS as f64);
+            let b = (bg_counts[ndx] + 1.0) / (total_bg + NUM_HEXAMERS as f64);
+            model.log_odds[ndx] = (g / b).ln().clamp(-4.0, 4.0);
         }
 
         model
     }
 
-    /// Train a dicodon model from a supplied set of trusted ORFs (e.g. annotated
-    /// CDS). Gene dicodon counts are taken from the ORF sequences in frame;
+    /// Train a hexamer model from a supplied set of trusted ORFs (e.g. annotated
+    /// CDS). Gene hexamer counts are taken from the ORF sequences in frame;
     /// background counts are collected from both genome strands in all frames.
     pub fn from_annotated_orfs(orfs: &[&Orf], dna: &[u8], rc_dna: &[u8]) -> Self {
         let mut model = Self {
-            scores: [0.0; NUM_DICODONS],
+            log_odds: [0.0; NUM_HEXAMERS],
         };
 
-        let mut gene_counts = [0.0f64; NUM_DICODONS];
-        let mut bg_counts = [0.0f64; NUM_DICODONS];
+        let mut gene_counts = [0.0f64; NUM_HEXAMERS];
+        let mut bg_counts = [0.0f64; NUM_HEXAMERS];
         let mut total_gene = 0.0;
         let mut total_bg = 0.0;
 
@@ -188,32 +188,47 @@ impl DicodonModel {
             }
         }
 
-        // Smooth and convert to log-likelihoods.
-        for ndx in 0..NUM_DICODONS {
-            let g = (gene_counts[ndx] + 1.0) / (total_gene + NUM_DICODONS as f64);
-            let b = (bg_counts[ndx] + 1.0) / (total_bg + NUM_DICODONS as f64);
-            model.scores[ndx] = (g / b).ln().clamp(-4.0, 4.0);
+        // Smooth and convert to log-odds.
+        for ndx in 0..NUM_HEXAMERS {
+            let g = (gene_counts[ndx] + 1.0) / (total_gene + NUM_HEXAMERS as f64);
+            let b = (bg_counts[ndx] + 1.0) / (total_bg + NUM_HEXAMERS as f64);
+            model.log_odds[ndx] = (g / b).ln().clamp(-4.0, 4.0);
         }
 
         model
     }
 
-    /// Score an ORF by summing per-dicodon log-likelihoods in its translational
-    /// frame and converting the average to a positive multiplier.
-    pub fn score_orf(&self, orf: &Orf) -> f64 {
+    /// Compute the raw in-frame hexamer log-odds sum (Prodigal-style raw cscore).
+    pub fn cscore(&self, orf: &Orf) -> f64 {
         let seq = orf.sequence();
         let mut sum = 0.0;
         let mut count = 0;
         for i in (0..seq.len().saturating_sub(5)).step_by(3) {
             if let Some(ndx) = kmer_encode(seq, i, 6) {
-                sum += self.scores[ndx];
+                sum += self.log_odds[ndx];
+                count += 1;
+            }
+        }
+        if count == 0 {
+            return 0.0;
+        }
+        sum
+    }
+
+    /// Score an ORF by converting its average cscore to a positive multiplier.
+    pub fn score_orf(&self, orf: &Orf) -> f64 {
+        let raw = self.cscore(orf);
+        let seq = orf.sequence();
+        let mut count = 0;
+        for i in (0..seq.len().saturating_sub(5)).step_by(3) {
+            if kmer_encode(seq, i, 6).is_some() {
                 count += 1;
             }
         }
         if count == 0 {
             return 1.0;
         }
-        let avg = sum / count as f64;
+        let avg = raw / count as f64;
         avg.exp().clamp(0.1, 10.0)
     }
 }
@@ -224,7 +239,7 @@ mod tests {
 
     #[test]
     fn kmer_roundtrip_6() {
-        for ndx in 0..NUM_DICODONS {
+        for ndx in 0..NUM_HEXAMERS {
             let mut seq = Vec::with_capacity(6);
             for i in 0..6 {
                 seq.push(b"ACGT"[(ndx >> (2 * i)) & 0x3]);
@@ -239,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn training_produces_scores() {
+    fn training_produces_log_odds() {
         let unit = b"atgaaaaaaaatgaaaaaaatgaaaaaaa";
         let seq = unit
             .iter()
@@ -261,6 +276,7 @@ mod tests {
             non_sd_rbs_score: 1.0,
             coding_potential: 1.0,
             weight: 1.0,
+            cscore: 0.0,
             cai: 0.0,
             gc1: 0.0,
             gc2: 0.0,
@@ -280,9 +296,9 @@ mod tests {
             num_alt_starts: 1.0,
             start_codon_log_freq: 0.0,
         }];
-        let model = DicodonModel::train(&orfs, &seq, &rc);
-        assert!(model.scores.iter().all(|&s| s.is_finite()));
-        assert!(model.scores.iter().any(|&s| s > 0.0));
+        let model = HexamerModel::train(&orfs, &seq, &rc);
+        assert!(model.log_odds.iter().all(|&s| s.is_finite()));
+        assert!(model.log_odds.iter().any(|&s| s > 0.0));
     }
 
     #[test]
@@ -308,6 +324,7 @@ mod tests {
             non_sd_rbs_score: 1.0,
             coding_potential: 1.0,
             weight: 1.0,
+            cscore: 0.0,
             cai: 0.0,
             gc1: 0.0,
             gc2: 0.0,
@@ -327,14 +344,14 @@ mod tests {
             num_alt_starts: 1.0,
             start_codon_log_freq: 0.0,
         }];
-        let model = DicodonModel::train(&orfs, &seq, &rc);
+        let model = HexamerModel::train(&orfs, &seq, &rc);
         let s = model.score_orf(&orfs[0]);
         assert!(s > 0.0);
         assert!(s <= 10.0);
     }
 
     #[test]
-    fn from_annotated_orfs_produces_scores() {
+    fn from_annotated_orfs_produces_log_odds() {
         let unit = b"atgaaaaaaaatgaaaaaaatgaaaaaaa";
         let seq = unit
             .iter()
@@ -356,6 +373,7 @@ mod tests {
             non_sd_rbs_score: 1.0,
             coding_potential: 1.0,
             weight: 1.0,
+            cscore: 0.0,
             cai: 0.0,
             gc1: 0.0,
             gc2: 0.0,
@@ -375,10 +393,70 @@ mod tests {
             num_alt_starts: 1.0,
             start_codon_log_freq: 0.0,
         };
-        let model = DicodonModel::from_annotated_orfs(&[&orf], &seq, &rc);
-        assert!(model.scores.iter().all(|&s| s.is_finite()));
+        let model = HexamerModel::from_annotated_orfs(&[&orf], &seq, &rc);
+        assert!(model.log_odds.iter().all(|&s| s.is_finite()));
         let s = model.score_orf(&orf);
         assert!(s > 0.0);
         assert!(s <= 10.0);
+    }
+
+    #[test]
+    fn cscore_returns_raw_log_odds_sum() {
+        let unit = b"atgaaaaaaaatgaaaaaaatgaaaaaaa";
+        let seq = unit
+            .iter()
+            .cycle()
+            .take(unit.len() * 20)
+            .copied()
+            .collect::<Vec<u8>>();
+        let rc = crate::genome::rev_comp(&seq);
+        let orf = Orf {
+            start: 1,
+            stop: seq.len() - 2,
+            frame: 1,
+            seq: seq.clone(),
+            rbs_score: 0,
+            rbs_motif: None,
+            pstop: 0.01,
+            sd_rbs_score: 2.0,
+            hold: 100.0,
+            non_sd_rbs_score: 1.0,
+            coding_potential: 1.0,
+            weight: 1.0,
+            cscore: 0.0,
+            cai: 0.0,
+            gc1: 0.0,
+            gc2: 0.0,
+            gc3: 0.0,
+            overlap_upstream_length: 0.0,
+            overlap_upstream_same_strand: 0.0,
+            overlap_downstream_length: 0.0,
+            overlap_downstream_same_strand: 0.0,
+            stop_sharing_count: 0.0,
+            gc_skew: 0.0,
+            truncation_penalty: 0.0,
+            upstream_pwm_score: 0.0,
+            rbs_spacer: 0.0,
+            best_alt_pwm_score: 0.0,
+            pwm_ratio: 1.0,
+            start_rank: 1.0,
+            num_alt_starts: 1.0,
+            start_codon_log_freq: 0.0,
+        };
+        let model = HexamerModel::from_annotated_orfs(&[&orf], &seq, &rc);
+        let s = model.cscore(&orf);
+        assert!(s.is_finite());
+        // score_orf is the exponentiated, clamped average.
+        let m = model.score_orf(&orf);
+        let count = if orf.seq.len() >= 6 {
+            (orf.seq.len() - 3) / 3
+        } else {
+            0
+        };
+        assert!(count > 0);
+        let avg = s / count as f64;
+        assert!((m - avg.exp()).abs() < 1e-9);
+        assert!(m > 0.0);
+        assert!(m <= 10.0);
     }
 }

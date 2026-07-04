@@ -14,23 +14,24 @@ pub struct Orf {
     pub non_sd_rbs_score: f64, // non-Shine-Dalgarno motif score multiplier
     pub rbs_motif: Option<String>, // detected RBS / non-SD motif sequence
     pub hold: f64,             // product of adjusted P(not_stop) per codon
-    pub coding_potential: f64, // coding-potential multiplier (1/hold default, or dicodon model)
+    pub coding_potential: f64, // coding-potential multiplier (1/hold default, or hexamer model)
     pub weight: f64,           // final ORF edge weight (negative)
 
     // Extra ML features (computed in a post-processing pass)
-    pub cai: f64,                     // codon adaptation index vs. genome-wide usage
-    pub gc1: f64,                     // GC content at codon position 1
-    pub gc2: f64,                     // GC content at codon position 2
-    pub gc3: f64,                     // GC content at codon position 3
+    pub cscore: f64, // Prodigal-style raw hexamer cscore (sum of log-odds)
+    pub cai: f64,    // codon adaptation index vs. genome-wide usage
+    pub gc1: f64,    // GC content at codon position 1
+    pub gc2: f64,    // GC content at codon position 2
+    pub gc3: f64,    // GC content at codon position 3
     pub overlap_upstream_length: f64, // bases overlapping nearest upstream ORF
     pub overlap_upstream_same_strand: f64, // 1 if overlapping upstream ORF is same strand
     pub overlap_downstream_length: f64, // bases overlapping nearest downstream ORF
     pub overlap_downstream_same_strand: f64, // 1 if overlapping downstream ORF is same strand
-    pub stop_sharing_count: f64,      // number of ORFs sharing this stop codon
-    pub gc_skew: f64,                 // (G-C)/(G+C) of the ORF sequence
-    pub truncation_penalty: f64,      // Prodigal-style sharpening penalty
-    pub upstream_pwm_score: f64,      // log-likelihood of start upstream region
-    pub rbs_spacer: f64,              // bases between detected RBS motif and start codon
+    pub stop_sharing_count: f64, // number of ORFs sharing this stop codon
+    pub gc_skew: f64, // (G-C)/(G+C) of the ORF sequence
+    pub truncation_penalty: f64, // Prodigal-style sharpening penalty
+    pub upstream_pwm_score: f64, // log-likelihood of start upstream region
+    pub rbs_spacer: f64, // bases between detected RBS motif and start codon
 
     // Relative start-site features
     pub best_alt_pwm_score: f64,
@@ -210,6 +211,7 @@ pub fn find_orfs_with_rc(
                         hold,
                         coding_potential: 1.0 / hold,
                         weight: 1.0,
+                        cscore: 0.0,
                         cai: 0.0,
                         gc1: 0.0,
                         gc2: 0.0,
@@ -279,6 +281,7 @@ pub fn find_orfs_with_rc(
                         hold,
                         coding_potential: 1.0 / hold,
                         weight: 1.0,
+                        cscore: 0.0,
                         cai: 0.0,
                         gc1: 0.0,
                         gc2: 0.0,
@@ -335,6 +338,7 @@ pub fn find_orfs_with_rc(
                         hold,
                         coding_potential: 1.0 / hold,
                         weight: 1.0,
+                        cscore: 0.0,
                         cai: 0.0,
                         gc1: 0.0,
                         gc2: 0.0,
@@ -398,6 +402,7 @@ pub fn find_orfs_with_rc(
                         hold,
                         coding_potential: 1.0 / hold,
                         weight: 1.0,
+                        cscore: 0.0,
                         cai: 0.0,
                         gc1: 0.0,
                         gc2: 0.0,
@@ -686,6 +691,7 @@ mod tests {
             non_sd_rbs_score: 1.0,
             rbs_motif: None,
             weight: 1.0,
+            cscore: 0.0,
             cai: 0.0,
             gc1: 0.0,
             gc2: 0.0,

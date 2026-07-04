@@ -61,7 +61,7 @@ FEATURE_NAMES = [
     "frame_2",
     "frame_3",
     "non_sd_rbs_score",
-    "dicodon_log_likelihood",
+    "cscore",
     "cai",
     "gc1",
     "gc2",

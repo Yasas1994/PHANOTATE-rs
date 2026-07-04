@@ -48,7 +48,7 @@ pub const FEATURE_NAMES: [&str; NUM_FEATURES] = [
     "frame_2",
     "frame_3",
     "non_sd_rbs_score",
-    "dicodon_log_likelihood",
+    "cscore",
     "cai",
     "gc1",
     "gc2",
@@ -610,12 +610,8 @@ impl Orf {
         // 13. Non-SD motif score
         features[13] = self.non_sd_rbs_score as f32;
 
-        // 14. dicodon log-likelihood
-        // In the default (no-model) path this is log(1/hold). In the --model
-        // path the caller replaces coding_potential with a Prodigal-style
-        // dicodon log-likelihood before scoring, so this feature captures the
-        // dicodon signal for learned models.
-        features[14] = self.coding_potential.max(1e-6).ln() as f32;
+        // 14. Prodigal-style raw cscore (sum of hexamer log-odds)
+        features[14] = self.cscore as f32;
 
         // 15. codon adaptation index
         features[15] = self.cai as f32;
@@ -646,9 +642,9 @@ impl Orf {
         // 27. Distance from detected RBS motif to start codon
         features[27] = self.rbs_spacer as f32;
 
-        // 28. PHANOTATE-style heuristic score (dicodon × start × RBS)
+        // 28. PHANOTATE-style heuristic score (hexamer × start × RBS)
         // This lets a learned model fall back to the strong heuristic signal
-        // when the dicodon and RBS features already explain the label.
+        // when the cscore and RBS features already explain the label.
         let start_weight = if sc == b"atg" {
             1.0
         } else if sc == b"gtg" || sc == b"ttg" {
@@ -732,6 +728,7 @@ mod tests {
             hold,
             coding_potential: 1.0 / hold,
             weight: -1.0,
+            cscore: 0.0,
             cai: 0.0,
             gc1: 0.0,
             gc2: 0.0,
@@ -846,7 +843,7 @@ mod tests {
         let mut buf = Vec::new();
         write_features_tsv(&mut buf, &orfs, true, None).unwrap();
         let s = String::from_utf8(buf).unwrap();
-        let expected_header = "start\tstop\tlog_length\trbs_bin\tlog_hold\tpstop\tsd_rbs_score\tstart_codon_atg\tstart_codon_gtg\tstart_codon_ttg\tgc_content\tframe_fwd\tframe_1\tframe_2\tframe_3\tnon_sd_rbs_score\tdicodon_log_likelihood";
+        let expected_header = "start\tstop\tlog_length\trbs_bin\tlog_hold\tpstop\tsd_rbs_score\tstart_codon_atg\tstart_codon_gtg\tstart_codon_ttg\tgc_content\tframe_fwd\tframe_1\tframe_2\tframe_3\tnon_sd_rbs_score\tcscore";
         assert!(s.starts_with(expected_header));
     }
 
@@ -866,11 +863,10 @@ mod tests {
     }
 
     #[test]
-    fn test_dicodon_log_likelihood_feature() {
+    fn test_cscore_feature() {
         let orf = test_orf();
         let f = orf.extract_features();
-        let expected = orf.coding_potential.max(1e-6).ln() as f32;
-        assert!((f.0[14] - expected).abs() < 0.001);
+        assert_eq!(f.0[14], orf.cscore as f32);
     }
 
     #[test]

@@ -245,6 +245,7 @@ mod tests {
             hold,
             coding_potential: 1.0 / hold,
             weight: -1.0,
+            cscore: 0.0,
             cai: 0.0,
             gc1: 0.0,
             gc2: 0.0,

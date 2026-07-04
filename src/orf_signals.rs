@@ -5,7 +5,7 @@
 //! produce consistent feature vectors.
 
 use crate::gcfp::{max_idx, min_idx, GCframe};
-use crate::hexamer::DicodonModel as HexamerModel;
+use crate::hexamer::HexamerModel;
 use crate::orf::Orf;
 
 /// Compute the GC-frame "hold" multiplier for every ORF.
@@ -107,6 +107,7 @@ pub fn apply_hexamer_model(
 
     for orf in orfs.iter_mut() {
         orf.coding_potential = model.score_orf(orf);
+        orf.cscore = model.cscore(orf);
     }
 }
 

@@ -104,7 +104,7 @@ struct Cli {
     /// Path to an ONNX ORF scoring model.
     ///
     /// When given, the model replaces the default PHANOTATE heuristic scoring
-    /// function and uses a Prodigal-style dicodon coding-potential score as a
+    /// function and uses a Prodigal-style hexamer cscore log-odds as a
     /// learned feature.
     #[arg(long = "model", value_name = "FILE")]
     model: Option<PathBuf>,
@@ -292,7 +292,7 @@ fn process_genome(
         start_codons_map,
     );
 
-    // --- GC frame plot scoring + optional dicodon signal ---
+    // --- GC frame plot scoring + optional hexamer cscore signal ---
     let annotated: Option<Vec<usize>> = if orf_model.is_some() && !genome.cds.is_empty() {
         Some(
             orfs.iter()
@@ -532,10 +532,10 @@ fn main() -> Result<()> {
                 &start_codons_map,
             );
 
-            // Compute GC-frame hold and a Prodigal-style dicodon log-likelihood
+            // Compute GC-frame hold and a Prodigal-style hexamer cscore
             // so that exported feature vectors are useful for model training.
             let annotated: Option<Vec<usize>> = if genome.cds.is_empty() {
-                Some(Vec::new()) // triggers unsupervised dicodon training
+                Some(Vec::new()) // triggers unsupervised hexamer training
             } else {
                 Some(
                     orfs.iter()
