@@ -28,7 +28,7 @@ use crate::codon_table::{stop_codons, table_name};
 ///              (Peters et al., Nat Commun 2022).
 ///   Table 25 — TGA→Gly; Gracilibacteria/SR1 phages in oral and gut microbiomes
 ///              (Liu et al., mBio 2023; doi:10.5281/zenodo.8422333).
-pub const CANDIDATE_TABLES: &[u8] = &[1, 4, 11, 15, 25];
+pub const CANDIDATE_TABLES: &[u8] = &[4, 11, 15, 25];
 
 /// Minimum sequence length for detection to be reliable.
 const MIN_SEQ_LEN: usize = 300;
@@ -689,8 +689,8 @@ pub fn score_tables(seq: &[u8], min_orf_len: usize) -> Vec<TableScore> {
         //   freely inside candidate-table ORFs (high = supports alternative).
         // - max_ratio adds a bonus when the candidate table produces
         //   dramatically longer max ORFs than table 11.
-        // - For tables 1 and 11 (no reassigned codons), signal is always 1.0.
-        let composite = if table == 1 || table == 11 {
+        // - For table 11 (no reassigned codons), signal is always 1.0.
+        let composite = if table == 11 {
             mol_ratio * signal
         } else {
             // Boost tables that have both elevated max_ratio AND strong signal.
@@ -728,17 +728,12 @@ pub fn score_tables(seq: &[u8], min_orf_len: usize) -> Vec<TableScore> {
         if cmp != std::cmp::Ordering::Equal {
             return cmp;
         }
-        // Composites are equal — apply tie-breaker if both are tables 1/11
-        let a_is_baseline = a.table == 1 || a.table == 11;
-        let b_is_baseline = b.table == 1 || b.table == 11;
+        // Composites are equal — apply tie-breaker if both are table 11
+        let a_is_baseline = a.table == 11;
+        let b_is_baseline = b.table == 11;
         if a_is_baseline && b_is_baseline && t11_exclusive_count > 0 {
-            if a.table == 11 {
-                std::cmp::Ordering::Less
-            } else if b.table == 11 {
-                std::cmp::Ordering::Greater
-            } else {
-                a.table.cmp(&b.table)
-            }
+            // Both are table 11; keep stable order by table number.
+            a.table.cmp(&b.table)
         } else {
             a.table.cmp(&b.table)
         }
@@ -1075,7 +1070,7 @@ mod tests {
     }
 
     #[test]
-    fn test_lambda_recommends_table11_or_1() {
+    fn test_lambda_recommends_table11() {
         use crate::genome::read_fasta;
         let genomes = read_fasta("../PHANOTATE/tests/NC_001416.1.fasta").unwrap();
         for genome in &genomes {
@@ -1083,8 +1078,8 @@ mod tests {
             assert!(!scores.is_empty());
             let top = scores[0].table;
             assert!(
-                top == 11 || top == 1,
-                "Lambda (table 11) should score 11 or 1 first, got {}: {:?}",
+                top == 11,
+                "Lambda (table 11) should score 11 first, got {}: {:?}",
                 top,
                 scores
                     .iter()
@@ -1132,8 +1127,8 @@ mod tests {
             assert!(!scores.is_empty());
             let top = scores[0].table;
             assert!(
-                top == 11 || top == 1,
-                "Lambda should recommend table 11 or 1, got {}: {:?}",
+                top == 11,
+                "Lambda should recommend table 11, got {}: {:?}",
                 top,
                 scores
                     .iter()

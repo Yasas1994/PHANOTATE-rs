@@ -28,7 +28,7 @@
 
 ### Key differentiators from the original Python PHANOTATE
 * ~76× faster single-threaded and ~386× faster multi-threaded on the 100-genome validation set.
-* Six supported NCBI translation tables (1, 4, 6, 11, 15, 25); automatic detection among tables 1, 4, 11, 15, 25.
+* Six supported NCBI translation tables (1, 4, 6, 11, 15, 25); automatic detection among tables 4, 11, 15, 25.
 * Optional learned ORF scoring via `--model` (default behaviour remains the original PHANOTATE heuristic).
 * Full Python API via PyO3 bindings.
 
@@ -113,7 +113,7 @@ pytest tests/test_python_bindings.py -v
 | `graph.rs` | 525 | Graph construction from ORFs. Defines `Node`, `Edge`, and `Graph` structs. `Graph::from_orfs()` builds a directed graph where nodes are start/stop codons and edges represent ORFs, gaps, and overlaps. Uses `num_bigint::BigInt` for weights. |
 | `bellman_ford.rs` | 258 | Shortest path solver. Tries topological-order relaxation (O(V+E)) first; falls back to Bellman-Ford if backward edges (cycles from strand switches) are detected. |
 | `codon_table.rs` | 452 | NCBI translation tables 1, 4, 6, 11, 15, 25. Each supported table has its own `translate_tableN()` function. Also provides `start_codons()`, `stop_codons()`, `is_supported_table()`, `table_name()`. |
-| `detect_table.rs` | 1,259 | Automatic genetic code detection. Uses mean ORF length ratio and reassigned-codon signal heuristics. `CANDIDATE_TABLES = [1, 4, 11, 15, 25]` (table 6 is supported manually but excluded from auto-detection). Includes batch detection and confidence scoring. |
+| `detect_table.rs` | 1,259 | Automatic genetic code detection. Uses mean ORF length ratio and reassigned-codon signal heuristics. `CANDIDATE_TABLES = [4, 11, 15, 25]` (tables 1 and 6 are supported manually but excluded from auto-detection). Includes batch detection and confidence scoring. |
 | `genome.rs` | 191 | Genome I/O: FASTA and GenBank parsing. `Genome` struct holds `id`, `seq` (lowercase), and pre-computed `rc_seq`. |
 | `gcfp.rs` | 221 | GC Frame Plot computation. Sliding 120-bp window (40 codons) over 3 frames to compute per-position GC content arrays. |
 | `output.rs` | 543 | Output formatting: GenBank (`gbk`), GFF3 (`gff`), and SCO (`sco`) formats. Also writes protein and nucleotide FASTA side outputs. |

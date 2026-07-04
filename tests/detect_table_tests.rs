@@ -98,11 +98,10 @@ fn test_table11_genome_scores_highest() {
         None,
     );
     assert_eq!(code, 0, "should exit 0: {}", stderr);
-    // Lambda is a table-11 genome; tables 1 and 11 are tied (same stop set).
-    // Either is acceptable as the top recommendation.
+    // Lambda is a table-11 genome.
     assert!(
-        stderr.contains("Recommended table: 11") || stderr.contains("Recommended table: 1"),
-        "should recommend table 11 or 1 for lambda: {}",
+        stderr.contains("Recommended table: 11"),
+        "should recommend table 11 for lambda: {}",
         stderr
     );
 }
@@ -172,10 +171,10 @@ fn test_suppression_detects_tga_stop() {
     let seq = random_seq(3000, 42);
     let fasta = fasta("low_tga", &seq);
     let (_stdout, stderr, _code) = run(&["--detect-table", "--yes", "-f", "sco"], Some(&fasta));
-    // On a random sequence, table 11 or 1 (same stop set) should win
+    // On a random sequence, table 11 should win.
     assert!(
-        stderr.contains("Recommended table: 11") || stderr.contains("Recommended table: 1"),
-        "table 11 or 1 should win on random seq: {}",
+        stderr.contains("Recommended table: 11"),
+        "table 11 should win on random seq: {}",
         stderr
     );
 }
@@ -322,14 +321,14 @@ fn test_detect_table_batch_tsv_output() {
         spv4_line
     );
 
-    // Find lambda row — should recommend table 11 or 1
+    // Find lambda row — should recommend table 11
     let lambda_line = lines
         .iter()
         .find(|l| l.contains("NC_001416"))
         .unwrap_or_else(|| panic!("Lambda not found in output: {}", stdout));
     assert!(
-        lambda_line.contains("\t11\t") || lambda_line.contains("\t1\t"),
-        "Lambda should recommend table 11 or 1: {}",
+        lambda_line.contains("\t11\t"),
+        "Lambda should recommend table 11: {}",
         lambda_line
     );
 }
