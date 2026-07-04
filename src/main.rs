@@ -276,6 +276,7 @@ fn process_genome(
         90,
         closed_ends,
         mask_n,
+        rbs_mode,
     );
 
     if orfs.is_empty() {
@@ -520,6 +521,7 @@ fn main() -> Result<()> {
                 90,
                 cli.closed_ends,
                 cli.mask_n,
+                cli.rbs_mode,
             );
 
             // Train RBS scores so that sd_rbs_score / non_sd_rbs_score features

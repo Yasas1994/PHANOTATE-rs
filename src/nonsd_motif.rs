@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 
+use crate::kmer::{encode_base, kmer_encode};
 use crate::orf::Orf;
 
 /// Number of possible spacer distance groups.
@@ -28,17 +29,6 @@ fn zero_motif_weights() -> MotifWeights {
     Box::new([[[0.0f64; MAX_MOTIF_INDEX]; NUM_SPACERS]; MAX_MOTIF_LEN - MIN_MOTIF_LEN + 1])
 }
 
-/// 2-bit encode a single base: A=0, C=1, G=2, T=3.
-fn encode_base(b: u8) -> Option<usize> {
-    match b {
-        b'a' | b'A' => Some(0),
-        b'c' | b'C' => Some(1),
-        b'g' | b'G' => Some(2),
-        b't' | b'T' => Some(3),
-        _ => None,
-    }
-}
-
 /// Decode a single 2-bit value to ASCII base.
 fn decode_base(v: usize) -> u8 {
     match v {
@@ -48,19 +38,6 @@ fn decode_base(v: usize) -> u8 {
         3 => b'T',
         _ => b'N',
     }
-}
-
-/// Encode a DNA word of length `len` starting at `pos` in `seq`.
-/// Returns `None` if any base is ambiguous or out of range.
-pub fn kmer_encode(seq: &[u8], pos: usize, len: usize) -> Option<usize> {
-    if pos + len > seq.len() {
-        return None;
-    }
-    let mut ndx = 0;
-    for i in 0..len {
-        ndx |= encode_base(seq[pos + i])? << (2 * i);
-    }
-    Some(ndx)
 }
 
 /// Decode a motif index back to a DNA string of length `len`.

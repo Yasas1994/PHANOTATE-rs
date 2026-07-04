@@ -10,6 +10,7 @@ pub mod gcfp;
 pub mod genome;
 pub mod graph;
 pub mod hexamer;
+pub mod kmer;
 pub mod ml_features;
 pub mod nonsd_motif;
 pub mod onnx_scorer;

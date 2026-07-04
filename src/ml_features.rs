@@ -12,23 +12,6 @@ pub const NUM_FEATURES: usize = 34;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct OrfFeatures(pub [f32; NUM_FEATURES]);
 
-impl OrfFeatures {
-    /// Build a feature vector from an ORF.
-    pub fn from_orf(orf: &Orf) -> Self {
-        orf.extract_features()
-    }
-
-    /// Return the feature vector as a slice.
-    pub fn as_slice(&self) -> &[f32] {
-        &self.0
-    }
-
-    /// Return the feature vector as a fixed-size array reference.
-    pub fn as_array(&self) -> &[f32; NUM_FEATURES] {
-        &self.0
-    }
-}
-
 /// Column names for the coordinate columns prepended to TSV export rows.
 pub const COORD_NAMES: [&str; 2] = ["start", "stop"];
 

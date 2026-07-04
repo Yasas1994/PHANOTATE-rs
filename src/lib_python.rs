@@ -473,6 +473,7 @@ fn process_single_genome(
         min_orf_len,
         closed_ends,
         mask_n,
+        rbs_mode,
     );
 
     if orfs.is_empty() {
@@ -715,6 +716,7 @@ fn find_orfs(
         min_orf_len,
         closed_ends,
         mask_n,
+        rbs_mode,
     );
 
     crate::rbs_training::train_rbs_scores(&mut orfs, &dna, &rc_dna, rbs_mode, &start_codons_map);
@@ -808,7 +810,7 @@ fn detect_table_py(sequence: &str, min_orf_len: usize) -> PyResult<Vec<PyTableSc
 #[pyfunction]
 fn score_rbs(sequence: &str) -> PyResult<usize> {
     let seq = genome::normalize_seq(sequence);
-    Ok(orf::score_rbs(&seq))
+    Ok(crate::rbs_scanner::score_rbs_legacy(&seq))
 }
 
 // ---------------------------------------------------------------------------
@@ -853,12 +855,12 @@ fn translate(sequence: &str, table: u8) -> PyResult<String> {
 /// Returns
 /// -------
 /// list[int]
-///     Supported table numbers: 1-6, 9-16, 21-31.
+///     Supported table numbers derived from `codon_table::is_supported_table`.
 #[pyfunction]
 fn supported_tables() -> Vec<u8> {
-    vec![
-        1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-    ]
+    (1..=31)
+        .filter(|&t| crate::codon_table::is_supported_table(t))
+        .collect()
 }
 
 /// Return the stop codons for a given translation table.

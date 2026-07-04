@@ -1,6 +1,5 @@
-pub use crate::rbs_scanner::{
-    detect_rbs_motif_legacy as detect_rbs_motif, score_rbs_legacy as score_rbs,
-};
+use crate::rbs_mode::RbsMode;
+use crate::rbs_scanner::{detect_rbs_motif_for_mode, score_rbs_for_mode};
 
 #[derive(Debug, Clone, Default)]
 pub struct Orf {
@@ -103,30 +102,8 @@ impl Orf {
 ///   Fragment ORFs (those without a matching start/stop at the boundary) are discarded.
 /// - `mask_n`: if true, do not build any ORF that spans a run of N nucleotides.
 ///
-/// Convenience wrapper that computes RC internally.
-/// Use `find_orfs_with_rc` if RC is already available.
-#[allow(dead_code)]
-pub fn find_orfs(
-    dna: &[u8],
-    start_codons: &[Vec<u8>],
-    stop_codons: &[Vec<u8>],
-    min_orf_len: usize,
-    closed_ends: bool,
-    mask_n: bool,
-) -> Vec<Orf> {
-    let rc_dna = crate::genome::rev_comp(dna);
-    find_orfs_with_rc(
-        dna,
-        &rc_dna,
-        start_codons,
-        stop_codons,
-        min_orf_len,
-        closed_ends,
-        mask_n,
-    )
-}
-
 /// Enumerate all ORFs in all six reading frames using a pre-computed reverse complement.
+#[allow(clippy::too_many_arguments)]
 pub fn find_orfs_with_rc(
     dna: &[u8],
     rc_dna: &[u8],
@@ -135,7 +112,9 @@ pub fn find_orfs_with_rc(
     min_orf_len: usize,
     closed_ends: bool,
     mask_n: bool,
+    rbs_mode: RbsMode,
 ) -> Vec<Orf> {
+    let use_prodigal = rbs_mode == RbsMode::Prodigal;
     let mut orfs = Vec::new();
     let contig_length = dna.len();
 
@@ -194,8 +173,8 @@ pub fn find_orfs_with_rc(
                         continue;
                     }
                     let rbs = crate::rbs_scanner::get_rbs(dna, start);
-                    let rbs_score = score_rbs(&rbs);
-                    let rbs_motif = detect_rbs_motif(&rbs);
+                    let rbs_score = score_rbs_for_mode(&rbs, use_prodigal);
+                    let rbs_motif = detect_rbs_motif_for_mode(&rbs, use_prodigal);
                     let pstop = Orf::compute_pstop(&seq);
                     let hold = 1.0;
                     orfs.push(Orf {
@@ -264,8 +243,8 @@ pub fn find_orfs_with_rc(
                     let rbs_start = dna.len().saturating_sub(start + 21);
                     let rbs_end = dna.len() - start;
                     let rbs = &rc_dna[rbs_start..rbs_end];
-                    let rbs_score = score_rbs(rbs);
-                    let rbs_motif = detect_rbs_motif(rbs);
+                    let rbs_score = score_rbs_for_mode(rbs, use_prodigal);
+                    let rbs_motif = detect_rbs_motif_for_mode(rbs, use_prodigal);
                     let pstop = Orf::compute_pstop(&seq);
                     let hold = 1.0;
                     orfs.push(Orf {
@@ -321,8 +300,8 @@ pub fn find_orfs_with_rc(
                         continue;
                     }
                     let rbs = crate::rbs_scanner::get_rbs(dna, start);
-                    let rbs_score = score_rbs(&rbs);
-                    let rbs_motif = detect_rbs_motif(&rbs);
+                    let rbs_score = score_rbs_for_mode(&rbs, use_prodigal);
+                    let rbs_motif = detect_rbs_motif_for_mode(&rbs, use_prodigal);
                     let pstop = Orf::compute_pstop(&seq);
                     let hold = 1.0;
                     orfs.push(Orf {
@@ -385,8 +364,8 @@ pub fn find_orfs_with_rc(
                     let rbs_start = dna.len().saturating_sub(start + 21);
                     let rbs_end = dna.len() - start;
                     let rbs = &rc_dna[rbs_start..rbs_end];
-                    let rbs_score = score_rbs(rbs);
-                    let rbs_motif = detect_rbs_motif(rbs);
+                    let rbs_score = score_rbs_for_mode(rbs, use_prodigal);
+                    let rbs_motif = detect_rbs_motif_for_mode(rbs, use_prodigal);
                     let pstop = Orf::compute_pstop(&seq);
                     let hold = 1.0;
                     orfs.push(Orf {
@@ -464,8 +443,32 @@ fn spans_masked(start: usize, stop: usize, masked: &[(usize, usize)]) -> bool {
 }
 
 #[cfg(test)]
+/// Test helper that computes the reverse complement internally.
+fn find_orfs(
+    dna: &[u8],
+    start_codons: &[Vec<u8>],
+    stop_codons: &[Vec<u8>],
+    min_orf_len: usize,
+    closed_ends: bool,
+    mask_n: bool,
+) -> Vec<Orf> {
+    let rc_dna = crate::genome::rev_comp(dna);
+    find_orfs_with_rc(
+        dna,
+        &rc_dna,
+        start_codons,
+        stop_codons,
+        min_orf_len,
+        closed_ends,
+        mask_n,
+        RbsMode::Sd,
+    )
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rbs_scanner::{detect_rbs_motif_legacy, score_rbs_legacy};
 
     #[test]
     fn test_score_rbs_direct() {
@@ -473,28 +476,28 @@ mod tests {
         // for 21-nt windows; short inputs give truncated slices.
         // For 6-char "gaggaa", Python gives 1 (agg in s[3:6]).
         let seq = b"gaggaa";
-        assert_eq!(score_rbs(seq), 1);
+        assert_eq!(score_rbs_legacy(seq), 1);
     }
 
     #[test]
     fn test_score_rbs_specific() {
         // For 6-char "aggagg", Python gives 1 (agg in s[3:6]).
         let seq = b"aggagg";
-        assert_eq!(score_rbs(seq), 1);
+        assert_eq!(score_rbs_legacy(seq), 1);
     }
 
     #[test]
     fn test_score_rbs_specific2() {
         // For 8-char "aaaaaagg", Python gives 0 (no match in truncated slices).
         let seq = b"aaaaaagg";
-        assert_eq!(score_rbs(seq), 0);
+        assert_eq!(score_rbs_legacy(seq), 0);
     }
 
     #[test]
     fn test_score_rbs_accctg() {
         // Sequence with no match -> score 0
         let seq = b"accctg";
-        assert_eq!(score_rbs(seq), 0);
+        assert_eq!(score_rbs_legacy(seq), 0);
     }
 
     #[test]
@@ -502,20 +505,20 @@ mod tests {
         // The highest-scoring match here is "gag" (score 13), not the distal
         // "ggagga" (score 10), so the reported motif is GAG.
         let seq = b"aaggaggtgagtaacaaaacc";
-        assert_eq!(detect_rbs_motif(seq), Some("GAG".to_string()));
+        assert_eq!(detect_rbs_motif_legacy(seq), Some("GAG".to_string()));
     }
 
     #[test]
     fn test_detect_rbs_motif_none() {
         let seq = b"aaaaaaaaaaaaaaaaaaaaa";
-        assert_eq!(detect_rbs_motif(seq), None);
+        assert_eq!(detect_rbs_motif_legacy(seq), None);
     }
 
     #[test]
     fn test_detect_rbs_motif_ggagga_canonical() {
         // AGGAGG placed so the reversed window contains ggagga at score-27 ranges.
         let seq = b"aaaaaaaaaaaggaggaaaaa";
-        assert_eq!(detect_rbs_motif(seq), Some("AGGAGG".to_string()));
+        assert_eq!(detect_rbs_motif_legacy(seq), Some("AGGAGG".to_string()));
     }
 
     #[test]
@@ -524,21 +527,21 @@ mod tests {
         // A 'c' is placed immediately upstream so the window does not also
         // contain the higher-scoring ggagga motif.
         let seq = b"aaaaaaaaaacggaggaaaaa";
-        assert_eq!(detect_rbs_motif(seq), Some("GGAGG".to_string()));
+        assert_eq!(detect_rbs_motif_legacy(seq), Some("GGAGG".to_string()));
     }
 
     #[test]
     fn test_detect_rbs_motif_agga_canonical() {
         // AGGA placed so the reversed window contains agga at score-15 ranges.
         let seq = b"aaaaaaaaaaaggaaaaaaaa";
-        assert_eq!(detect_rbs_motif(seq), Some("AGGA".to_string()));
+        assert_eq!(detect_rbs_motif_legacy(seq), Some("AGGA".to_string()));
     }
 
     #[test]
     fn test_detect_rbs_motif_zero_score_returns_none() {
         let seq = b"aaaaaaaaaaaaaaaaaaaaa";
-        assert_eq!(score_rbs(seq), 0);
-        assert_eq!(detect_rbs_motif(seq), None);
+        assert_eq!(score_rbs_legacy(seq), 0);
+        assert_eq!(detect_rbs_motif_legacy(seq), None);
     }
 
     #[test]
@@ -552,8 +555,8 @@ mod tests {
             (b"accctg", None),
         ];
         for &(seq, expected) in cases {
-            let score = score_rbs(seq);
-            let motif = detect_rbs_motif(seq);
+            let score = score_rbs_legacy(seq);
+            let motif = detect_rbs_motif_legacy(seq);
             assert_eq!(
                 motif.is_some(),
                 score > 0,
@@ -578,10 +581,10 @@ mod tests {
             } else {
                 &dna[i..]
             };
-            let score = score_rbs(window);
+            let score = score_rbs_legacy(window);
             background_rbs[score] += 1.0;
             let rc_window = crate::genome::rev_comp(window);
-            let rc_score = score_rbs(&rc_window);
+            let rc_score = score_rbs_legacy(&rc_window);
             background_rbs[rc_score] += 1.0;
         }
         let sum: f64 = background_rbs.iter().sum();
@@ -598,7 +601,7 @@ mod tests {
         // Let me check: s = 'ggtggaaaaaaaaaa', len=15
         // s[3:6] = 'gga' → matches 'gga' → score 1
         let seq = b"aaaaaaaaaaggtgg";
-        assert_eq!(score_rbs(seq), 1);
+        assert_eq!(score_rbs_legacy(seq), 1);
     }
 
     #[test]
@@ -608,7 +611,7 @@ mod tests {
         // Python: s[5:10]='ggaaa', s[6:11]='gaaaa' — no ggtgg/ggggg/ggcgg for score 14
         // s[5:9]='ggaa', s[6:10]='gaaa' — no ggag/gagg/agga for score 16
         // s[5:8]='gga' → matches 'gga' → score 13
-        // Wait, let me check Python: score_rbs('aaaaaggaaaaaggtgg') = 15
+        // Wait, let me check Python: score_rbs_legacy('aaaaaggaaaaaggtgg') = 15
         // s = 'ggtggaaaaaaggaaaa'
         // s[5:9] = 'ggaa' — no match for agga/gagg/ggag
         // Actually: s[5:9]='ggaa', but score 15 checks agga in s[5:9],s[6:10]...
@@ -620,7 +623,7 @@ mod tests {
         // s[9:13] = 'aagg' — no
         // s[10:14] = 'agga' → MATCH! score 15
         let seq = b"aaaaaggaaaaaggtgg";
-        assert_eq!(score_rbs(seq), 15);
+        assert_eq!(score_rbs_legacy(seq), 15);
     }
 
     #[test]
@@ -643,7 +646,7 @@ mod tests {
         ];
         for (seq, expected) in cases {
             assert_eq!(
-                score_rbs(seq),
+                score_rbs_legacy(seq),
                 expected,
                 "Failed for sequence: {:?}",
                 std::str::from_utf8(seq)
@@ -656,7 +659,7 @@ mod tests {
         // Test the specific case at position 822 of phiX174
         // The 21-nt window upstream of position 822
         let window = b"ttttttttttttttttttttt";
-        assert_eq!(score_rbs(window), 0);
+        assert_eq!(score_rbs_legacy(window), 0);
     }
 
     #[test]

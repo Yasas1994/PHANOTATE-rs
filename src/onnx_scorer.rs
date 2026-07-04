@@ -85,7 +85,7 @@ impl OnnxScorer {
 
     /// Convenience helper: compute the positive-class probability for an ORF.
     pub fn probability_for_orf(&self, orf: &crate::orf::Orf) -> f64 {
-        let features = OrfFeatures::from_orf(orf);
+        let features = orf.extract_features();
         self.probability(&features)
     }
 

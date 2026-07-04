@@ -7,7 +7,7 @@
 use crate::nonsd_motif::NonSdModel;
 use crate::orf::Orf;
 use crate::rbs_mode::RbsMode;
-use crate::rbs_scanner::{score_rbs_legacy, NUM_RBS_BINS};
+use crate::rbs_scanner::{score_rbs_for_mode, NUM_RBS_BINS};
 use std::collections::HashMap;
 
 /// Build the start-codon weight map used by the non-SD motif model.
@@ -31,17 +31,6 @@ pub fn build_start_weights(start_codons: &[Vec<u8>]) -> HashMap<Vec<u8>, f64> {
     map
 }
 
-/// Extract the 21-bp upstream window of an ORF used for RBS scoring.
-pub fn upstream_window(dna: &[u8], rc_dna: &[u8], orf: &Orf) -> Vec<u8> {
-    if orf.frame > 0 {
-        crate::rbs_scanner::get_rbs(dna, orf.start)
-    } else {
-        let rbs_start = dna.len().saturating_sub(orf.start + 21);
-        let rbs_end = dna.len().saturating_sub(orf.start);
-        rc_dna[rbs_start..rbs_end].to_vec()
-    }
-}
-
 /// Decide whether the genome uses Shine–Dalgarno RBS signalling by comparing
 /// the high-score tail of the training distribution to the background.
 pub fn detect_uses_sd(background: &[f64; NUM_RBS_BINS], training: &[f64; NUM_RBS_BINS]) -> bool {
@@ -52,11 +41,8 @@ pub fn detect_uses_sd(background: &[f64; NUM_RBS_BINS], training: &[f64; NUM_RBS
 
 /// Compute the background RBS distribution over all 21-nt windows on both
 /// strands, using the scoring scheme implied by `rbs_mode`.
-pub fn compute_background_rbs(
-    dna: &[u8],
-    rc_dna: &[u8],
-    _rbs_mode: RbsMode,
-) -> [f64; NUM_RBS_BINS] {
+pub fn compute_background_rbs(dna: &[u8], rc_dna: &[u8], rbs_mode: RbsMode) -> [f64; NUM_RBS_BINS] {
+    let use_prodigal = rbs_mode == RbsMode::Prodigal;
     let mut background_rbs = [1.0f64; NUM_RBS_BINS];
     let len = dna.len();
     for i in 0..len {
@@ -65,11 +51,11 @@ pub fn compute_background_rbs(
         } else {
             &dna[i..]
         };
-        background_rbs[score_rbs_legacy(window)] += 1.0;
+        background_rbs[score_rbs_for_mode(window, use_prodigal)] += 1.0;
 
         let rc_start = len.saturating_sub(i + 21);
         let rc_window = &rc_dna[rc_start..len - i];
-        background_rbs[score_rbs_legacy(rc_window)] += 1.0;
+        background_rbs[score_rbs_for_mode(rc_window, use_prodigal)] += 1.0;
     }
     let bg_sum: f64 = background_rbs.iter().sum();
     for v in &mut background_rbs {

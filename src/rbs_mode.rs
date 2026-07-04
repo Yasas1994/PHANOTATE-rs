@@ -18,13 +18,6 @@ pub enum RbsMode {
     Prodigal,
 }
 
-impl RbsMode {
-    /// Return true when this mode uses the Prodigal-style RBS scanner.
-    pub fn is_prodigal(self) -> bool {
-        self == RbsMode::Prodigal
-    }
-}
-
 impl FromStr for RbsMode {
     type Err = String;
 

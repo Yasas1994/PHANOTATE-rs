@@ -1022,3 +1022,24 @@ pub fn format_prodigal_rbs_motif(bin: usize) -> Option<String> {
 pub fn detect_rbs_motif_prodigal(seq: &[u8]) -> Option<String> {
     format_prodigal_rbs_motif(score_rbs_prodigal(seq))
 }
+
+/// Choose the RBS scorer based on the active mode.
+///
+/// `true` selects the Prodigal-style 28-bin scanner; `false` selects the legacy
+/// PHANOTATE pattern matcher.
+pub fn score_rbs_for_mode(seq: &[u8], use_prodigal: bool) -> usize {
+    if use_prodigal {
+        score_rbs_prodigal(seq)
+    } else {
+        score_rbs_legacy(seq)
+    }
+}
+
+/// Choose the RBS motif label formatter based on the active mode.
+pub fn detect_rbs_motif_for_mode(seq: &[u8], use_prodigal: bool) -> Option<String> {
+    if use_prodigal {
+        detect_rbs_motif_prodigal(seq)
+    } else {
+        detect_rbs_motif_legacy(seq)
+    }
+}

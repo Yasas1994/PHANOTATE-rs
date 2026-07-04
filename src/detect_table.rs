@@ -1138,38 +1138,6 @@ pub fn format_batch_tsv(results: &[BatchResult]) -> String {
     lines.join("\n") + "\n"
 }
 
-/// Format batch results with per-table composite scores as a TSV table.
-///
-/// Columns:
-///   seq_id  len  recommended  confidence  t1  t4  t6  t11  t15  t25
-#[allow(dead_code)]
-pub fn format_batch_matrix_tsv(results: &[BatchResult]) -> String {
-    let mut lines = Vec::new();
-    lines.push("seq_id\tlen\trecommended\tconfidence\tt1\tt4\tt6\tt11\tt15\tt25".to_string());
-    for r in results {
-        // Build a map from table -> composite for quick lookup
-        let mut composite_by_table = std::collections::HashMap::new();
-        for s in &r.all_scores {
-            composite_by_table.insert(s.table, s.composite);
-        }
-        let get = |t: u8| composite_by_table.get(&t).copied().unwrap_or(0.0);
-        lines.push(format!(
-            "{}\t{}\t{}\t{}\t{:.4}\t{:.4}\t{:.4}\t{:.4}\t{:.4}\t{:.4}",
-            r.seq_id,
-            r.seq_len,
-            r.recommended_table,
-            r.confidence,
-            get(1),
-            get(4),
-            get(6),
-            get(11),
-            get(15),
-            get(25)
-        ));
-    }
-    lines.join("\n") + "\n"
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
