@@ -48,41 +48,6 @@ fn random_seq(len: usize, seed: u64) -> String {
     String::from_utf8(seq).unwrap()
 }
 
-/// Build a synthetic sequence from non-stop codons, then inject TGA at the
-/// requested rate.  This ensures TGA appears at the expected frequency in the
-/// coding frame, matching the unit-test construction in detect_table.rs.
-fn synthetic_seq_with_tga_rate(len: usize, tga_rate: f64) -> String {
-    let non_stops: &[[u8; 3]] = &[
-        *b"atg", *b"aaa", *b"gct", *b"ggc", *b"cgt", *b"tta", *b"cca", *b"gac",
-    ];
-    let mut seq = Vec::with_capacity(len);
-    let mut idx = 0usize;
-    while seq.len() < len {
-        let codon = non_stops[idx % non_stops.len()];
-        seq.extend_from_slice(&codon);
-        idx += 1;
-    }
-    let frame_len = (len / 3) * 3;
-    seq.truncate(frame_len);
-
-    let mut state: u64 = 42;
-    let n_positions = frame_len / 3;
-    let n_tga = (n_positions as f64 * tga_rate).round() as usize;
-    let mut positions: Vec<usize> = (0..n_positions).collect();
-    for i in (1..positions.len()).rev() {
-        state = state.wrapping_mul(1103515245).wrapping_add(12345);
-        let j = (state as usize) % (i + 1);
-        positions.swap(i, j);
-    }
-    for &pos in &positions[..n_tga.min(positions.len())] {
-        let byte_pos = pos * 3;
-        seq[byte_pos] = b't';
-        seq[byte_pos + 1] = b'g';
-        seq[byte_pos + 2] = b'a';
-    }
-    String::from_utf8(seq).unwrap()
-}
-
 /// Wrap a sequence in a FASTA header.
 fn fasta(id: &str, seq: &str) -> String {
     format!(">{}\n{}\n", id, seq)
@@ -107,20 +72,20 @@ fn test_table11_genome_scores_highest() {
 }
 
 // ---------------------------------------------------------------------------
-// 2. Known table-4 genome (synthetic)
+// 2. Known table-4 genome (SpV4 / NC_003438)
 // ---------------------------------------------------------------------------
+const SPV4_INTERNAL: &str = "tests/golden/spv4_NC003438.fa";
+
 #[test]
 fn test_table4_genome_scores_highest() {
-    // Build a 3000 nt synthetic sequence with TGA at ~5% in-frame frequency.
-    // Under table 4 TGA is Trp, so ORFs are longer; under table 11 TGA is a
-    // stop, so ORFs are short.  Table 4 should win.
-    let seq = synthetic_seq_with_tga_rate(3000, 0.05);
-    let fasta = fasta("synthetic_table4", &seq);
-    let (_stdout, stderr, code) = run(&["--detect-table", "--yes", "-f", "sco"], Some(&fasta));
+    let (_stdout, stderr, code) = run(
+        &["--detect-table", "--yes", "-i", SPV4_INTERNAL, "-f", "sco"],
+        None,
+    );
     assert_eq!(code, 0, "should exit 0: {}", stderr);
     assert!(
         stderr.contains("Recommended table: 4"),
-        "should recommend table 4 for synthetic TGA-rich seq: {}",
+        "should recommend table 4 for SpV4: {}",
         stderr
     );
 }
@@ -130,9 +95,10 @@ fn test_table4_genome_scores_highest() {
 // ---------------------------------------------------------------------------
 #[test]
 fn test_mean_orf_length_increases_under_correct_table() {
-    let seq = synthetic_seq_with_tga_rate(3000, 0.05);
-    let fasta = fasta("synthetic", &seq);
-    let (_stdout, stderr, _code) = run(&["--detect-table", "--yes", "-f", "sco"], Some(&fasta));
+    let (_stdout, stderr, _code) = run(
+        &["--detect-table", "--yes", "-i", SPV4_INTERNAL, "-f", "sco"],
+        None,
+    );
     // Table 4 should give longer mean ORFs than table 11
     // We verify by checking that table 4 is recommended
     assert!(
@@ -145,19 +111,18 @@ fn test_mean_orf_length_increases_under_correct_table() {
 // ---------------------------------------------------------------------------
 // 4. Suppression detects TGA readthrough
 // ---------------------------------------------------------------------------
-// The suppression test uses table-11 seed ORFs, so TGA never appears inside
-// the seed regions (it is the boundary).  This means the test cannot directly
-// detect TGA readthrough.  Instead, we verify that on a TGA-rich synthetic
-// sequence, table 4 wins because its mean ORF length is much longer.
+// SpV4 is a known table-4 phage (TGA → Trp).  Under table 4 the TGA codons
+// are read as sense, producing much longer ORFs than under table 11.
 #[test]
 fn test_suppression_detects_tga_readthrough() {
-    let seq = synthetic_seq_with_tga_rate(3000, 0.05);
-    let fasta = fasta("tga_rich", &seq);
-    let (_stdout, stderr, _code) = run(&["--detect-table", "--yes", "-f", "sco"], Some(&fasta));
-    // Table 4 should win because it has much longer ORFs on TGA-rich seq
+    let (_stdout, stderr, _code) = run(
+        &["--detect-table", "--yes", "-i", SPV4_INTERNAL, "-f", "sco"],
+        None,
+    );
+    // Table 4 should win because it has much longer ORFs on a table-4 genome
     assert!(
         stderr.contains("Recommended table: 4"),
-        "table 4 should win on TGA-rich seq: {}",
+        "table 4 should win for SpV4: {}",
         stderr
     );
 }
@@ -291,8 +256,8 @@ fn test_pipe_mode_no_prompt() {
 #[test]
 fn test_detect_table_batch_tsv_output() {
     // Build a multi-record FASTA: SpV4 (table 4) + lambda (table 11)
-    let spv4 = std::fs::read_to_string("../test_genomes/NC_003438.1.fna").unwrap();
-    let lambda = std::fs::read_to_string(LAMBDA).unwrap();
+    let spv4 = std::fs::read_to_string(SPV4_INTERNAL).unwrap();
+    let lambda = std::fs::read_to_string("tests/golden/lambda_NC001416.fa").unwrap();
     let multi = format!("{}\n{}", spv4.trim(), lambda.trim());
 
     let (stdout, stderr, code) = run(&["--detect-table-batch"], Some(&multi));
@@ -315,8 +280,9 @@ fn test_detect_table_batch_tsv_output() {
         .iter()
         .find(|l| l.contains("NC_003438"))
         .unwrap_or_else(|| panic!("SpV4 not found in output: {}", stdout));
-    assert!(
-        spv4_line.contains("\t4\t"),
+    assert_eq!(
+        spv4_line.split('\t').nth(2),
+        Some("4"),
         "SpV4 should recommend table 4: {}",
         spv4_line
     );
@@ -326,8 +292,9 @@ fn test_detect_table_batch_tsv_output() {
         .iter()
         .find(|l| l.contains("NC_001416"))
         .unwrap_or_else(|| panic!("Lambda not found in output: {}", stdout));
-    assert!(
-        lambda_line.contains("\t11\t"),
+    assert_eq!(
+        lambda_line.split('\t').nth(2),
+        Some("11"),
         "Lambda should recommend table 11: {}",
         lambda_line
     );
@@ -338,14 +305,16 @@ fn test_detect_table_batch_tsv_output() {
 // ---------------------------------------------------------------------------
 #[test]
 fn test_detect_table_batch_single_record() {
-    let spv4 = std::fs::read_to_string("../test_genomes/NC_003438.1.fna").unwrap();
+    let spv4 = std::fs::read_to_string(SPV4_INTERNAL).unwrap();
     let (stdout, _stderr, code) = run(&["--detect-table-batch"], Some(&spv4));
     assert_eq!(code, 0);
     let lines: Vec<&str> = stdout.lines().collect();
     assert_eq!(lines.len(), 2, "expected header + 1 data row: {}", stdout);
-    assert!(
-        lines[1].contains("\t4\t"),
-        "SpV4 should be table 4: {}",
+    let recommended = lines[1].split('\t').nth(2);
+    assert_eq!(
+        recommended,
+        Some("4"),
+        "SpV4 should recommend table 4: {}",
         lines[1]
     );
 }

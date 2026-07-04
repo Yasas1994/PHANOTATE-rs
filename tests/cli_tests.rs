@@ -556,34 +556,6 @@ fn prodigal_rbs_preserves_gene_count_on_spv4() {
 // ---------------------------------------------------------------------------
 // Dicodon scoring
 // ---------------------------------------------------------------------------
-#[test]
-fn dicodon_flag_runs_without_error() {
-    let (stdout, _stderr, code) = run(
-        &["-i", "tests/data/small.fasta", "--dicodon", "-f", "sco"],
-        None,
-    );
-    assert_eq!(code, 0, "--dicodon run should succeed");
-    let data_line = stdout.lines().find(|l| !l.starts_with('#')).unwrap_or("");
-    assert!(!data_line.is_empty(), "--dicodon should produce data lines");
-    let cols: Vec<_> = data_line.split('\t').collect();
-    assert_eq!(cols.len(), 5, "SCO line should have 5 columns");
-}
-
-#[test]
-fn dicodon_changes_output() {
-    let (default_out, _, default_code) = run(&["-i", "tests/data/small.fasta", "-f", "sco"], None);
-    let (dicodon_out, _, dicodon_code) = run(
-        &["-i", "tests/data/small.fasta", "--dicodon", "-f", "sco"],
-        None,
-    );
-    assert_eq!(default_code, 0, "default run should succeed");
-    assert_eq!(dicodon_code, 0, "--dicodon run should succeed");
-    assert_ne!(
-        default_out, dicodon_out,
-        "--dicodon should change the annotation output"
-    );
-}
-
 // ---------------------------------------------------------------------------
 // Regression test for internal stop codons with non-standard genetic codes
 // ---------------------------------------------------------------------------
@@ -624,53 +596,21 @@ fn test_no_internal_stops_table4() {
 }
 
 // ---------------------------------------------------------------------------
-// Dicodon scoring
+// ORF scoring model (--model)
 // ---------------------------------------------------------------------------
+
+const ORF_MODEL: &str = "tests/golden/orf_model.onnx";
+
 #[test]
-fn dicodon_runs_on_genbank() {
+fn model_flag_runs_without_error() {
     let (stdout, _stderr, code) = run(
         &[
             "-i",
             "tests/golden/NC_001365.gb",
             "-g",
             "4",
-            "--dicodon",
-            "-f",
-            "sco",
-        ],
-        None,
-    );
-    assert_eq!(code, 0, "should exit successfully");
-    let data_line = stdout.lines().find(|l| !l.starts_with('#')).unwrap();
-    assert_eq!(
-        data_line.split('\t').count(),
-        5,
-        "SCO line should have 5 columns"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// ORF scoring model (--model)
-// ---------------------------------------------------------------------------
-
-fn write_temp_model(content: &str) -> tempfile::NamedTempFile {
-    let mut file = tempfile::NamedTempFile::new().unwrap();
-    std::io::Write::write_all(&mut file, content.as_bytes()).unwrap();
-    file.flush().unwrap();
-    file
-}
-
-#[test]
-fn model_flag_runs_without_error() {
-    let model = r#"{"version":1,"num_features":14,"coeffs":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"mean":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"std":[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0]}"#;
-    let file = write_temp_model(model);
-    let path = file.path().to_str().unwrap();
-    let (stdout, _stderr, code) = run(
-        &[
-            "-i",
-            "tests/golden/NC_001365.gb",
             "--model",
-            path,
+            ORF_MODEL,
             "-f",
             "sco",
         ],
@@ -687,11 +627,6 @@ fn model_flag_runs_without_error() {
 
 #[test]
 fn model_flag_changes_output() {
-    // A model that strongly rewards longer ORFs should change predictions
-    // relative to the default PHANOTATE heuristic.
-    let model = r#"{"version":1,"num_features":14,"coeffs":[5.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"mean":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0],"std":[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0]}"#;
-    let file = write_temp_model(model);
-    let path = file.path().to_str().unwrap();
     let (default_out, _, default_code) = run(
         &["-i", "tests/golden/NC_001365.gb", "-g", "4", "-f", "sco"],
         None,
@@ -704,7 +639,7 @@ fn model_flag_changes_output() {
             "-g",
             "4",
             "--model",
-            path,
+            ORF_MODEL,
             "-f",
             "sco",
         ],
@@ -719,14 +654,13 @@ fn model_flag_changes_output() {
 }
 
 #[test]
-fn model_flag_rejects_invalid_json() {
-    let model = r#"{"version":1,"num_features":14}"#;
-    let file = write_temp_model(model);
-    let path = file.path().to_str().unwrap();
+fn model_flag_rejects_invalid_model() {
+    let invalid = tempfile::NamedTempFile::new().unwrap();
+    let path = invalid.path().to_str().unwrap();
     let (_stdout, stderr, code) = run(&["-i", "tests/golden/NC_001365.gb", "--model", path], None);
     assert_ne!(code, 0, "invalid model should fail");
     assert!(
-        stderr.to_lowercase().contains("model") || stderr.to_lowercase().contains("parse"),
+        stderr.to_lowercase().contains("model") || stderr.to_lowercase().contains("onnx"),
         "error should mention model: {stderr}"
     );
 }
