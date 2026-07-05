@@ -185,6 +185,78 @@ pub fn start_codons(table: u8) -> &'static [&'static [u8]] {
     }
 }
 
+/// Compute P(stop) from mononucleotide frequencies for a specific table.
+pub fn pstop_from_freqs(pa: f64, pt: f64, pc: f64, pg: f64, table: u8) -> f64 {
+    stop_codons(table)
+        .iter()
+        .map(|codon| {
+            let base_p = |base: u8| match base {
+                b'a' | b'A' => pa,
+                b't' | b'T' => pt,
+                b'c' | b'C' => pc,
+                b'g' | b'G' => pg,
+                _ => 0.0,
+            };
+            base_p(codon[0]) * base_p(codon[1]) * base_p(codon[2])
+        })
+        .sum()
+}
+
+/// Compute P(stop) directly from a nucleotide sequence and a translation table.
+pub fn pstop_from_seq(seq: &[u8], table: u8) -> f64 {
+    let mut freq = [0usize; 4];
+    let mut valid = 0usize;
+    for &b in seq {
+        match b {
+            b'a' | b'A' => {
+                freq[0] += 1;
+                valid += 1;
+            }
+            b't' | b'T' => {
+                freq[1] += 1;
+                valid += 1;
+            }
+            b'c' | b'C' => {
+                freq[2] += 1;
+                valid += 1;
+            }
+            b'g' | b'G' => {
+                freq[3] += 1;
+                valid += 1;
+            }
+            _ => {}
+        }
+    }
+    if valid == 0 {
+        return 0.0;
+    }
+    let len = valid as f64;
+    let pa = freq[0] as f64 / len;
+    let pt = freq[1] as f64 / len;
+    let pc = freq[2] as f64 / len;
+    let pg = freq[3] as f64 / len;
+    pstop_from_freqs(pa, pt, pc, pg, table)
+}
+
+/// Compute genome-wide P(stop) using the double-strand AT/GC convention used
+/// by the annotation pipeline, where `pa` is the AT fraction and `pg` is the
+/// GC fraction counted over both strands.
+pub fn genome_wide_pstop(pa: f64, pg: f64, table: u8) -> f64 {
+    stop_codons(table)
+        .iter()
+        .map(|codon| {
+            codon
+                .iter()
+                .map(|&b| match b {
+                    b'a' | b't' => pa,
+                    b'c' | b'g' => pg,
+                    _ => 0.0,
+                })
+                .product::<f64>()
+        })
+        .sum()
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -332,5 +404,39 @@ mod tests {
             &[b"ttg", b"ctg", b"att", b"atc", b"ata", b"atg", b"gtg"]
         );
         assert_eq!(start_codons(2), &[b"att", b"atc", b"ata", b"atg", b"gtg"]);
+    }
+
+    #[test]
+    fn test_pstop_from_freqs_table4_excludes_tga() {
+        let pa = 0.25;
+        let pt = 0.25;
+        let pc = 0.25;
+        let pg = 0.25;
+        // Table 11: TAA + TAG + TGA = 3 * (0.25^3)
+        assert!((pstop_from_freqs(pa, pt, pc, pg, 11) - 0.046875).abs() < 1e-9);
+        // Table 4: TAA + TAG = 2 * (0.25^3)
+        assert!((pstop_from_freqs(pa, pt, pc, pg, 4) - 0.03125).abs() < 1e-9);
+        // Table 6: TGA only
+        assert!((pstop_from_freqs(pa, pt, pc, pg, 6) - 0.015625).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_pstop_from_seq_table4() {
+        // 12 bases: 3 A/T, 3 C/G equally -> each base 0.25
+        let seq = b"atcgatcgatcg";
+        assert!((pstop_from_seq(seq, 11) - 0.046875).abs() < 1e-9);
+        assert!((pstop_from_seq(seq, 4) - 0.03125).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_genome_wide_pstop_matches_main_convention() {
+        // With equal AT and GC fractions under the double-strand convention,
+        // table 11 should equal the legacy formula pa^3 + 2*pa^2*pg.
+        let pa = 0.5;
+        let pg = 0.5;
+        let expected = pa * pa * pa + 2.0 * pa * pa * pg;
+        assert!((genome_wide_pstop(pa, pg, 11) - expected).abs() < 1e-9);
+        // Table 4 drops TGA, so one term less.
+        assert!((genome_wide_pstop(pa, pg, 4) - (pa * pa * pa + pa * pa * pg)).abs() < 1e-9);
     }
 }

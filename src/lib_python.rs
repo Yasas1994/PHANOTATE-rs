@@ -77,7 +77,7 @@ fn build_codon_sets(table: u8) -> (Vec<Vec<u8>>, HashMap<Vec<u8>, f64>, Vec<Vec<
     let (start_codons, start_codons_map) = match table {
         1 | 11 => {
             let codons: Vec<Vec<u8>> = vec![b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()];
-            let weights = crate::rbs_training::build_start_weights(&codons);
+            let weights = crate::rbs_training::build_start_weights(&codons, table);
             (codons, weights)
         }
         _ => {
@@ -85,7 +85,7 @@ fn build_codon_sets(table: u8) -> (Vec<Vec<u8>>, HashMap<Vec<u8>, f64>, Vec<Vec<
                 .iter()
                 .map(|&c| c.to_vec())
                 .collect();
-            let weights = crate::rbs_training::build_start_weights(&codons);
+            let weights = crate::rbs_training::build_start_weights(&codons, table);
             (codons, weights)
         }
     };
@@ -492,10 +492,10 @@ fn process_single_genome(
     let gc_pos_freq = frame_plot.get();
 
     let total_bases = (contig_length * 2) as f64;
-    let pt = freq[1] as f64 / total_bases;
-    let pa = freq[0] as f64 / total_bases;
-    let pg = freq[3] as f64 / total_bases;
-    let pstop = pt * pa * pa + pt * pg * pa + pt * pa * pg;
+    // freq[0] counts A+T on both strands, freq[2] counts C+G on both strands.
+    let pa = freq[0] as f64 / total_bases; // AT fraction
+    let pg = freq[2] as f64 / total_bases; // GC fraction
+    let pstop = crate::codon_table::genome_wide_pstop(pa, pg, table);
 
     // --- Find ORFs ---
     let mut orfs = orf::find_orfs_with_rc(
@@ -532,6 +532,7 @@ fn process_single_genome(
         &gc_pos_freq,
         orf_model.is_some(),
         None,
+        table,
     );
 
     if orf_model.is_some() {
@@ -607,6 +608,7 @@ fn process_single_genome(
             }
         }
         orf::map_orfs_to_circular(&mut orfs, contig_length);
+        orf::remove_contained_in_wrapped(&mut orfs, contig_length);
     }
 
     // --- Collect structured gene results ---
@@ -762,7 +764,7 @@ fn find_orfs(
         .iter()
         .map(|&c| c.to_vec())
         .collect();
-    let start_codons_map = crate::rbs_training::build_start_weights(&start_codons);
+    let start_codons_map = crate::rbs_training::build_start_weights(&start_codons, table);
 
     let rc_dna = genome::rev_comp(&dna);
 
@@ -807,7 +809,7 @@ fn find_orfs(
     if orf_model.is_some() {
         // For learned models, compute the GC-frame hold score and a
         // Prodigal-style hexamer cscore for every ORF.
-        crate::orf_signals::compute_orf_signals(&mut orfs, dna_ref, rc_dna_ref, true, None);
+        crate::orf_signals::compute_orf_signals(&mut orfs, dna_ref, rc_dna_ref, true, None, table);
         crate::ml_features::compute_extra_ml_features(&mut orfs, dna_ref, rc_dna_ref, &stop_codons);
     }
 
@@ -819,6 +821,7 @@ fn find_orfs(
 
     if circular {
         orf::map_orfs_to_circular(&mut orfs, original_len);
+        orf::remove_contained_in_wrapped(&mut orfs, original_len);
     }
 
     Ok(orfs.iter().map(|o| PyOrf::from(o)).collect())
@@ -1060,9 +1063,9 @@ mod tests {
     #[test]
     fn test_build_start_weights() {
         let codons = vec![b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()];
-        let weights = crate::rbs_training::build_start_weights(&codons);
+        let weights = crate::rbs_training::build_start_weights(&codons, 11);
         assert_eq!(weights.len(), 3);
-        // ATG should have highest weight (0.85 normalized)
+        // ATG should have the highest weight.
         assert!(weights[&b"atg".to_vec()] >= weights[&b"gtg".to_vec()]);
         assert!(weights[&b"gtg".to_vec()] >= weights[&b"ttg".to_vec()]);
     }

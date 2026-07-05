@@ -285,10 +285,10 @@ fn process_genome(
     let gc_pos_freq = frame_plot.get();
 
     let total_bases = (contig_length * 2) as f64;
-    let pa = freq[0] as f64 / total_bases;
-    let pt = freq[1] as f64 / total_bases;
-    let pg = freq[2] as f64 / total_bases;
-    let pstop = pt * pa * pa + pt * pg * pa + pt * pa * pg;
+    // freq[0] counts A+T on both strands, freq[2] counts C+G on both strands.
+    let pa = freq[0] as f64 / total_bases; // AT fraction
+    let pg = freq[2] as f64 / total_bases; // GC fraction
+    let pstop = crate::codon_table::genome_wide_pstop(pa, pg, table);
 
     // --- Find ORFs ---
     let mut orfs = find_orfs_with_rc(
@@ -346,6 +346,7 @@ fn process_genome(
         &gc_pos_freq,
         orf_model.is_some(),
         annotated.as_deref(),
+        table,
     );
 
     if orf_model.is_some() {
@@ -432,6 +433,7 @@ fn process_genome(
             }
         }
         orf::map_orfs_to_circular(&mut orfs, contig_length);
+        orf::remove_contained_in_wrapped(&mut orfs, contig_length);
     }
 
     // --- Visualize DAG ---
@@ -545,7 +547,8 @@ fn main() -> Result<()> {
                 .map(|&c| c.to_vec())
                 .collect(),
         };
-        let start_codons_map = phanotate_rs::rbs_training::build_start_weights(&start_codons);
+        let start_codons_map =
+            phanotate_rs::rbs_training::build_start_weights(&start_codons, cli.table);
 
         let mut file = fs::File::create(features_path)
             .with_context(|| format!("Failed to create features file: {:?}", features_path))?;
@@ -601,6 +604,7 @@ fn main() -> Result<()> {
                 &genome.rc_seq,
                 true,
                 annotated.as_deref(),
+                cli.table,
             );
 
             phanotate_rs::ml_features::compute_extra_ml_features(
@@ -690,7 +694,7 @@ fn main() -> Result<()> {
     let (start_codons, start_codons_map) = match effective_table {
         1 | 11 => {
             let codons: Vec<Vec<u8>> = vec![b"atg".to_vec(), b"gtg".to_vec(), b"ttg".to_vec()];
-            let weights = phanotate_rs::rbs_training::build_start_weights(&codons);
+            let weights = phanotate_rs::rbs_training::build_start_weights(&codons, effective_table);
             (codons, weights)
         }
         _ => {
@@ -698,7 +702,7 @@ fn main() -> Result<()> {
                 .iter()
                 .map(|&c| c.to_vec())
                 .collect();
-            let weights = phanotate_rs::rbs_training::build_start_weights(&codons);
+            let weights = phanotate_rs::rbs_training::build_start_weights(&codons, effective_table);
             (codons, weights)
         }
     };

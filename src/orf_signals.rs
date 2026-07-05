@@ -14,19 +14,19 @@ use crate::orf::Orf;
 /// position-specific weight derived from the GC frame plot.  It is computed in
 /// log-space for numerical stability and stored in each ORF.  The default
 /// coding-potential multiplier is set to `1.0 / hold`.
-pub fn compute_hold(orfs: &mut [Orf], dna: &[u8], _rc_dna: &[u8]) {
+pub fn compute_hold(orfs: &mut [Orf], dna: &[u8], _rc_dna: &[u8], table: u8) {
     if orfs.is_empty() {
         return;
     }
     let gc_pos_freq = gc_frame_plot(dna);
-    compute_hold_with_plot(orfs, &gc_pos_freq);
+    compute_hold_with_plot(orfs, &gc_pos_freq, table);
 }
 
 /// Compute hold using an already-built GC frame plot.
 ///
 /// This avoids rebuilding the GC frame plot in callers that already have it
 /// available (e.g. the annotation pipeline).
-pub fn compute_hold_with_plot(orfs: &mut [Orf], gc_pos_freq: &[[usize; 3]]) {
+pub fn compute_hold_with_plot(orfs: &mut [Orf], gc_pos_freq: &[[usize; 3]], table: u8) {
     if orfs.is_empty() {
         return;
     }
@@ -34,7 +34,11 @@ pub fn compute_hold_with_plot(orfs: &mut [Orf], gc_pos_freq: &[[usize; 3]]) {
 
     for orf in orfs.iter_mut() {
         let (start, stop) = (orf.start, orf.stop);
-        let ln_pns = (1.0 - orf.pstop).ln();
+        // Use a table-aware P(stop) for the heuristic hold so that, e.g., table 4
+        // does not treat TGA as a stop codon. `Orf::pstop` is left unchanged
+        // because it is exported as an ONNX model feature.
+        let heuristic_pstop = Orf::compute_pstop_for_table(&orf.seq, table);
+        let ln_pns = (1.0 - heuristic_pstop).ln();
         let mut log_hold = 0.0f64;
         if orf.frame > 0 {
             let mut base = start;
@@ -118,8 +122,9 @@ pub fn compute_orf_signals(
     rc_dna: &[u8],
     use_hexamer: bool,
     annotated: Option<&[usize]>,
+    table: u8,
 ) {
-    compute_hold(orfs, dna, rc_dna);
+    compute_hold(orfs, dna, rc_dna, table);
     if use_hexamer {
         apply_hexamer_model(orfs, dna, rc_dna, annotated);
     }
@@ -134,8 +139,9 @@ pub fn compute_orf_signals_with_plot(
     gc_pos_freq: &[[usize; 3]],
     use_hexamer: bool,
     annotated: Option<&[usize]>,
+    table: u8,
 ) {
-    compute_hold_with_plot(orfs, gc_pos_freq);
+    compute_hold_with_plot(orfs, gc_pos_freq, table);
     if use_hexamer {
         apply_hexamer_model(orfs, dna, rc_dna, annotated);
     }

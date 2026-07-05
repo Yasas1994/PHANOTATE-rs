@@ -54,24 +54,17 @@ impl Orf {
     }
 
     /// Compute P(stop) = P(TAA) + P(TAG) + P(TGA) from per-base frequencies in this ORF.
+    ///
+    /// This remains table-agnostic because `Orf::pstop` is feature #3 in the
+    /// ONNX feature vector; changing it would alter inputs to trained models.
+    /// The heuristic scorer uses `compute_pstop_for_table` instead.
     pub fn compute_pstop(seq: &[u8]) -> f64 {
-        let mut freq = [0usize; 4]; // a,t,c,g
-        for &b in seq {
-            match b {
-                b'a' => freq[0] += 1,
-                b't' => freq[1] += 1,
-                b'c' => freq[2] += 1,
-                b'g' => freq[3] += 1,
-                _ => {}
-            }
-        }
-        let len = seq.len() as f64;
-        let pa = freq[0] as f64 / len;
-        let pt = freq[1] as f64 / len;
-        let _pc = freq[2] as f64 / len;
-        let pg = freq[3] as f64 / len;
-        // TAA + TAG + TGA
-        pt * pa * pa + pt * pg * pa + pt * pa * pg
+        crate::codon_table::pstop_from_seq(seq, 11)
+    }
+
+    /// Compute table-aware P(stop) for use by the heuristic scoring path.
+    pub fn compute_pstop_for_table(seq: &[u8], table: u8) -> f64 {
+        crate::codon_table::pstop_from_seq(seq, table)
     }
 
     pub fn score(
@@ -129,6 +122,73 @@ pub fn map_orfs_to_circular(orfs: &mut [Orf], original_len: usize) {
             orf.wraps_origin = true;
         }
     }
+}
+
+/// Return true if `inner` lies entirely within the circular span of `outer`.
+///
+/// Both ORFs must be on the same strand. For each ORF the interval is
+/// interpreted from its 5' coordinate to its 3' coordinate in forward genome
+/// coordinates:
+///
+/// * forward non-wrapping:   [start, stop]
+/// * forward wrapping:       [start, len] ∪ [1, stop]
+/// * reverse non-wrapping:   [stop, start]
+/// * reverse wrapping:       [stop, len] ∪ [1, start]
+fn circular_contains(outer: &Orf, inner: &Orf, len: usize) -> bool {
+    if outer.frame.signum() != inner.frame.signum() {
+        return false;
+    }
+    let (outer_a, outer_b) = if outer.frame > 0 {
+        (outer.start, outer.stop)
+    } else {
+        (outer.stop, outer.start)
+    };
+    let (inner_a, inner_b) = if inner.frame > 0 {
+        (inner.start, inner.stop)
+    } else {
+        (inner.stop, inner.start)
+    };
+
+    // Interval [a, b] on the circle. If a <= b it does not wrap; otherwise it
+    // wraps through the origin.
+    fn contains(a: usize, b: usize, x: usize, y: usize, len: usize) -> bool {
+        if a <= b {
+            // Non-wrapping outer.
+            x >= a && y <= b
+        } else {
+            // Wrapping outer.
+            if x <= y {
+                // Non-wrapping inner entirely in the tail or the head segment.
+                (x >= a && y <= len) || (x >= 1 && y <= b)
+            } else {
+                // Inner also wraps; it must start no earlier and end no later.
+                x >= a && y <= b
+            }
+        }
+    }
+
+    contains(outer_a, outer_b, inner_a, inner_b, len)
+}
+
+/// Remove ORFs that are contained within a wrapping ORF on the same strand.
+///
+/// When a gene wraps the origin, the doubled-genome search can also select a
+/// shorter, non-wrapping ORF that lies inside the wrapped gene in circular
+/// coordinates. This function drops those contained artefacts so the wrapped
+/// gene is emitted as a single feature.
+pub fn remove_contained_in_wrapped(orfs: &mut Vec<Orf>, original_len: usize) {
+    let wrapped: Vec<Orf> = orfs.iter().filter(|o| o.wraps_origin).cloned().collect();
+    if wrapped.is_empty() {
+        return;
+    }
+    orfs.retain(|o| {
+        if o.wraps_origin {
+            return true;
+        }
+        !wrapped
+            .iter()
+            .any(|w| circular_contains(w, o, original_len))
+    });
 }
 
 /// Enumerate all ORFs in all six reading frames.
@@ -825,6 +885,128 @@ mod tests {
         assert_eq!(orfs[3].stop, 70);
         assert!(orfs[3].start < orfs[3].stop);
         assert!(orfs[3].wraps_origin);
+    }
+
+    #[test]
+    fn test_remove_contained_in_wrapped_forward() {
+        let original_len = 100;
+        let mut orfs = vec![
+            // Wrapped forward ORF: covers 80..100 and 1..20.
+            Orf {
+                start: 80,
+                stop: 20,
+                frame: 1,
+                wraps_origin: true,
+                ..Default::default()
+            },
+            // Contained forward ORF inside the wrapped head segment.
+            Orf {
+                start: 5,
+                stop: 20,
+                frame: 1,
+                wraps_origin: false,
+                ..Default::default()
+            },
+            // Non-contained forward ORF outside the wrapped span.
+            Orf {
+                start: 40,
+                stop: 50,
+                frame: 1,
+                wraps_origin: false,
+                ..Default::default()
+            },
+        ];
+        remove_contained_in_wrapped(&mut orfs, original_len);
+        assert_eq!(orfs.len(), 2);
+        assert!(orfs.iter().any(|o| o.start == 80 && o.stop == 20));
+        assert!(orfs.iter().any(|o| o.start == 40 && o.stop == 50));
+    }
+
+    #[test]
+    fn test_remove_contained_in_wrapped_reverse() {
+        let original_len = 100;
+        let mut orfs = vec![
+            // Wrapped reverse ORF: start codon at 30, stop codon at 70.
+            // In forward coordinates the gene spans 70..100 and 1..30.
+            Orf {
+                start: 30,
+                stop: 70,
+                frame: -1,
+                wraps_origin: true,
+                ..Default::default()
+            },
+            // Contained reverse ORF inside the head segment (start > stop for
+            // a non-wrapping reverse ORF).
+            Orf {
+                start: 25,
+                stop: 10,
+                frame: -1,
+                wraps_origin: false,
+                ..Default::default()
+            },
+            // Non-contained reverse ORF outside the wrapped span.
+            Orf {
+                start: 50,
+                stop: 40,
+                frame: -1,
+                wraps_origin: false,
+                ..Default::default()
+            },
+        ];
+        remove_contained_in_wrapped(&mut orfs, original_len);
+        assert_eq!(orfs.len(), 2);
+        assert!(orfs.iter().any(|o| o.start == 30 && o.stop == 70));
+        assert!(orfs.iter().any(|o| o.start == 50 && o.stop == 40));
+    }
+
+    #[test]
+    fn test_remove_contained_in_wrapped_no_wrapped() {
+        let original_len = 100;
+        let mut orfs = vec![
+            Orf {
+                start: 10,
+                stop: 20,
+                frame: 1,
+                wraps_origin: false,
+                ..Default::default()
+            },
+            Orf {
+                start: 15,
+                stop: 25,
+                frame: 1,
+                wraps_origin: false,
+                ..Default::default()
+            },
+        ];
+        remove_contained_in_wrapped(&mut orfs, original_len);
+        assert_eq!(orfs.len(), 2);
+    }
+
+    #[test]
+    fn test_remove_contained_in_wrapped_different_frame_same_strand() {
+        let original_len = 100;
+        let mut orfs = vec![
+            // Wrapped forward ORF on frame 1.
+            Orf {
+                start: 80,
+                stop: 20,
+                frame: 1,
+                wraps_origin: true,
+                ..Default::default()
+            },
+            // Same circular span but different doubled-genome frame label;
+            // should still be removed because it is on the same strand.
+            Orf {
+                start: 5,
+                stop: 20,
+                frame: 2,
+                wraps_origin: false,
+                ..Default::default()
+            },
+        ];
+        remove_contained_in_wrapped(&mut orfs, original_len);
+        assert_eq!(orfs.len(), 1);
+        assert!(orfs[0].wraps_origin);
     }
 }
 

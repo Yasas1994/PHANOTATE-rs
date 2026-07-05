@@ -10,15 +10,23 @@ use crate::rbs_mode::RbsMode;
 use crate::rbs_scanner::{score_rbs_for_mode, NUM_RBS_BINS};
 use std::collections::HashMap;
 
-/// Build the start-codon weight map used by the non-SD motif model.
-pub fn build_start_weights(start_codons: &[Vec<u8>]) -> HashMap<Vec<u8>, f64> {
+/// Build the start-codon weight map used by the heuristic scorer.
+///
+/// Weights reflect the typical prevalence of start codons in bacterial and
+/// mycoplasma genomes: ATG is strongest, GTG/TTG are common alternatives, and
+/// rarer codons (CTG, ATT/ATC/ATA, TTA) receive a small penalty. This prevents
+/// the previous bug where any non-ATG/GTG/TTG codon received weight 1.0 and was
+/// preferred over ATG.
+pub fn build_start_weights(start_codons: &[Vec<u8>], _table: u8) -> HashMap<Vec<u8>, f64> {
     let mut map = HashMap::new();
     for codon in start_codons {
         let w = match codon.as_slice() {
-            b"atg" => 0.85,
-            b"gtg" => 0.10,
-            b"ttg" => 0.05,
-            _ => 1.0,
+            b"atg" => 1.0,
+            b"gtg" => 0.85,
+            b"ttg" => 0.5,
+            b"ctg" => 0.3,
+            b"att" | b"atc" | b"ata" | b"tta" => 0.2,
+            _ => 0.1,
         };
         map.insert(codon.clone(), w);
     }
