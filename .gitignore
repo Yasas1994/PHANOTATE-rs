@@ -2,4 +2,5 @@
 /tests/test_genomes
 /tests/benchmark_outputs
 /.worktrees
+/test_seqs
 

@@ -149,23 +149,35 @@ fn parse_cds_location(loc: &str) -> Option<(usize, usize, i8)> {
 }
 
 /// Convert to lowercase, then map ambiguous bases.
-/// Preserves 'n'/'N' so that `-m` (mask runs of N) can detect them.
+/// Preserves IUPAC ambiguity codes (b, d, h, k, m, n, r, s, v, w, y) so
+/// that translation reports 'X' for undecidable codons instead of a
+/// defined amino acid. Truly invalid bytes map to 'n'.
 pub fn normalize_seq(seq: &str) -> Vec<u8> {
     // 256-byte lookup table: map every possible byte to its normalized form.
     // Lowercase letters are mapped directly; uppercase letters are mapped
-    // via their lowercase counterparts. Everything else maps to 'a'.
+    // via their lowercase counterparts. Everything else maps to 'n'.
     const LUT: [u8; 256] = {
-        let mut lut = [b'a'; 256];
+        let mut lut = [b'n'; 256];
         let mut i = 0u16;
         while i < 256 {
             lut[i as usize] = match i as u8 {
                 b'A' | b'a' => b'a',
                 b'C' | b'c' => b'c',
-                b'T' | b't' | b'U' | b'u' => b't',
+                b'T' | b't' => b't',
+                b'U' | b'u' => b'u',
                 b'G' | b'g' => b'g',
+                b'B' | b'b' => b'b',
+                b'D' | b'd' => b'd',
+                b'H' | b'h' => b'h',
+                b'K' | b'k' => b'k',
+                b'M' | b'm' => b'm',
                 b'N' | b'n' => b'n',
-                b'S' | b's' | b'B' | b'b' | b'V' | b'v' => b'g',
-                _ => b'a',
+                b'R' | b'r' => b'r',
+                b'S' | b's' => b's',
+                b'V' | b'v' => b'v',
+                b'W' | b'w' => b'w',
+                b'Y' | b'y' => b'y',
+                _ => b'n',
             };
             i += 1;
         }
@@ -175,15 +187,31 @@ pub fn normalize_seq(seq: &str) -> Vec<u8> {
 }
 
 /// Reverse complement a DNA sequence.
+///
+/// Complements IUPAC ambiguity codes (y<->r, k<->m, b<->v, d<->h,
+/// s/w/n self-complementary) so ambiguity survives the strand flip.
+/// Any other byte maps to 'n'.
 pub fn rev_comp(seq: &[u8]) -> Vec<u8> {
     seq.iter()
         .rev()
         .map(|&b| match b {
             b'a' => b't',
             b't' => b'a',
+            b'u' => b'u',
             b'g' => b'c',
             b'c' => b'g',
-            _ => b'a',
+            b'r' => b'y',
+            b'y' => b'r',
+            b'k' => b'm',
+            b'm' => b'k',
+            b's' => b's',
+            b'w' => b'w',
+            b'b' => b'v',
+            b'v' => b'b',
+            b'd' => b'h',
+            b'h' => b'd',
+            b'n' => b'n',
+            _ => b'n',
         })
         .collect()
 }
@@ -213,14 +241,25 @@ mod tests {
     #[test]
     fn test_rev_comp() {
         assert_eq!(rev_comp(b"atgc"), vec![b'g', b'c', b'a', b't']);
-        assert_eq!(rev_comp(b"nnnx"), vec![b'a', b'a', b'a', b'a']);
+        assert_eq!(rev_comp(b"nnnx"), vec![b'n', b'n', b'n', b'n']);
+        // IUPAC ambiguity complements survive the strand flip.
+        assert_eq!(
+            rev_comp(b"ykmbvdhswrn"),
+            vec![b'n', b'y', b'w', b's', b'd', b'h', b'b', b'v', b'k', b'm', b'r']
+        );
     }
 
     #[test]
     fn test_normalize() {
+        // Canonical bases and U; IUPAC ambiguity codes preserved (lowercase);
+        // invalid bytes become 'n'.
         assert_eq!(
             normalize_seq("ATGCSBVX"),
-            vec![b'a', b't', b'g', b'c', b'g', b'g', b'g', b'a']
+            vec![b'a', b't', b'g', b'c', b's', b'b', b'v', b'n']
+        );
+        assert_eq!(
+            normalize_seq("YKRNDHMW"),
+            vec![b'y', b'k', b'r', b'n', b'd', b'h', b'm', b'w']
         );
     }
 
