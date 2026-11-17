@@ -18,10 +18,12 @@ const BASE_INDEX: [u8; 256] = {
     t[b'C' as usize] = 1;
     t[b'G' as usize] = 2;
     t[b'T' as usize] = 3;
+    t[b'U' as usize] = 3;
     t[b'a' as usize] = 0;
     t[b'c' as usize] = 1;
     t[b'g' as usize] = 2;
     t[b't' as usize] = 3;
+    t[b'u' as usize] = 3;
     t
 };
 
