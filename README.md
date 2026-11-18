@@ -77,9 +77,11 @@ The binary will be at `./target/release/phanotate-rs`.
 
 ### Pre-built binaries ✅
 
-Pre-built binaries for Linux (x86_64, aarch64, musl), macOS (Intel, Apple Silicon),
+Pre-built binaries for Linux (x86_64, aarch64), macOS (Apple Silicon),
 and Windows (x86_64) are available from the
 [Releases](https://github.com/Yasas1994/PHANOTATE-rs/releases) page.
+(Intel Mac and musl builds are not shipped because ONNX Runtime, used by
+the optional `--model` scoring, does not publish binaries for those targets.)
 
 ### PyPI (Python package) ✅
 

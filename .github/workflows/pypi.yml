@@ -35,9 +35,9 @@ jobs:
           - os: ubuntu-latest
             target: x86_64
             manylinux: auto
-          # macOS
+          # macOS (Apple Silicon only; ONNX Runtime publishes no x86_64-apple-darwin build)
           - os: macos-latest
-            target: universal2-apple-darwin
+            target: aarch64-apple-darwin
             manylinux: ''
           # Windows
           - os: windows-latest
