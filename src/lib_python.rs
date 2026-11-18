@@ -11,7 +11,11 @@
 
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::PyAny;
 use std::collections::HashMap;
+
+/// pyo3 0.29 removed the `PyObject` alias; it is `Py<PyAny>`.
+type PyObject = Py<PyAny>;
 
 fn parse_rbs_mode(s: &str) -> PyResult<RbsMode> {
     s.parse::<RbsMode>()
@@ -96,7 +100,7 @@ fn build_codon_sets(table: u8) -> (Vec<Vec<u8>>, HashMap<Vec<u8>, f64>, Vec<Vec<
 // ---------------------------------------------------------------------------
 // PyOrf — Python-facing wrapper for Orf
 // ---------------------------------------------------------------------------
-#[pyclass(name = "Orf")]
+#[pyclass(name = "Orf", from_py_object)]
 #[derive(Clone)]
 pub struct PyOrf {
     #[pyo3(get)]
@@ -173,7 +177,7 @@ impl PyOrf {
 // ---------------------------------------------------------------------------
 // PyGene — Python-facing gene result from the full pipeline
 // ---------------------------------------------------------------------------
-#[pyclass(name = "Gene")]
+#[pyclass(name = "Gene", from_py_object)]
 #[derive(Clone)]
 pub struct PyGene {
     #[pyo3(get)]
@@ -220,7 +224,7 @@ impl PyGene {
 // ---------------------------------------------------------------------------
 // PyTableScore — Python-facing table detection score
 // ---------------------------------------------------------------------------
-#[pyclass(name = "TableScore")]
+#[pyclass(name = "TableScore", from_py_object)]
 #[derive(Clone)]
 pub struct PyTableScore {
     #[pyo3(get)]
@@ -404,16 +408,19 @@ fn phanotate(
     )?;
 
     // Build Python dict return
-    Python::with_gil(|py| {
-        let dict = pyo3::types::PyDict::new_bound(py);
+    Python::attach(|py| {
+        let dict = pyo3::types::PyDict::new(py);
         dict.set_item("primary", primary)?;
         dict.set_item("protein", protein)?;
         dict.set_item("nucleotide", nucleotide)?;
-        let py_genes: Vec<PyObject> = genes.into_iter().map(|g| g.into_py(py)).collect();
+        let py_genes: Vec<PyObject> = genes
+            .into_iter()
+            .map(|g| Py::new(py, g).map(|p| p.into_any()))
+            .collect::<PyResult<Vec<_>>>()?;
         dict.set_item("genes", py_genes)?;
         dict.set_item("table_used", effective_table)?;
         dict.set_item("uses_sd", uses_sd)?;
-        Ok(dict.into())
+        Ok(dict.unbind().into_any())
     })
 }
 
@@ -947,9 +954,9 @@ fn translate(sequence: &str, table: u8) -> PyResult<String> {
 /// list[int]
 ///     Supported table numbers derived from `codon_table::is_supported_table`.
 #[pyfunction]
-fn supported_tables() -> Vec<u8> {
-    (1..=31)
-        .filter(|&t| crate::codon_table::is_supported_table(t))
+fn supported_tables() -> Vec<u16> {
+    (1..=31u16)
+        .filter(|&t| crate::codon_table::is_supported_table(t as u8))
         .collect()
 }
 

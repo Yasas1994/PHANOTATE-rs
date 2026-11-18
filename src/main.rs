@@ -652,7 +652,7 @@ fn main() -> Result<()> {
             let recommended = scores[0].table;
 
             // Check if we are in a non-interactive environment
-            let is_tty = atty::is(atty::Stream::Stdin);
+            let is_tty = std::io::IsTerminal::is_terminal(&std::io::stdin());
             if cli.yes || !is_tty {
                 if !is_tty && !cli.yes {
                     eprintln!(
