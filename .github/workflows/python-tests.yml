@@ -30,7 +30,14 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ['3.9', '3.12']
+        # Python 3.9 is no longer provided on the latest Ubuntu runner
+        # images; keep coverage by pinning that job to ubuntu-22.04.
+        exclude:
+          - os: ubuntu-latest
+            python: '3.9'
         include:
+          - os: ubuntu-22.04
+            python: '3.9'
           - os: macos-latest
             python: '3.13'
 
