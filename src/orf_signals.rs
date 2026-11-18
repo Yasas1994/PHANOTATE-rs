@@ -165,7 +165,7 @@ fn build_pos_max_min(orfs: &[Orf], gc_pos_freq: &[[usize; 3]]) -> ([f64; 4], [f6
         by_stop.entry(orf.stop).or_default().push(orf);
     }
 
-    for (_, orfs_at_stop) in by_stop.iter_mut() {
+    for orfs_at_stop in by_stop.values_mut() {
         if orfs_at_stop[0].frame > 0 {
             orfs_at_stop.sort_by_key(|o| o.start);
         } else {

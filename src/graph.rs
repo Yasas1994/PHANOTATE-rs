@@ -230,7 +230,7 @@ impl Graph {
 
         let mut last = 0usize;
         for b in bases.iter().flatten() {
-            if *b > last && *b - last > 500 {
+            if *b > last && *b - last >= 490 {
                 let node_list: Vec<Node> = graph.nodes.clone();
                 for right_node in &node_list {
                     let r = right_node.position;
@@ -596,7 +596,7 @@ impl Graph {
         // Long noncoding regions (same logic as linear, but within original_len).
         let mut last = 0usize;
         for b in bases.iter().flatten() {
-            if *b > last && *b - last > 500 {
+            if *b > last && *b - last >= 490 {
                 let node_list: Vec<Node> = graph.nodes.clone();
                 for right_node in &node_list {
                     let r = right_node.position;
