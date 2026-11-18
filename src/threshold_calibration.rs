@@ -218,6 +218,15 @@ pub fn compute_effective_model_threshold_with_params<S: OrfScorer>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    /// Serializes the env-var tests: they mutate process-wide environment
+    /// state, so running them in parallel threads races and flakes.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn env_guard() -> MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
 
     /// Deterministic scorer that maps `orf.start` to a probability.
     ///
@@ -420,6 +429,7 @@ mod tests {
 
     #[test]
     fn invalid_genes_per_kb_falls_back_to_default() {
+        let _guard = env_guard();
         let previous = std::env::var(ENV_GENES_PER_KB).ok();
         unsafe {
             std::env::set_var(ENV_GENES_PER_KB, "not-a-number");
@@ -437,6 +447,7 @@ mod tests {
 
     #[test]
     fn invalid_percentile_falls_back_to_default() {
+        let _guard = env_guard();
         let previous = std::env::var(ENV_THRESHOLD_PERCENTILE).ok();
         unsafe {
             std::env::set_var(ENV_THRESHOLD_PERCENTILE, "not-a-number");
@@ -454,6 +465,7 @@ mod tests {
 
     #[test]
     fn valid_env_vars_override_defaults() {
+        let _guard = env_guard();
         let previous_genes = std::env::var(ENV_GENES_PER_KB).ok();
         let previous_pct = std::env::var(ENV_THRESHOLD_PERCENTILE).ok();
 
