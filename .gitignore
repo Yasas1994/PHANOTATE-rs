@@ -3,4 +3,10 @@
 /tests/benchmark_outputs
 /.worktrees
 /test_seqs
+/docs/superpowers
+/memory
+/notebooks
+/AGENTS.md
+/*.dot
+/*.png
 
