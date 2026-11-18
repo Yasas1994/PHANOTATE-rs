@@ -9,7 +9,22 @@ use ort::session::{builder::GraphOptimizationLevel, Session};
 use ort::value::Tensor;
 use std::fmt;
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
+
+/// ort allows only one Environment per process, so it is created once and
+/// shared by every scorer (multiple sessions per environment are allowed).
+static ENVIRONMENT: OnceLock<ort::environment::Environment> = OnceLock::new();
+
+fn environment() -> Result<&'static ort::environment::Environment> {
+    if let Some(env) = ENVIRONMENT.get() {
+        return Ok(env);
+    }
+    let env = ort::init()
+        .build()
+        .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+    // A concurrent initializer may win; both paths return a valid env.
+    Ok(ENVIRONMENT.get_or_init(|| env))
+}
 
 /// Thread-safe wrapper around an ONNX inference session.
 pub struct OnnxScorer {
@@ -25,11 +40,7 @@ impl fmt::Debug for OnnxScorer {
 impl OnnxScorer {
     /// Load an ONNX model from disk.
     pub fn from_file(path: &Path) -> Result<Self> {
-        let environment = ort::init()
-            .build()
-            .map_err(|e| anyhow::anyhow!(e.to_string()))
-            .with_context(|| "Failed to create ONNX runtime environment")?;
-        let session = Session::builder(&environment)
+        let session = Session::builder(environment()?)
             .with_context(|| "Failed to create ONNX session builder")?
             .with_optimization_level(GraphOptimizationLevel::Level3)
             .map_err(|e| anyhow::anyhow!(e.to_string()))?
