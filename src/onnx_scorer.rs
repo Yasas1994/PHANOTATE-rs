@@ -25,7 +25,11 @@ impl fmt::Debug for OnnxScorer {
 impl OnnxScorer {
     /// Load an ONNX model from disk.
     pub fn from_file(path: &Path) -> Result<Self> {
-        let session = Session::builder()
+        let environment = ort::init()
+            .build()
+            .map_err(|e| anyhow::anyhow!(e.to_string()))
+            .with_context(|| "Failed to create ONNX runtime environment")?;
+        let session = Session::builder(&environment)
             .with_context(|| "Failed to create ONNX session builder")?
             .with_optimization_level(GraphOptimizationLevel::Level3)
             .map_err(|e| anyhow::anyhow!(e.to_string()))?
