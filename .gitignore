@@ -9,4 +9,6 @@
 /AGENTS.md
 /*.dot
 /*.png
+.DS_Store
+.vscode/
 
