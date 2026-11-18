@@ -11,6 +11,15 @@ readme = "README.md"
 keywords = ["bioinformatics", "genomics", "phage", "gene-calling", "annotation"]
 categories = ["science", "command-line-utilities"]
 rust-version = "1.83"
+exclude = [
+    ".github/*",
+    "benches/baseline*",
+    "models/*",
+    "packaging/*",
+    "scripts/*",
+    "tests/*",
+    "bump-version.sh",
+]
 
 [dependencies]
 anyhow = "1.0"
