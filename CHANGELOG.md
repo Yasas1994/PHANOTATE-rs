@@ -7,28 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-11-18
+
 ### Added
 
-- **Python bindings** via PyO3 — `import phanotate_rs` from Python
-  - `phanotate()` — full gene-calling pipeline with all CLI options exposed as kwargs
-  - `find_orfs()` — low-level ORF finder returning structured `Orf` objects
-  - `detect_table()` — automatic translation-table detection returning `TableScore` objects
-  - `translate()` — DNA-to-protein translation using NCBI tables
-  - `score_rbs()` — Shine-Dalgarno scoring
-  - `supported_tables()`, `stop_codons()`, `start_codons()`, `table_name()` — codon-table utilities
-  - Python classes: `Orf`, `Gene`, `TableScore` with full attribute access
-- `pyproject.toml` — maturin configuration for Python wheel builds
-- `src/lib_python.rs` — PyO3 module implementation
-- `tests/test_python_bindings.py` — 51 Python tests covering all bindings
-- `.github/workflows/pypi.yml` — automated PyPI publishing via trusted publishing (OIDC)
-- `.github/workflows/python-tests.yml` — CI for Python bindings across platforms
-- `bump-version.sh` now bumps `pyproject.toml` version and documents PyPI setup steps
+- Full NCBI translation table support: tables 1–6, 9–16, and 21–31 (previously 1, 4, 6, 11, 15, 25)
+- `--rbs-mode auto|sd|non-sd|prodigal` — control how upstream start-codon motifs are scored:
+  auto-detection of Shine–Dalgarno vs non-SD motifs, legacy SD scoring, non-SD motif
+  discovery, or Prodigal-style SD bins
+- Prodigal-style hexamer (cscore) coding-potential scoring
+- Learned ORF scoring behind `--model`: trains on 34 per-ORF features exported via
+  `--export-features`, runs ONNX inference to replace the heuristic ORF edge weight
+- Per-genome calibration on the `--model` path: `--auto-threshold` plus learned
+  gap/overlap penalty ratios
+- `--circular` flag: circular genomes are annotated on the doubled sequence and genes
+  spanning the origin are reported as a single joined feature
+- Overlap rescue flags to recover overlapping gene calls dropped by the default scoring
+- Start-codon signature and context prior to improve automatic genetic-code detection
+
+### Fixed
+
+- Genomes whose largest non-coding gap fell in a ~5 bp window at 500 bp (covered 496–500)
+  annotated zero genes: the inter-ORF edge cutoff and the long-gap bridge used
+  inconsistent distance metrics, leaving a dead zone with no path across the gap
+  (part of issue #6)
+- Ambiguous IUPAC bases (Y, K, R, N, …) were silently converted to defined bases
+  (mostly adenine) before translation, so proteins showed a defined amino acid where
+  the ambiguity admits no decision. Ambiguity now survives normalization and reverse
+  complementation, and undecidable codons translate to `X` on both strands
+  (part of issue #6)
+- RNA input: `U`/`u` accepted as thymine
+- Table-aware heuristic scoring: `P(stop)` and start-codon weights now follow the
+  active translation table (improves table-4 genomes)
+- Windows builds: upgraded `ort` to 2.0.0-rc.15 — the pinned ONNX Runtime 1.24.2
+  artifacts used by rc.12 were no longer served for all platforms
+- CI is self-contained: unit and integration tests no longer depend on a local
+  checkout of the original PHANOTATE repository or untracked fixture files
 
 ### Changed
 
-- `.github/workflows/release.yml` — added release summary mentioning PyPI and bioconda workflows
-- `src/lib.rs` — includes `lib_python` module for PyO3 bindings
-- `Cargo.toml` — added `pyo3` dependency and `cdylib` crate-type for Python extension builds
+- Release binaries: Linux x86_64/aarch64 (glibc), macOS Apple Silicon, Windows x86_64.
+  musl and Intel-mac builds are dropped because ONNX Runtime publishes no binaries
+  for those targets; the macOS PyPI wheel is arm64-only (`install.sh` already falls
+  back to the glibc Linux artifact)
+- Rust MSRV raised from 1.70 to 1.83 (required by pyo3 0.29)
+- Dependencies: pyo3 0.22 → 0.29.3 (addresses three security advisories, including a
+  high-severity out-of-bounds read); unmaintained `atty` replaced with
+  `std::io::IsTerminal`
 
 ## [0.1.3] — 2025-06-08
 
