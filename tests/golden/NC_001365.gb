@@ -1,0 +1,411 @@
+LOCUS       NC_001365               8273 bp ss-DNA     circular PHG 13-AUG-2018
+DEFINITION  Spiroplasma phage 1-R8A2B, complete genome.
+ACCESSION   NC_001365
+VERSION     NC_001365.1
+DBLINK      BioProject: PRJNA485481
+KEYWORDS    RefSeq; complete genome; unidentified reading frame.
+SOURCE      Spiroplasma phage R8A2B
+  ORGANISM  Spiroplasma phage R8A2B
+            Viruses; Floreoviria; Loebvirae; Hofneiviricota; Faserviricetes;
+            Tubulavirales; Plectroviridae; Vespertiliovirus; Vespertiliovirus
+            R8A2B.
+REFERENCE   1  (bases 1 to 8273)
+  AUTHORS   Renaudin,J., Aullo,P., Vignault,J.C. and Bove,J.M.
+  TITLE     Complete nucleotide sequence of the genome of Spiroplasma citri
+            virus SpV1-R8A2 B
+  JOURNAL   Nucleic Acids Res. 18 (5), 1293 (1990)
+   PUBMED   2320423
+REFERENCE   2  (bases 1 to 8273)
+  CONSRTM   NCBI Genome Project
+  TITLE     Direct Submission
+  JOURNAL   Submitted (01-AUG-2000) National Center for Biotechnology
+            Information, NIH, Bethesda, MD 20894, USA
+REFERENCE   3  (bases 1 to 8273)
+  AUTHORS   Renaudin,J.
+  TITLE     Direct Submission
+  JOURNAL   Submitted (04-JAN-1990) Renaudin J., Institut National de la
+            Recherche Agronomique, Laboratoire de Biologie Cellulaire et
+            Moleculaire, INRA, BP 81 33883 Villenave D'Ornon Cedex, France
+COMMENT     VALIDATED REFSEQ: This record has undergone validation or
+            preliminary review. The reference sequence was derived from X51344.
+            SpV1-R8A2 is a rod-shaped virus infecting Spiroplasma citri. Its
+            genome is a circular, single-stranded DNA molecule. TGA does not
+            specify a stop codon in Spiroplasma.
+            COMPLETENESS: full length.
+FEATURES             Location/Qualifiers
+     source          1..8273
+                     /organism="Spiroplasma phage R8A2B"
+                     /mol_type="genomic DNA"
+                     /host="Spiroplasma citri"
+                     /db_xref="taxon:10854"
+     gene            join(7492..8273,1..232)
+                     /locus_tag="SpV1-R8A2Bp01"
+                     /db_xref="GeneID:1260864"
+     CDS             join(7492..8273,1..232)
+                     /locus_tag="SpV1-R8A2Bp01"
+                     /codon_start=1
+                     /transl_table=4
+                     /product="hypothetical protein"
+                     /protein_id="NP_040337.2"
+                     /db_xref="UniProtKB/Swiss-Prot:P15893"
+                     /db_xref="GeneID:1260864"
+                     /translation="MKKFIFFFKNYCYISGSMLLFSLIDLLLWIISLYCVGLVFWILF
+                     VLQCIYFVWWLWKNIFYQLNSFGLVNFVWDNPLSVIIGKLGTGKTLLLTYLSQTMKLL
+                     TDEIYSNYPLEDDKVKVLTFKNLDFTDRTKPVPPDDSVILFDESYLYIDGTSPHDEKK
+                     VHSGKIPWIVLARHFGNRALFTAQREGMIWNNIRQLASGIIIPISLKKPVIKKGFNFF
+                     NRFFIMQIGIFQDITDYEIWKTKSVERTAEGKRVKHKSDVGLGIRFFKIIIPLEFANK
+                     YDSQWLKFVRDLKNDEIVNKKEYYWSEITKLSVKERLELFDIDILKKNLKPKKEKGNG
+                     KDD"
+     gene            225..629
+                     /locus_tag="SpV1-R8A2Bp02"
+                     /db_xref="GeneID:1260863"
+     CDS             225..629
+                     /locus_tag="SpV1-R8A2Bp02"
+                     /note="unnamed protein product; ORF 5 (AA 1-134)"
+                     /codon_start=1
+                     /transl_table=4
+                     /product="hypothetical protein"
+                     /protein_id="NP_040338.1"
+                     /db_xref="UniProtKB/Swiss-Prot:P15896"
+                     /db_xref="GeneID:1260863"
+                     /translation="MINLLVENNNSNWDKIFSFVFDIFLFIFDVIWNTKLPMTNTSIA
+                     YFLIFFMVIKLSIYAIHGTSTQYNNLGSTVNNGVSQVYSSTVRGVSDTKQGMQKHIKE
+                     RKQFKINRNKKQLSSLAKQAKTREQGYRRVHK"
+     gene            629..865
+                     /locus_tag="SpV1-R8A2Bp03"
+                     /db_xref="GeneID:1260862"
+     CDS             629..865
+                     /locus_tag="SpV1-R8A2Bp03"
+                     /note="unnamed protein product; ORF 9 (AA 1-78)"
+                     /codon_start=1
+                     /transl_table=4
+                     /product="hypothetical protein"
+                     /protein_id="NP_040339.1"
+                     /db_xref="UniProtKB/Swiss-Prot:P15900"
+                     /db_xref="GeneID:1260862"
+                     /translation="MIKLVLLVAAIAIFGTGFITVIINQFTSAKNIIMDLYNSDTWLI
+                     WLFGRMAVLFSHPLMLTISSLYIVGFIVSKTLYS"
+     gene            877..3024
+                     /locus_tag="SpV1-R8A2Bp04"
+                     /db_xref="GeneID:1260861"
+     CDS             877..3024
+                     /locus_tag="SpV1-R8A2Bp04"
+                     /note="unnamed protein product; ORF 1 (AA 1-715)"
+                     /codon_start=1
+                     /transl_table=4
+                     /product="hypothetical protein"
+                     /protein_id="NP_040340.1"
+                     /db_xref="GOA:P15892"
+                     /db_xref="UniProtKB/Swiss-Prot:P15892"
+                     /db_xref="GeneID:1260861"
+                     /translation="MKKSLSLFAIFILTFLGLVIPFITLTAFRPLNEEQYTLKQESST
+                     GKGINETDFINTMFLRSSFFENWSETNYFINPTLKTSKNLLFNDKWYLDFLQDSYSTG
+                     VVYDKPGEIFLNYYRQWHSLKNKYMVEKFYDVKKENFLNDLTDFIYAFAVKYKMFDVS
+                     KEIVENVDRYKENHYPRVKLKQDNWKLITDYNWLKDNFDNKYYFVIWKQSYSKEWEIM
+                     KFKHNMRYDMKIESYIKNNSFKGLYRWDGDGEPQTPTIDKNTGEITDWNSYQQSRVKQ
+                     FIDLSLYSVLQENIRVQQGGSADYENPNKVGTKRIIFDFETVDELDVKNIKKAIYRMI
+                     LTVDEANLIISGSLELNNINNDDLSFNFSFMRTGMGEVFNFNGSIYSSLNSKDLKYYQ
+                     QFSGQFDLSKFLQSFFASALVPVFQNRSLFIENGYIDNLQYDTVLVNFFALKLQNFNN
+                     ILLIENINDKLQFDKLLNSMFKISQKFYTNYLRTIFDLENNTYVQGYNKKYGLLVNNG
+                     FKIYPRYFYFSDKYKQLDIKLYSAFKNRFYTINNYGSVFNYDFSVANNYNIKLNSGYV
+                     FGGDLQNKYGLQYKKIEEQKIGYNVFELQAQKENDMYRYYDFNFGIYNWQEINNGGLF
+                     PDKQWWQVQYVTPKGWWDFGAHIKNAVIWIVNTIPGVKQVNELASGVGKVFETVYSFF
+                     SQIFEVWKFNPALYSTITNIFLLIIFMKFVRLI"
+     regulatory      3023..3053
+                     /regulatory_class="terminator"
+                     /note="put. transcription terminator"
+     gene            3555..4523
+                     /locus_tag="SpV1-R8A2Bp05"
+                     /db_xref="GeneID:1260860"
+     CDS             3555..4523
+                     /locus_tag="SpV1-R8A2Bp05"
+                     /note="unnamed protein product; ORF 3 (AA 1-322)"
+                     /codon_start=1
+                     /transl_table=4
+                     /product="putative transposase"
+                     /protein_id="NP_040341.1"
+                     /db_xref="GOA:P15894"
+                     /db_xref="InterPro:IPR001584"
+                     /db_xref="InterPro:IPR009057"
+                     /db_xref="InterPro:IPR012337"
+                     /db_xref="UniProtKB/Swiss-Prot:P15894"
+                     /db_xref="GeneID:1260860"
+                     /translation="MYSHLSFMDKVKLEQLLLSKIFLKKNGEQNISAIAKYLNRHRST
+                     ILREIKRFKTIDEYSAYKSDKMYYEKRKKNNKRFKFTEEQLNFIHLRFNVYHDSPSEL
+                     IYRYFLKFKVKFPVCVKTLYKWIRLGFYGFLKQNLRHHGKKYKRKGKSDNRGKLTDFK
+                     SIWDIDNKVSNVGWLEMDTVVGKDHKSAILVLVEQLSKKYFAIKLENHTAREVEKKFK
+                     DIIIKNNLIGKIKGIITDRRKEFSKWREMEIFAETQVYFCDAGSPQQKPLIEYMNSEL
+                     RHWFPKGTDFNKVSQKQIDWVVNVINDKLRPCLNWISSKEMFLQNI"
+     misc_feature    3558..4511
+                     /locus_tag="SpV1-R8A2Bp05"
+                     /note="Tra8; Region: Transposase and inactivated
+                     derivatives, IS30 family [DNA replication, recombination,
+                     and repair]."
+                     /db_xref="CDD:COG2826"
+     misc_feature    4071..4508
+                     /locus_tag="SpV1-R8A2Bp05"
+                     /note="rve; Region: Integrase core domain. Integrase
+                     mediates integration of a DNA copy of the viral genome
+                     into the host chromosome. Integrase is composed of three
+                     domains. The amino-terminal domain is a zinc binding
+                     domain pfam02022. This domain is the central catalytic
+                     domain. The carboxyl terminal domain that is a
+                     non-specific DNA binding domain pfam00552. The catalytic
+                     domain acts as an endonuclease when two nucleotides are
+                     removed from the 3' ends of the blunt-ended viral DNA made
+                     by reverse transcription. This domain also catalyses the
+                     DNA strand transfer reaction of the 3' ends of the viral
+                     DNA to the 5' ends of the integration site."
+                     /db_xref="CDD:pfam00665"
+     regulatory      4899..4940
+                     /regulatory_class="terminator"
+                     /note="put. transcription terminator"
+     gene            5015..5164
+                     /locus_tag="SpV1-R8A2Bp06"
+                     /db_xref="GeneID:1260859"
+     CDS             5015..5164
+                     /locus_tag="SpV1-R8A2Bp06"
+                     /note="unnamed protein product; ORF 12 (AA 1-49)"
+                     /codon_start=1
+                     /transl_table=4
+                     /product="hypothetical protein"
+                     /protein_id="NP_040342.1"
+                     /db_xref="UniProtKB/Swiss-Prot:P15903"
+                     /db_xref="GeneID:1260859"
+                     /translation="MPTWLTTIFSVVIVLAIFLYFGLLIYQKIRQIRGKKKDKKEIER
+                     KESNK"
+     gene            5164..5415
+                     /locus_tag="SpV1-R8A2Bp07"
+                     /db_xref="GeneID:1260868"
+     CDS             5164..5415
+                     /locus_tag="SpV1-R8A2Bp07"
+                     /note="unnamed protein product; ORF 7 (AA 1-83)"
+                     /codon_start=1
+                     /transl_table=4
+                     /product="hypothetical protein"
+                     /protein_id="NP_040343.1"
+                     /db_xref="UniProtKB/Swiss-Prot:P15898"
+                     /db_xref="GeneID:1260868"
+                     /translation="MLGMYLTTAFNFLTASTPKTMSEGMTGIWTGLSSALWKVKEGIT
+                     NILPEIMVFLGEAWIILIPFAIFCIIKILNFFRVMVKGF"
+     repeat_region   5493..5523
+                     /note="inverted repeat A"
+     repeat_region   5780..5810
+                     /note="inverted repeat A'"
+     repeat_region   5832..5859
+                     /note="inverted repeat B"
+     gene            5839..6078
+                     /locus_tag="SpV1-R8A2Bp08"
+                     /db_xref="GeneID:1260867"
+     CDS             5839..6078
+                     /locus_tag="SpV1-R8A2Bp08"
+                     /note="unnamed protein product; ORF 8 (AA 1-79)"
+                     /codon_start=1
+                     /transl_table=4
+                     /product="hypothetical protein"
+                     /protein_id="NP_040344.1"
+                     /db_xref="UniProtKB/Swiss-Prot:P15899"
+                     /db_xref="GeneID:1260867"
+                     /translation="MVFSLYKNIYKFVNLLKIWIINLKVIIKIIISEIIVLIGNTIHD
+                     NQKIDGITFVKNEFIISSIFYFFFLFKIIYTERKP"
+     repeat_region   6056..6083
+                     /note="inverted repeat B'"
+     gene            6362..6703
+                     /locus_tag="SpV1-R8A2Bp09"
+                     /db_xref="GeneID:1260866"
+     CDS             6362..6703
+                     /locus_tag="SpV1-R8A2Bp09"
+                     /note="unnamed protein product; ORF 6 (AA 1-113)"
+                     /codon_start=1
+                     /transl_table=4
+                     /product="hypothetical protein"
+                     /protein_id="NP_040345.1"
+                     /db_xref="UniProtKB/Swiss-Prot:P15897"
+                     /db_xref="GeneID:1260866"
+                     /translation="MDMKFWTTKEYKKIKRDFIIRNFAFGFCYFLFLISFIMCIVCFI
+                     ISINFEVEIILVILFPFLLLILSVWNLFDLIMEHISEIKRFKVTVLKKQIEELEGKML
+                     RGLRVGVDKIE"
+     gene            6696..7136
+                     /locus_tag="SpV1-R8A2Bp10"
+                     /db_xref="GeneID:1260865"
+     CDS             6696..7136
+                     /locus_tag="SpV1-R8A2Bp10"
+                     /note="unnamed protein product; ORF 4 (AA 1-146)"
+                     /codon_start=1
+                     /transl_table=4
+                     /product="hypothetical protein"
+                     /protein_id="NP_040346.1"
+                     /db_xref="UniProtKB/Swiss-Prot:P15895"
+                     /db_xref="GeneID:1260865"
+                     /translation="MSNFVKKNHNVENYFISKEFIPFTTEKASFINLPNHNRHIGFWL
+                     SNKFIYPSEKHSKQVAIGLIYDNSYPIVKYDENLKRHIWKYLTGTELINLYNQYKQNY
+                     FTKMKKALFSSEPKKVKANNNNNNLTNWSVEKEQELINDLKDLN"
+     gene            7147..7308
+                     /locus_tag="SpV1-R8A2Bp11"
+                     /db_xref="GeneID:1260869"
+     CDS             7147..7308
+                     /locus_tag="SpV1-R8A2Bp11"
+                     /note="unnamed protein product; ORF 11 (AA 1-53)"
+                     /codon_start=1
+                     /transl_table=4
+                     /product="hypothetical protein"
+                     /protein_id="NP_040347.1"
+                     /db_xref="UniProtKB/Swiss-Prot:P15902"
+                     /db_xref="GeneID:1260869"
+                     /translation="MIIEFNLLVILLVQMPLSFYMLYRLCYLLFCFLECFLNLFKKCG
+                     VFKNAKWLN"
+     gene            7289..7492
+                     /locus_tag="SpV1-R8A2Bp12"
+                     /db_xref="GeneID:1260870"
+     CDS             7289..7492
+                     /locus_tag="SpV1-R8A2Bp12"
+                     /note="unnamed protein product; ORF 10 (AA 1-67)"
+                     /codon_start=1
+                     /transl_table=4
+                     /product="hypothetical protein"
+                     /protein_id="NP_040348.1"
+                     /db_xref="UniProtKB/Swiss-Prot:P15901"
+                     /db_xref="GeneID:1260870"
+                     /translation="MQNDWIKLKEFFIYIFLFIDKTNVESITMWNLTQNEYLTLMVGV
+                     WIVILFLTWFLLWMVFKIVGYFK"
+ORIGIN      
+        1 aattcggttt tttaaaataa ttattcccct tgaatttgct aataagtatg atagtcaatg
+       61 gttaaagttt gtgcgtgatt taaagaatga tgaaattgtt aataaaaaag aatattattg
+      121 gtcggaaatc acaaaattaa gtgttaaaga acgattggag ttatttgata ttgatatttt
+      181 gaaaaagaat ttaaaaccta aaaaagagaa aggaaatggt aaagatgatt aatttattag
+      241 ttgaaaataa taatagtaat tgagacaaga tttttagttt tgtttttgat atatttttgt
+      301 ttatttttga tgtaatttga aatacaaaat taccgatgac aaatacgtca attgcttatt
+      361 ttttaatctt ttttatggtt attaagttat cgatttatgc aattcacggg acatcaacac
+      421 aatataataa tttaggttca acagttaata atggtgtttc acaagtatat tcttcaacag
+      481 ttcgcggtgt ttctgatact aaacaaggta tgcaaaaaca tattaaagag cgtaaacaat
+      541 ttaaaattaa tcgtaataaa aaacaattat caagtttagc aaaacaagca aaaacaagag
+      601 aacaaggata taggagagtg cataagtaat gattaaatta gttttattgg tggcggcgat
+      661 tgcgatattt ggaactggtt ttattactgt tattattaat caatttacat cagcaaaaaa
+      721 tattattatg gatttatata attctgatac ttggttgatt tgattatttg gtagaatggc
+      781 agttttgttt agtcatccgt taatgttaac gatatcaagt ttatatattg ttgggtttat
+      841 tgtttcaaaa acattgtata gttaggagtt gagtttatga aaaaatcgtt atctttattt
+      901 gccatattta ttttaacttt tttgggtttg gttattccat ttattacttt aacggcgttt
+      961 agacccttaa atgaggagca atatacgctt aaacaagaaa gtagtactgg taaaggtatt
+     1021 aatgaaactg attttattaa tacaatgttt ttacgcagta gtttttttga aaattggtcg
+     1081 gaaacaaatt attttattaa tccaacttta aaaacatcaa aaaatttatt gtttaatgat
+     1141 aaatggtatt tagatttttt acaagatagt tattcaaccg gagttgttta tgataaacct
+     1201 ggtgaaatat ttttgaatta ttatcgacaa tgacatagtt taaaaaataa gtatatggtt
+     1261 gaaaaatttt atgatgttaa aaaagagaat tttttgaatg atttaactga ttttatttat
+     1321 gcttttgctg taaaatataa gatgtttgat gtatcgaaag aaattgtgga aaatgttgac
+     1381 cgctataaag aaaatcatta tccaagagtt aagttaaaac aagataattg aaaattaatt
+     1441 actgattata attgacttaa agataatttt gataataaat attattttgt aatttggaaa
+     1501 caatcttata gtaaagaatg agaaataatg aaatttaaac ataatatgcg ttatgatatg
+     1561 aaaatagaaa gttacattaa aaataattct tttaaaggtc tttatcgttg agatggtgat
+     1621 ggtgaaccac aaacacctac tatcgacaaa aacactggtg aaattactga ttgaaatagt
+     1681 tatcaacaaa gtcgtgtaaa acagtttatt gatttatctt tatattctgt tttgcaagaa
+     1741 aatattagag ttcagcaagg tggtagtgcg gattatgaaa atccgaataa ggttggaaca
+     1801 aagcggataa tttttgattt tgagacggtt gacgagttgg atgttaaaaa tattaaaaaa
+     1861 gcaatttatc ggatgatttt gactgttgat gaagcaaatt taattatttc tggtagttta
+     1921 gagttaaata atattaataa tgatgattta agttttaatt ttagttttat gcgaactgga
+     1981 atgggtgagg tttttaattt taatggttca atttattcat cattaaatag taaagactta
+     2041 aagtattatc aacaatttag cggtcagttt gatttatcta agtttttaca gtcgtttttt
+     2101 gcaagtgcat tggtgcccgt gtttcaaaat cgtagtttgt ttattgaaaa tggatatatt
+     2161 gataatttac aatatgatac tgttttagtt aacttttttg cgttgaaatt acaaaatttt
+     2221 aataatattt tgttgattga aaatattaac gataaattac aatttgataa attattaaat
+     2281 agtatgttta agatttcaca gaaattttat actaattatt tacgtacgat ttttgattta
+     2341 gaaaataata cttatgttca aggttataat aaaaaatatg gtttgttagt aaataatggt
+     2401 tttaaaattt acccacgata tttttatttt tctgataaat ataagcaatt agatattaaa
+     2461 ttatattcag catttaaaaa tcggttttat acgattaata attatggtag tgtttttaat
+     2521 tatgattttt cggttgctaa taattataat attaagttaa attcgggtta tgtttttggc
+     2581 ggtgatttac aaaataaata tggtttgcaa tataaaaaaa ttgaagaaca aaaaatcggt
+     2641 tataatgttt ttgaattgca agcacaaaaa gagaatgata tgtaccgata ttatgatttt
+     2701 aattttggga tttataattg acaagaaatt aataatggtg ggttgttccc cgataaacaa
+     2761 tgatgacaag tgcaatatgt aacgccaaag ggttgatgag attttggtgc tcatattaaa
+     2821 aatgcggtga tttgaattgt caatactatt cccggtgtta aacaagttaa tgaattagcg
+     2881 agtggtgttg gtaaggtttt tgaaacagta tatagttttt ttagtcaaat atttgaagta
+     2941 tgaaaattta atccagcatt gtatagtaca ataacaaata tttttttatt aattattttt
+     3001 atgaaatttg tgcgattaat ataaaaaagg aactgttatt aagttccttt ttgttctttt
+     3061 cagtcagtaa ttttaccagt atttttgtca atagttggta attgtaaatt cgtaggttca
+     3121 ttatttaatt ctcatttata tataatatcc attggataac cagtattact tccgaagttt
+     3181 ttagaactat taattttttc tattcgtcat aaattaaaac tttcataaat tataatatat
+     3241 catccagtat ctcgtggaat atatctatta gtaattaatt ttcaattact attttctggt
+     3301 ggttgttgtg cgttatatga tggttttggt ttattatctt cttcgttttt attattattt
+     3361 tcttttttac aactgattaa tgttgttgta cttgttgcgg ttaatccgat tgctcctatt
+     3421 atgctaagtc attttttcat atatattgct cctttttatt tttttatata attgatttta
+     3481 tcacatatca attatatatc aattattcgt attaaatatt aattttataa gttaatgaaa
+     3541 ggtatataaa tgttatgtat agtcatttaa gttttatgga taaagttaaa ttagaacaat
+     3601 tattattatc aaaaattttt ttaaaaaaga atggtgagca gaatatttct gcaatcgcta
+     3661 aatatttgaa tagacatcgt agtactattt tacgagaaat taagcgtttt aaaactattg
+     3721 atgaatatag tgcttataag tcagataaaa tgtattatga gaaaagaaaa aagaataata
+     3781 aaagatttaa gtttacagaa gaacaattaa attttattca tctgagattt aatgtttatc
+     3841 atgattcacc atcagaactt atttatcgtt attttttaaa atttaaagtt aaatttcccg
+     3901 tttgtgttaa aacattgtat aaatgaattc gtttaggttt ttatggtttt ttaaaacaga
+     3961 atttacgaca ccatggtaaa aaatacaaaa gaaaaggaaa atctgataat cgtggtaaat
+     4021 taactgattt taagtcaatt tgagatattg ataataaagt ttctaatgtt ggatgacttg
+     4081 aaatggatac agtggttggt aaagaccata aatctgctat tttagtttta gtagaacaat
+     4141 taagtaaaaa atattttgca ataaaattag aaaatcatac tgctagggaa gttgagaaaa
+     4201 agtttaaaga tattattata aaaaataatt taattggaaa aataaaagga ataataacag
+     4261 atagaaggaa agaatttagt aaatgaagag aaatggaaat atttgctgaa acacaagtat
+     4321 atttttgtga tgctggttca ccacaacaaa aacctttaat tgaatatatg aatagtgaat
+     4381 taagacattg atttcctaag ggaactgatt ttaataaagt tagtcaaaaa caaatagatt
+     4441 gagtagttaa tgttataaat gataaactcc gaccgtgttt aaattgaata agttcaaaag
+     4501 aaatgttttt gcagaatata taaacaataa atatttaaaa atgtatatta aattataaaa
+     4561 tatgtcatta aaataataaa atatgtattt attaattaaa attaataaat tattttttag
+     4621 tttgtttaaa tattgataaa ataattaatt tttttaaatt tatggttgat ttttgtaatt
+     4681 tttattatat tatttaatta ataaagattt gttgcacttc attttacata attcattatg
+     4741 catcctgtaa tcgaagtgca acaaatcaat tctgaaagga gttgattttt tattgaaaag
+     4801 aaacattatt ttattttgcg gtccttagta attaagtatg gaaaagatat tgttattaat
+     4861 actgtaaata agatagtaat taataatgta aaagaaaatg aataaattat ccgcgtaatt
+     4921 tattagcggt aatttattca atatagttta ttttgagcgt agcgaacacg cggagcgtga
+     4981 cgcgatattt aaaaattttg aaaggagata tattatgcca acttgattaa cgacaatatt
+     5041 tagtgttgtt attgtattag caatttttct ttattttggt ttattaattt accaaaaaat
+     5101 tcgtcaaatt cgaggaaaga aaaaagataa aaaagaaatt gaaagaaagg agagtaataa
+     5161 ataatgttag gtatgtattt aacaacagcg tttaattttt taacagcatc tacacctaaa
+     5221 actatgtctg agggtatgac tggtatttga actggtttat ctagtgcatt atgaaaagtt
+     5281 aaagaaggta taacaaatat tttacctgag ataatggttt tcttaggtga agcgtgaatt
+     5341 atattaattc catttgctat attttgtatt attaaaatct taaacttttt ccgtgttatg
+     5401 gttaaaggat tttaatattt attataatcg atcatatatc ttagttaagg cacactagct
+     5461 tttatgtgaa ttaaataaat aattttattg tttattttta cactatacac tgtttacaaa
+     5521 tttatttttt aataaacttt attactatcg ttaatattgg gataataaaa atctctatta
+     5581 tacatataaa tttaactata ttttctatag ttgataaatc tatattgttt attattcata
+     5641 atattgagtc tgttatgaaa aatatttttt tagtaggatt taataaaaat aagaatattt
+     5701 ctattaaggg tcatactagt aatagatttg ggaaataaat ttttataata ttttttataa
+     5761 atatacctac ttttttttaa aatttgtgaa cagtgtatag tgtaaaaata tcaatttaat
+     5821 tatatttaag gtattattat ggttttctct ctgtataaaa atatttataa atttgttaat
+     5881 ttattaaaaa tttgaataat aaatttaaaa gttattatta aaattattat tagtgaaata
+     5941 attgttttaa ttggtaatac cattcatgat aatcaaaaaa tagatggtat tacatttgta
+     6001 aaaaatgaat ttattatttc ttcgatattt tatttcttct ttttatttaa aataatttat
+     6061 acagagagaa aaccataata atatcaactt aattataaac ttattatttt atattttaat
+     6121 aactattgtt aaaaattaaa tagtattttt cagtgtgcca atttttatta tttttatatt
+     6181 taataatgtt tattaacatt gtttattaaa cattaaataa acaatatatt agcattatat
+     6241 ataacattgt taataatcag tgtttattac aattaaaaaa cattatataa acattattta
+     6301 taacattgtt tattaaacaa atatttatat tattaaatat ttagttagga gattatatat
+     6361 tatggatatg aaattttgaa caactaagga atataaaaaa ataaagagag attttattat
+     6421 taggaatttt gcttttggtt tttgttattt tttattttta atttctttta ttatgtgtat
+     6481 tgtttgtttt attatttcca taaattttga agtagaaata attttggtta ttttatttcc
+     6541 ttttttactt ttaattttat cagtttggaa tttatttgat ttaattatgg agcatatatc
+     6601 agaaattaag cgatttaaag ttacagtatt aaagaaacaa atagaagagt tagaaggtaa
+     6661 aatgctaaga ggattaagag taggagttga taaaattgag taattttgtt aagaaaaatc
+     6721 ataatgtaga aaattatttt attagtaagg aatttatccc ttttacaaca gaaaaagcaa
+     6781 gttttattaa tttacctaat cataatcgcc atattggttt ttgactgagt aataagttta
+     6841 tttatccgag tgaaaaacat tcaaaacaag tagctattgg tttgatttat gataattctt
+     6901 atcctattgt aaagtatgat gaaaatttaa aacgtcatat ttgaaagtat ttaactggaa
+     6961 cagaattaat caatttatat aatcaatata aacaaaatta ttttactaaa atgaaaaaag
+     7021 ctttattttc aagtgaacct aaaaaagtaa aagcaaataa taacaataat aatttaacaa
+     7081 attgaagtgt tgaaaaagaa caagaattaa ttaatgattt gaaagactta aattaaatga
+     7141 gtttatatga ttattgagtt caatttgtta gttatattat tggtgcaaat gcccctgagt
+     7201 ttttatatgt tatatcgttt gtgttattta ttgttttgtt ttttggaatg ttttttaaac
+     7261 ttattcaaaa aatgtggagt ttttaaaaat gcaaaatgat tgaattaaat taaaagagtt
+     7321 ttttatttat atatttttgt ttatagataa aacgaatgtt gaaagtatta caatgtggaa
+     7381 tttaacgcaa aatgaatatt taactttgat ggttggtgtt tgaattgtga ttttgttttt
+     7441 aacttggttt ttattatgaa tggtttttaa aatagttggg tattttaaat aatgaaaaaa
+     7501 tttatatttt tctttaaaaa ctattgttat attagtggtt caatgctttt gtttagttta
+     7561 attgatttat tactttggat aatttctttg tattgtgttg gtttagtatt ttgaatatta
+     7621 tttgttttgc agtgtattta ttttgtgtga tgattgtgaa aaaatatttt ttatcagtta
+     7681 aattcttttg ggttagtaaa ttttgtttga gataatccgt tatcggtaat tattggtaag
+     7741 ttagggaccg gtaaaacatt acttttaact tatttgtcgc aaactatgaa attattaaca
+     7801 gatgaaattt atagtaatta tccgttagaa gatgataaag ttaaagtttt aacatttaaa
+     7861 aatttagatt ttacagatag aacaaaacca gttccgccag atgatagtgt tattttattt
+     7921 gatgaaagtt atttatatat tgatggaact agtcctcacg atgagaaaaa agttcatagt
+     7981 ggtaaaattc cgtgaattgt attagcaaga cattttggta atcgtgcgtt gtttactgct
+     8041 cagcgtgagg gtatgatttg aaataatatt cgccagttag caagtggaat tattattcca
+     8101 atttcattga aaaaaccagt tattaagaaa gggtttaatt tttttaatcg tttctttatt
+     8161 atgcaaattg gtatttttca agatataacg gattatgaaa tttgaaaaac aaaatcagta
+     8221 gaacgaacag cagaaggtaa aagagtaaaa cataagtcgg atgttgggtt agg
+//
+

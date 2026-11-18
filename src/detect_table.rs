@@ -1520,7 +1520,7 @@ mod tests {
     #[test]
     fn start_codon_score_table11_higher_than_table25_on_lambda() {
         use crate::genome::read_fasta;
-        let genomes = read_fasta("../PHANOTATE/tests/NC_001416.1.fasta").unwrap();
+        let genomes = read_fasta("tests/golden/lambda_NC001416.fa").unwrap();
         for genome in &genomes {
             let score11 = start_codon_score(&genome.seq, 11, 90);
             let score25 = start_codon_score(&genome.seq, 25, 90);
